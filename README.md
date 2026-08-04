@@ -18,7 +18,7 @@ Our research found every pairwise combination of these ideas in the wild, but no
 
 ## Status
 
-Pre-alpha, research phase. Research is complete, plans are drafted, no code yet. Screenshots and demo captures will land in this section as each roadmap gate ships. Contributions, questions, and skepticism are welcome.
+Pre-alpha. The 0.1 gate has shipped: a virtual Meshtastic node deployed, declaratively configured, observed on MQTT, and torn down on a plain Kubernetes cluster, with an idempotent applier and persistence across pod restarts. Transcript and findings: [demo/phase1](demo/phase1/README.md). Demo captures land in this section as each roadmap gate ships. Contributions, questions, and skepticism are welcome.
 
 ## Start here
 

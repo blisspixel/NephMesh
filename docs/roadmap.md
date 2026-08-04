@@ -30,7 +30,7 @@ Each phase's demo gates a 0.x release. Versions are earned by working demos, not
 
 | Version | Gate |
 |---|---|
-| 0.1 | Phase 1 demo: a virtual mesh node deployed, configured, and torn down declaratively |
+| 0.1 | Phase 1 demo: a virtual mesh node deployed, configured, and torn down declaratively (passed 2026-08-04) |
 | 0.2 | Phase 2 demo: intent drives real radios; the mesh is visible in sensed spectrum |
 | 0.3 | Phase 3 demo: packages consumable by a stock Porch install (this repo registered as a catalog) |
 | 0.4 | Phase 4 demo: the MeshtasticNode operator reconciling drift on real hardware |
@@ -53,7 +53,7 @@ Phases 6 and 7 are not 1.0 gates: the closed loop and the cellular leg are resea
 
 Desk research is done; it was enough to order the phases and pick the tools. The remaining unknowns are empirical and are resolved inside the phases that touch them:
 
-- Phase 1: does `meshtasticd -s` behave well under pod restarts with a PVC (identity, prefs, reconnects)? Does the Meshtasticator multi-node fabric run in containers despite its known Docker reconnect issue?
+- Phase 1, answered 2026-08-04: `meshtasticd --sim` behaves well under pod restarts with a PVC (prefs persist, MQTT reconnects unaided). Two new findings: TCP readiness probes force-close the single-client device API, and the MQTT thread starts only at boot, so applies end with an explicit reboot. Still open: Meshtasticator multi-node in containers (stretch).
 - Phase 2: does `generic-device-plugin` expose USB cleanly on arm64 k3s on the Orange Pi (there is an open issue about devices not mounting in some environments)? Do `hackrf_sweep` and SoapyHackRF work unchanged against the HackRF Pro (newer hardware than most published containers target)?
 - Phase 3: how small can the slim Porch path actually go on the dev PC?
 - Phase 4: how disruptive are per-section config reboots in practice, and how good can minimal-diff reconciliation get?
@@ -82,7 +82,7 @@ Goal: the smallest end-to-end declarative pipeline. No radios, no Nephio yet. Ru
 - [x] Declarative node config: desired state as YAML (the CLI `--export-config` / `--configure` format), applied by an idempotent Job over TCP (export, subset-compare, apply only on drift, verify after the post-apply reboot)
 - [x] In-cluster Mosquitto broker; MQTT module enabled (protobuf topics observed as `msh/2/e/...` on firmware 2.7.26; JSON topics on for demo readability)
 - [x] Pipeline validated end to end in Docker against the real image: sendtext reached both protobuf and JSON MQTT topics (see `docs/plans/phase-1-virtual-mesh.md` section 10)
-- [ ] The 0.1 gate: the full demo script passing on a Kubernetes cluster (kind/k3d/k3s), including the idempotency re-run and teardown
+- [x] The 0.1 gate: the full demo script passed on a kind cluster on 2026-08-04, including the idempotency re-run; persistence across pod restarts (V1) also validated (see `demo/phase1/README.md`, gate result)
 - [ ] Stretch: multi-node mesh via Meshtasticator (real firmware, emulated RF propagation) so routing behavior is testable in CI
 
 ## Phase 2: Real radios and spectrum sensing ($0, uses owned hardware)

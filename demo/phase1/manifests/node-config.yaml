@@ -81,11 +81,21 @@ data:
         start = out.find("# start of Meshtastic configure yaml")
         return yaml.safe_load(out[start:] if start >= 0 else out)
 
+    def norm_key(k):
+        # The CLI accepts snake_case keys on --configure but exports
+        # camelCase (json_enabled in, jsonEnabled out), so keys compare
+        # case- and underscore-insensitively.
+        return str(k).lower().replace("_", "")
+
     def is_subset(desired, live):
         if isinstance(desired, dict):
             if not isinstance(live, dict):
                 return False
-            return all(k in live and is_subset(v, live[k]) for k, v in desired.items())
+            live_n = {norm_key(k): v for k, v in live.items()}
+            return all(
+                norm_key(k) in live_n and is_subset(v, live_n[norm_key(k)])
+                for k, v in desired.items()
+            )
         return str(desired).strip().lower() == str(live).strip().lower()
 
     def main():
@@ -102,9 +112,9 @@ data:
         with open(rendered, "w") as f:
             yaml.safe_dump(desired, f)
 
-        # Applying config makes meshtasticd exit (the device reboot); the
-        # CLI may lose its session mid-apply, so failures here are tolerated
-        # and the outcome is judged by the post-reboot verify below.
+        # The CLI may lose its session mid-apply if the device restarts,
+        # so failures here are tolerated and the outcome is judged by the
+        # post-reboot verify below.
         print("applying configuration")
         cli("--configure", rendered, tolerate_failure=True)
         time.sleep(10)
@@ -113,6 +123,14 @@ data:
         cli("--ch-set", "uplink_enabled", "true", "--ch-index", "0",
             tolerate_failure=True)
         time.sleep(10)
+        wait_reachable()
+        # The MQTT client thread only starts at boot (an in-place config
+        # write does not start it), so an explicit reboot makes the
+        # outcome deterministic regardless of whether the applies above
+        # already restarted the device.
+        print("rebooting device to activate module config")
+        cli("--reboot", tolerate_failure=True)
+        time.sleep(15)
         wait_reachable()
 
         if is_subset(desired, export_live() or {}):

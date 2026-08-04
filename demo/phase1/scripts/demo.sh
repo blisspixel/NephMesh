@@ -27,6 +27,9 @@ MSG="hello nephmesh $(date +%s)"
 step() { printf '\n== %s\n' "$1"; }
 
 step "1/6 apply manifests"
+# The namespace goes first: kubectl apply -f <dir> processes files in
+# alphabetical order, and everything else lands inside the namespace.
+kubectl apply -f "$DIR/namespace.yaml"
 kubectl apply -f "$DIR"
 
 step "2/6 wait for workloads"
@@ -58,8 +61,9 @@ kubectl -n "$NS" run sender --image=python:3.13-slim --restart=Never -- \
 kubectl -n "$NS" wait --for=jsonpath='{.status.phase}'=Succeeded pod/sender --timeout=300s
 
 step "6/6 verify the message reached MQTT"
+# grep -a: the protobuf topics carry binary payloads on the same stream.
 tries=0
-until kubectl -n "$NS" logs mqtt-watch | grep -F "$MSG" >/dev/null 2>&1; do
+until kubectl -n "$NS" logs mqtt-watch | grep -aF "$MSG" >/dev/null 2>&1; do
     tries=$((tries + 1))
     if [ "$tries" -gt 20 ]; then
         echo "GATE FAILED: message not seen on MQTT within 60s"
@@ -69,7 +73,7 @@ until kubectl -n "$NS" logs mqtt-watch | grep -F "$MSG" >/dev/null 2>&1; do
     sleep 3
 done
 echo "message observed on MQTT topics:"
-kubectl -n "$NS" logs mqtt-watch | grep -F "$MSG" | head -4
+kubectl -n "$NS" logs mqtt-watch | grep -aF "$MSG" | head -4
 
 printf '\nPHASE 1 GATE: PASS\n'
 printf 'Teardown with: sh %s/../scripts/teardown.sh\n' "$(dirname "$0")/../manifests"

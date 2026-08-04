@@ -30,6 +30,41 @@ These manifests encode findings from running the real `meshtastic/meshtasticd:be
 - The device's MQTT client did not connect when `mqtt.address` was a hostname but connected immediately with an IP; the applier therefore resolves the broker Service to its ClusterIP at apply time.
 - Multiple copies of the same packet appear on the broker (mesh rebroadcast behavior); consumers dedupe on packet `id`.
 
+## Gate result
+
+The gate passed on a kind cluster (Windows host, Docker Desktop) on 2026-08-04. Trimmed transcript:
+
+```
+== 3/6 wait for declarative config to converge (device reboots are expected)
+job.batch/meshnode-configure condition met
+applying configuration
+enabling MQTT uplink on the primary channel
+rebooting device to activate module config
+configuration verified after apply
+
+== 4/6 idempotency: re-running the applier must be a no-op
+job.batch/meshnode-configure condition met
+idempotency: OK
+
+== 6/6 verify the message reached MQTT
+message observed on MQTT topics:
+
+PHASE 1 GATE: PASS
+```
+
+Persistence (validation item V1) also passed: after `kubectl delete pod` on the node, the replacement pod loaded its prefs from the PVC and reconnected to MQTT on its own:
+
+```
+INFO  | 21:23:40 0 Loaded /prefs/nodes.proto successfully
+INFO  | 21:23:40 0 [mqtt] Connecting directly to MQTT server 10.96.215.62, port: 1883
+INFO  | 21:23:40 0 [mqtt] MQTT connected
+```
+
+Two Kubernetes-specific findings from the gate run, both encoded in the manifests:
+
+- A TCP readiness probe on 4403 is harmful: the device API is single-client and each probe connection force-closes the active CLI session, interrupting applies. The Deployment has no probe; the applier does its own reachability waits.
+- The MQTT client thread starts only at device boot; an in-place config write does not start it. The applier issues an explicit `--reboot` after applying, making the outcome deterministic.
+
 ## Troubleshooting
 
 - `meshnode-sim` restarting once or twice during configuration is expected (see above), not a crash loop.

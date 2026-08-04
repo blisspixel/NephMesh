@@ -67,11 +67,10 @@ spec:
           ports:
             - name: device-api
               containerPort: 4403
-          readinessProbe:
-            tcpSocket:
-              port: 4403
-            initialDelaySeconds: 5
-            periodSeconds: 5
+          # Deliberately no TCP readiness probe: the device API is
+          # single-client and every probe connection force-closes the
+          # active CLI session, which can interrupt a config apply in
+          # progress. The applier Job does its own reachability waits.
           resources:
             requests:
               cpu: 50m
