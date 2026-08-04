@@ -77,9 +77,9 @@ Module boundaries and replace directives:
   go.work. Replace directives are what upstream CI and Dockerfiles assume (repo-root build context
   exists so they resolve), and committing go.work would diverge from that. Developers may keep a
   local go.work; add `go.work` and `go.work.sum` to `.gitignore`.
-- Module paths: `github.com/pueo-io/nephmesh/<dir>` (adjust to the real GitHub owner at scaffold
+- Module paths: `github.com/blisspixel/nephmesh/<dir>` (adjust to the real GitHub owner at scaffold
   time). Consumers import the api module as
-  `meshv1alpha1 "github.com/pueo-io/nephmesh/api/mesh/v1alpha1"`.
+  `meshv1alpha1 "github.com/blisspixel/nephmesh/api/mesh/v1alpha1"`.
 - api module conventions per group: `<kind>_types.go`, `<kind>_interfaces.go` (Validate(),
   builders), `groupversion_info.go`, `condition.go`, generated `zz_generated.deepcopy.go`,
   exported `<Kind>Kind` string constants. controller-gen v0.20.0; `make generate` and
@@ -171,7 +171,7 @@ Fragments to write (Phase 0 stubs, filled in as their consumers land):
 - Build context is always the repo root so relative replace directives resolve, matching upstream
   Dockerfiles.
 - Multi-arch linux/amd64 and linux/arm64 via buildx from the first published image.
-- Registry: `ghcr.io/<owner>/nephmesh-<name>` (for example `ghcr.io/pueo-io/nephmesh-operator`).
+- Registry: `ghcr.io/<owner>/nephmesh-<name>` (for example `ghcr.io/blisspixel/nephmesh-operator`).
   ghcr.io over Docker Hub because: pushes authenticate with the built-in `GITHUB_TOKEN` (no
   long-lived secrets), no anonymous-pull rate limits that would break newcomer demos, images sit
   next to the source with linked provenance, and public storage is free. Docker Hub adds
@@ -198,20 +198,19 @@ annotated and signed-off like commits.
 - The pinned Nephio release (R6 now) is recorded in the README and in each release's notes; a
   release never floats against Nephio main.
 
-## 9. Open decisions for a human call
+## 9. Open decisions (resolutions annotated 2026-08-04; rationale in the changelog history)
 
-1. GitHub owner and module path: `pueo-io` vs a dedicated `nephmesh` org. Affects module paths and
-   ghcr.io names, so decide before the first go.mod (Phase 1 at the earliest, Phase 4 at the
-   latest).
-2. Domain for API groups: this plan and the architecture doc use `nephmesh.io` (`mesh.nephmesh.io`,
-   `nephmesh.io/site-type` labels). Confirm the domain is owned or pick one that is before the
-   first CRD ships; API group renames are breaking.
-3. SPDX license scanning of dependencies (upstream's allowlist.json pattern): adopt at Phase 4
-   when the Go dependency tree becomes real, or skip until 1.0?
-4. DCO enforcement mechanism: the third-party DCO GitHub app vs a small in-repo Actions check.
-   Functionally equivalent; the app adds a dependency, the check adds maintenance.
-5. `krm-functions/lib/`: write our own shared lib or import `nephio-project/nephio`'s
-   krm-functions lib directly as a dependency? Importing is more upstream-compatible but couples
-   us to their module tags; decide when the first specializer function is written (Phase 5).
-6. Whether to email brand@linuxfoundation.org about the name (carried over from the Phase 0
-   roadmap checklist; low risk either way).
+1. GitHub owner and module path: DECIDED. The repo's actual remote is `github.com/blisspixel/NephMesh`,
+   so module paths are `github.com/blisspixel/nephmesh/<dir>` (lowercase, per Go module convention;
+   GitHub resolves repo names case-insensitively) and images are `ghcr.io/blisspixel/nephmesh-<name>`.
+   Reversible until the first go.mod ships.
+2. Domain for API groups: DEFERRED with a hard precondition. Design docs keep `nephmesh.io`; the
+   first CRD does not ship until the domain is confirmed owned (or the group is changed). API group
+   renames are breaking, so this blocks Phase 4, not Phase 3.
+3. SPDX license scanning: DECIDED. Adopt at Phase 4 when the Go dependency tree becomes real.
+4. DCO enforcement: DECIDED and implemented. The in-repo Actions check in `.github/workflows/ci.yaml`
+   verifies Signed-off-by on every PR commit; no third-party app dependency.
+5. `krm-functions/lib/`: DECIDED direction, final call at Phase 5. Import upstream's lib first;
+   write our own helpers only where friction is demonstrated.
+6. Brand email to brand@linuxfoundation.org: OPEN. External communication is the maintainer's call;
+   risk remains low either way (the name does not contain the Nephio mark).

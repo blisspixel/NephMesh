@@ -12,3 +12,7 @@ _actual_output.yaml
 *.swp
 .DS_Store
 Thumbs.db
+
+# Agent working files and local logs (loop-engineering protocol)
+.agent/
+logs/

@@ -20,6 +20,16 @@ An independent experimental project applying Nephio-style intent-driven automati
 - Plain, factual prose. Detailed and well researched, but humble: this is an experiment, so write "explores" and "would be", not product-launch language. Cite sources with links in research docs.
 - The README stays short and links into docs/ rather than duplicating them. When a roadmap phase demo lands, capture it (screenshot or terminal capture) and add it to the README Status section and the release notes.
 
+## Code quality bars
+
+- No god files: one responsibility per file; split before a file accumulates a second concern. Applies to YAML too (one workload per manifest file, as demo/phase1 already does).
+- No placeholders in commits: zero TODO markers, stub bodies, or commented-out code. If work is unfinished, it is a roadmap or plan item, not a comment.
+- No copy-paste domain logic. Tiny local duplication is acceptable only when an abstraction would cost more than it saves.
+- Comments state constraints and non-obvious facts (validated findings, protocol quirks), never narrate what the next line does.
+- Everything shipped is executed first: manifests are applied, scripts are run, packages are rendered. Nothing lands on the strength of looking correct.
+- Tests-first for Go code when it arrives (testify plus golden tests per the engineering conventions); coverage must not regress.
+- Prefer deterministic gates over instructions: if a rule matters, wire it into `hack/` checks and CI.
+
 ## Project conventions
 
 - Consume Nephio, never fork or vendor it. Pin to a Nephio release (R6 as of August 2026).

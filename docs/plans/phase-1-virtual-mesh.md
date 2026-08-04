@@ -245,10 +245,10 @@ No real radios, no USB or SPI passthrough, no SDR, no Nephio components (Porch, 
 
 ## 9. Open decisions needing a human call
 
-- OD1: Should the demo also show the GitOps variant (a plain Flux or Argo apply loop) or is `kubectl apply` alone the 0.1 gate? The roadmap says "kubectl apply (or a Git commit plus a GitOps agent)"; this plan gates on `kubectl apply` only and treats GitOps as optional polish.
-- OD2: Region value for the simulated node (US assumed above, which fixes the MQTT topic prefix `msh/US/...`). Cosmetic but bakes into scripts and docs.
-- OD3: Whether to build and publish a small Meshtastic CLI image now (removes Job egress dependency, adds a registry and build pipeline this phase otherwise does not need).
-- OD4: Whether V3 (Meshtasticator) blocks the 0.1 release notes as "attempted with recorded outcome" or is deferred wholesale; this plan proposes attempt-and-record, not gate.
+- OD1: DECIDED (by the passing gate). `kubectl apply` alone is the 0.1 gate; GitOps is optional polish.
+- OD2: DECIDED. Region US (validated; note the observed topic prefix is `msh/2/...` regardless, see section 10).
+- OD3: DECIDED. Deferred until the image/registry pipeline exists (Phase 4 per the conventions plan); the pip-at-runtime path passed the gate.
+- OD4: DECIDED. Attempt-and-record, not gate; outcome recorded in `docs/research/meshtastic.md` and the roadmap.
 
 ## 10. Validation results (Docker rehearsal, 2026-08-04)
 

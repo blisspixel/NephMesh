@@ -26,7 +26,7 @@ Module layout (types-only `api/` module, exactly the api-repo shape):
 
 ```
 api/
-  go.mod                          module github.com/pueo-io/nephmesh/api (owner TBD, engineering-conventions open decision 1)
+  go.mod                          module github.com/blisspixel/nephmesh/api (owner TBD, engineering-conventions open decision 1)
   mesh/v1alpha1/
     meshtasticnode_types.go       Spec/Status structs + kubebuilder markers
     meshtasticnode_interfaces.go  Validate(), condition helpers, builders
@@ -46,7 +46,7 @@ Conventions carried over from the api repo: exported Kind constants
 functions build ObjectReferences without reflection; controller-gen (pin whatever version the
 pinned Nephio release uses, v0.20.0 today) with `make generate` (deepcopy, boilerplate header) and
 `make manifests` (CRDs into `config/crd/bases/` named `<group>_<plural>.yaml`); consumers import as
-`meshv1alpha1 "github.com/pueo-io/nephmesh/api/mesh/v1alpha1"`. Apache-2.0 headers
+`meshv1alpha1 "github.com/blisspixel/nephmesh/api/mesh/v1alpha1"`. Apache-2.0 headers
 (`The NephMesh Authors`) on every file.
 
 ## 2. MeshtasticNode (mesh.nephmesh.io/v1alpha1)
@@ -76,9 +76,13 @@ type MeshtasticNodeSpec struct {
     // MQTT maps to the MQTT module config. Phase 4.
     MQTT *MQTTSpec `json:"mqtt,omitempty"`
 
-    // WipeOnDelete: factory-reset the radio when the CR is deleted.
-    // Default false (stop managing). Later phase; see section 5.
-    WipeOnDelete bool `json:"wipeOnDelete,omitempty"`
+    // DeletionPolicy: what CR deletion means for the physical radio.
+    // Retain (default): stop managing, leave the radio running with its
+    // last-applied config. Wipe: factory-reset during finalization (later
+    // phase; needs careful ordering, see section 5). An enum rather than a
+    // boolean leaves room for a future third mode.
+    // +kubebuilder:validation:Enum=Retain;Wipe
+    DeletionPolicy string `json:"deletionPolicy,omitempty"`
 }
 
 type ConnectionSpec struct {
@@ -236,13 +240,14 @@ SpectrumScan conditions: `DeviceReady` (`DeviceAttached`, `DeviceMissing`, `Driv
 Finalizers, following the `"<group>/finalizer"` pattern observed in Nephio controllers:
 `mesh.nephmesh.io/finalizer` and `sense.nephmesh.io/finalizer`.
 
-Deletion semantics for a physical radio: default is stop managing. Deleting the CR removes the
-operator's claim on the device and nothing else; the radio keeps running with its last-applied
-config. Rationale: radios are often shared or community infrastructure, a factory reset is
-destructive and unrecoverable over the air, and wiping a remote node can sever the admin-channel
-path used to manage it. `wipeOnDelete: true` opts into a factory reset during finalization for
-lab teardown, and is a later-phase feature because it needs careful ordering (wipe before the
-gateway that carries the admin channel is itself deleted).
+Deletion semantics for a physical radio: default is `deletionPolicy: Retain` (stop managing).
+Deleting the CR removes the operator's claim on the device and nothing else; the radio keeps
+running with its last-applied config. Rationale: radios are often shared or community
+infrastructure, a factory reset is destructive and unrecoverable over the air, and wiping a
+remote node can sever the admin-channel path used to manage it. `deletionPolicy: Wipe` opts into
+a factory reset during finalization for lab teardown, and is a later-phase feature because it
+needs careful ordering (wipe before the gateway that carries the admin channel is itself
+deleted).
 
 ## 6. Secrets handling (channel PSKs, MQTT passwords)
 
@@ -279,19 +284,17 @@ workload children (the radio is not a pod), so the populate function returns onl
 transport implies. A parallel `spectrum-sensor-fn` would use SpectrumScan as For with the scanner
 Deployment, exporter ConfigMap, and device-plugin resource requests as Owns.
 
-## 8. Open decisions (human call needed)
+## 8. Open decisions (resolutions annotated 2026-08-04)
 
-1. Final module path and repo placement for `api/`: in-repo module now (matching the monorepo
-   phase) versus a separate `nephmesh/api` repo (matching nephio-project/api exactly). Lean:
-   in-repo module until an external consumer exists.
-2. Secret provisioning story to document as the recommended path (plain out-of-band Secrets vs
-   SealedSecrets vs External Secrets Operator). The API is agnostic either way.
-3. Whether `viaGateway.dest` node IDs belong in Spec (stable, human-provided) or should ever be
-   discovered; and whether admin-channel key material needs its own secretKeyRef field once
-   remote admin is implemented against real firmware.
-4. String enums vs typed constants for region/modemPreset/role: strings proposed above for
-   firmware-churn tolerance; a reviewer may prefer CEL or enum markers pinned per firmware release.
-5. Whether SpectrumScan gain should be a plain SoapySDR gain string (proposed) or structured
-   per-stage gains; depends on Phase 2 findings with the HackRF Pro.
-6. `wipeOnDelete` naming and shape: boolean (proposed) versus a `deletionPolicy: Retain|Wipe` enum
-   that leaves room for a future third mode.
+1. Module placement for `api/`: DECIDED. In-repo module until an external consumer exists; already
+   its own Go module, so a later split to a separate repo is mechanical.
+2. Secret provisioning: DECIDED. Document plain out-of-band Kubernetes Secrets as the recommended
+   path; SealedSecrets and External Secrets Operator remain compatible options, never dependencies.
+3. `viaGateway.dest`: DECIDED for v1alpha1. Node IDs are stable, human-provided Spec fields; no
+   discovery. Whether admin-channel key material needs its own secretKeyRef is settled at
+   implementation time against real firmware (Phase 4).
+4. Enum shape: DECIDED. Strings with kubebuilder validation markers, for firmware-churn tolerance.
+5. SpectrumScan gain: OPEN pending Phase 2 findings with the HackRF Pro (plain SoapySDR gain string
+   proposed).
+6. Deletion shape: DECIDED. `deletionPolicy: Retain|Wipe` enum (Retain default), replacing the
+   earlier `wipeOnDelete` boolean; reflected in section 2 and section 5.

@@ -69,7 +69,7 @@ Goal: a repo worth contributing to.
 - [x] README, architecture sketch, this roadmap
 - [x] AGENTS.md and CLAUDE.md for AI coding agents
 - [x] Detailed plans: Phase 1, Phase 2, CRD API design, engineering conventions (`docs/plans/`)
-- [ ] Resolve the open decisions flagged in `docs/plans/*.md` (each plan ends with items marked for a human call)
+- [x] Resolve the open decisions flagged in `docs/plans/*.md` (annotated in each plan's open-decisions section, 2026-08-04: owner is blisspixel per the git remote, deletionPolicy enum adopted, secrets story chosen, SPDX/DCO/lib direction set; the nephmesh.io domain check remains a hard precondition for Phase 4)
 - [x] Repo scaffolding: CONTRIBUTING, SECURITY, CHANGELOG, license header and style checks (`hack/`), CI workflow, root Makefile, line-ending and ignore rules (kpt render checks arrive with Phase 3 packages)
 - [ ] Optional: email brand@linuxfoundation.org to sanity-check the name (low risk: "NephMesh" does not contain the "Nephio" mark, and the README carries a prominent disclaimer)
 
