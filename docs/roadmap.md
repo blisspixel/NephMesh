@@ -1,0 +1,159 @@
+# NephMesh Roadmap
+
+Phases are ordered by dependency, not by calendar. Each phase produces a working, demoable artifact and depends only on the phases before it. No dates or effort estimates: a phase is done when its demo works.
+
+Status: [x] done, [ ] not started. Phase status is noted in each heading.
+
+## Current lab inventory
+
+The maintainer's lab already covers every phase through Phase 6 at $0 incremental cost:
+
+- Dev PC (Windows): runs kind/k3d via Docker Desktop or WSL2 for the management cluster and Porch. All hardware-free work happens here; scripts use a POSIX shell (WSL2 or Git Bash).
+- A separate Linux box: hosts the HackRF Pro (USB device work is Linux-hosted by policy; see AGENTS.md cross-platform rules).
+- Raspberry Pi and Orange Pi 5: arm64 container hosts. The Orange Pi 5 is a good single-node k3s edge cluster; there is no need to pay for Kubernetes anywhere. The full Nephio sandbox (16 vCPU / 32 GB) is deferred; the slim path (kind + Porch + Config Sync) is the default.
+- Meshtastic devices (a couple of boards, currently unplugged): the real-RF mesh for Phase 2 onward. They stay in the drawer until Phase 2.
+- HackRF Pro: the spectrum sensor. Receive-only by default; it is not a certified Part 15 transmitter, so over-the-air transmit only in authorized contexts (see Phase 6 note).
+
+Nothing needs to be purchased. Optional later additions: an SPI LoRa HAT or CH341 USB radio if a Pi should itself become a radio gateway (meshtasticd with real RF), and a cheap RTL-SDR if a site needs a dedicated sensor while the HackRF is busy elsewhere.
+
+### How far the roadmap goes with zero devices plugged in
+
+Most of it. Hardware-free on the Windows PC alone: all of Phase 0, all of Phase 1 (simulated radios), all of Phase 3 (packaging and Porch), most of Phase 4 (the operator develops and tests against `meshtasticd -s`; only the serial transport and reboot-timing behavior need a real board), the Phase 7 cellular leg (UERANSIM is a simulator), and all CI forever (a project rule). Devices are required only for: the Phase 2 gate itself, the real-hardware validation slice of Phase 4, Phase 5's second physical site (and even that can be rehearsed with two kind clusters on one PC), and Phase 6's real-RF closed loop. In other words, the boards and the HackRF can stay unplugged until the 0.2 gate is the actual next milestone.
+
+## Ordering rationale
+
+Prove the workload runs in containers first (Phase 1), then prove the same pipeline drives real hardware (Phase 2), then formalize the packaging so Nephio machinery can consume it (Phase 3), then replace one-shot config jobs with true reconciliation (Phase 4), then scale to multiple sites (Phase 5), then close the loop from sensed spectrum back to intent (Phase 6). The cellular leg (Phase 7) is independent of 4 through 6 in principle, but it is last because it needs the most compute and adds the least learning until the mesh side works.
+
+## Version path
+
+Each phase's demo gates a 0.x release. Versions are earned by working demos, not by calendar.
+
+| Version | Gate |
+|---|---|
+| 0.1 | Phase 1 demo: a virtual mesh node deployed, configured, and torn down declaratively |
+| 0.2 | Phase 2 demo: intent drives real radios; the mesh is visible in sensed spectrum |
+| 0.3 | Phase 3 demo: packages consumable by a stock Porch install (this repo registered as a catalog) |
+| 0.4 | Phase 4 demo: the MeshtasticNode operator reconciling drift on real hardware |
+| 0.5 | Phase 5 demo: two sites managed from one Git repo with per-site specialization |
+| 0.6 | Phase 6 demo: closed loop from sensed occupancy to reconciled channel change |
+| 0.7 | Phase 7 demo: cellular outage fails over to mesh and back |
+| 1.0 | See below |
+
+1.0 means someone who is not the maintainer can succeed with it:
+
+- A stranger can reproduce the Phase 1 through 5 demos from the repo alone on a clean machine (no hardware required through Phase 1 and 3; documented hardware list for the rest)
+- The `MeshtasticNode` CRD API is stable (no breaking changes planned) and versioned accordingly
+- Packages install against a stock Nephio release without patches, and the pinned release is documented
+- CI runs the simulated-radio test suite green on every commit
+- Docs cover install, upgrade, and teardown, not just the happy path
+
+Phases 6 and 7 are not 1.0 gates: the closed loop and the cellular leg are research features and can mature after 1.0.
+
+## What research cannot answer (validate by testing)
+
+Desk research is done; it was enough to order the phases and pick the tools. The remaining unknowns are empirical and are resolved inside the phases that touch them:
+
+- Phase 1: does `meshtasticd -s` behave well under pod restarts with a PVC (identity, prefs, reconnects)? Does the Meshtasticator multi-node fabric run in containers despite its known Docker reconnect issue?
+- Phase 2: does `generic-device-plugin` expose USB cleanly on arm64 k3s on the Orange Pi (there is an open issue about devices not mounting in some environments)? Do `hackrf_sweep` and SoapyHackRF work unchanged against the HackRF Pro (newer hardware than most published containers target)?
+- Phase 3: how small can the slim Porch path actually go on the dev PC?
+- Phase 4: how disruptive are per-section config reboots in practice, and how good can minimal-diff reconciliation get?
+
+If one of these fails, the research docs list fallbacks (Akri or host-level SoapySDRServer for device access; plain serial sidecars instead of the device plugin; single-node simulation instead of Meshtasticator).
+
+## Phase 0: Foundations (in progress)
+
+Goal: a repo worth contributing to.
+
+- [x] Research pass: Nephio extension mechanics, Meshtastic automation surface, containerized SDR, prior art, terminology and legality (`docs/research/`)
+- [x] Nephio codebase conventions deep-dive so our code stays upstream-compatible (`docs/research/nephio-codebase.md`)
+- [x] README, architecture sketch, this roadmap
+- [x] AGENTS.md and CLAUDE.md for AI coding agents
+- [x] Detailed plans: Phase 1, Phase 2, CRD API design, engineering conventions (`docs/plans/`)
+- [ ] Resolve the open decisions flagged in `docs/plans/*.md` (each plan ends with items marked for a human call)
+- [ ] Repo scaffolding: `packages/`, `demo/`, CI lint for kpt packages (kpt render + validate)
+- [ ] Optional: email brand@linuxfoundation.org to sanity-check the name (low risk: "NephMesh" does not contain the "Nephio" mark, and the README carries a prominent disclaimer)
+
+## Phase 1: Virtual mesh on a single-node cluster ($0)
+
+Goal: the smallest end-to-end declarative pipeline. No radios, no Nephio yet. Runs on k3s (Orange Pi 5) or k3d/kind (PC).
+
+- [ ] Deployment for `meshtastic/meshtasticd` in simulation mode (`-s` flag: official image, real firmware, no radio, standard device API on TCP 4403)
+- [ ] Persistent volume for `/var/lib/meshtasticd/.portduino` so node identity survives pod restarts; stable hardware ID via the `-h` flag
+- [ ] Declarative node config: desired state as YAML (the Meshtastic CLI `--export-config` / `--configure` format), applied by a Job or init container over TCP
+- [ ] In-cluster Mosquitto broker; enable the node's MQTT module (protobuf topics `msh/REGION/2/e/...`; JSON topics for easy inspection)
+- [ ] Demo: `kubectl apply` (or a Git commit plus a GitOps agent) creates a virtual node; `meshtastic --host ... --sendtext hello` round-trips and the message appears on the MQTT topic; deleting the manifest tears it all down
+- [ ] Stretch: multi-node mesh via Meshtasticator (real firmware, emulated RF propagation) so routing behavior is testable in CI
+
+## Phase 2: Real radios and spectrum sensing ($0, uses owned hardware)
+
+Goal: the same pipeline drives physical RF, and the mesh is visible in the sensed spectrum.
+
+- [ ] Attach the owned Meshtastic boards (USB serial to the Pi or PC); extend the config pipeline to physical nodes (Python CLI over serial/TCP, same YAML desired-state format)
+- [ ] USB device access on k3s via `squat/generic-device-plugin` (advertise devices by USB vendor:product ID, no privileged pods); document host prep (udev rules)
+- [ ] Spectrum sensor container using the HackRF Pro, receive-only: `hackrf_sweep` or `soapy_power` sweeping 902 to 928 MHz (SoapySDR keeps the container hardware-agnostic for future RTL-SDR sites)
+- [ ] Exporter: parse sweep CSV into per-band aggregate Prometheus gauges (occupancy percent, max/mean dB, not per-bin series). Research found no existing exporter for sweep data; this is novel glue
+- [ ] Demo: a Git intent change (for example modem preset LongFast to MediumSlow) propagates to the physical boards; a message crosses real RF; the mesh's own transmissions appear in the occupancy metrics
+
+## Phase 3: Nephio-native packaging ($0)
+
+Goal: the Phase 1 and 2 workloads become a proper Nephio-consumable catalog.
+
+- [ ] Convert to kpt packages: `mesh-gateway` and `spectrum-sensor` blueprints with Kptfile pipeline, `package-context.yaml`, placeholder `WorkloadCluster` (copying the `pkg-example-*-bp` pattern from the official catalog)
+- [ ] Slim management path on the PC: kind + Porch + Config Sync (the full Nephio sandbox needs 16 vCPU / 32 GB and stays optional)
+- [ ] Register this repo with Porch (`porchctl repo register`): NephMesh becomes a peer of `nephio-project/catalog`, the OAI third-party model
+- [ ] `PackageVariant` example specializing one gateway per site
+- [ ] Demo: approving a proposed PackageRevision in Porch deploys a configured mesh gateway to the cluster
+
+## Phase 4: The Meshtastic operator ($0)
+
+Goal: true reconciliation instead of one-shot config jobs. The most broadly useful deliverable: no Meshtastic Kubernetes operator exists today.
+
+- [ ] `MeshtasticNode` CRD: region, role, modem preset, channels (PSKs via Secrets), MQTT module, owner info
+- [ ] Controller reconcile loop using the Meshtastic Python API (TCP 4403): export live config, diff against spec, apply only drift (each applied section reboots the node, so minimal diffs matter)
+- [ ] Status conditions: reachable, config in sync, mesh neighbor count, last-heard telemetry
+- [ ] Remote admin: manage radio-only mesh nodes through a gateway (admin channel, `--dest '!nodeid'`), so one managed gateway can reconcile nodes across the mesh
+- [ ] Ship as an `operator` kpt package deployed per cluster (the free5gc-operator / oai-operator pattern)
+
+## Phase 5: Multi-site fan-out ($0)
+
+Goal: more than one site, managed from one place.
+
+- [ ] The Pi or Orange Pi becomes a second k3s cluster, registered as a `WorkloadCluster` on the management cluster
+- [ ] `PackageVariantSet` fan-out over `WorkloadCluster` labels (for example `nephmesh.io/site-type: mesh-edge`) with per-site specialization
+- [ ] Demo: one Git commit configures both sites; each site runs its own gateway (and sensor where hardware is attached)
+
+## Phase 6: Closed-loop spectrum-aware automation ($0)
+
+Goal: sensed spectrum feeds back into intent.
+
+- [ ] Policy controller: watch spectrum-occupancy metrics; occupancy above threshold on the current channel commits a channel or preset intent change to Git, which reconciles out to the mesh. A miniature analog of an O-RAN xApp loop on commodity hardware
+- [ ] Interference for testing comes from the mesh itself (traffic generation, board placement) or from attenuated bench setups. Transmit note: the HackRF Pro is not a certified Part 15 transmitter, so over-the-air transmission happens only in an authorized context (for example under an amateur license, on amateur frequencies, unencrypted). Receive-only covers everything this phase needs
+- [ ] Security and resilience experiments: dynamic channel and PSK rotation driven by observed interference, as declared policy reconciled to radios
+- [ ] Demo: raise occupancy on the active channel, watch the intent change propagate to the radios without human action beyond the Porch approval
+
+## Phase 7: Hybrid cellular leg (optional, most compute)
+
+Goal: the disaster-resilience story end to end, no cellular hardware.
+
+- [ ] Open5GS or free5GC plus UERANSIM (simulated gNB and UE) via the same package pipeline (roughly 4 vCPU / 8 GB floor; runs on the PC; Nephio's Exercise 1 is the template)
+- [ ] Mesh to cellular bridge: MQTT protobuf topics (full-fidelity ServiceEnvelope on the private broker) to a service reachable over the 5G data plane
+- [ ] Failover demo: kill the simulated gNB (a "cell outage"); an intent promotes the Meshtastic path; messages keep flowing; restore the cell and traffic bridges back
+- [ ] Full reproducible demo environment: management plus edge clusters, one script
+
+## Cross-cutting: agent-native from day one (in progress)
+
+The repo should be as easy for AI agents to work on as for humans, and eventually natural language should be a front door to intent.
+
+- [x] AGENTS.md (and CLAUDE.md pointing to it) with project conventions and the facts agents commonly get wrong
+- [ ] `.claude/skills/` for repeatable workflows as they stabilize (for example: scaffold a new blueprint the catalog-pattern way; spin up the Phase 1 virtual mesh; render and validate all packages)
+- [ ] Natural language to intent (Phase 3 onward): an agent skill that turns "give site X a mesh gateway on MediumSlow with MQTT uplink" into a proposed PackageRevision in Porch. The human approves via Porch's lifecycle: the LLM proposes, the reconciliation loop enforces, the agent is never the control loop
+- [ ] MCP server (Phase 5 onward): expose live mesh and spectrum state (nodes, neighbor counts, band occupancy) as MCP tools so any agent can observe the network and draft intent changes against real data
+
+## Later / open questions
+
+- Propose lessons learned (or packages) upstream; `nephio-experimental` exists for exactly this kind of PoC
+- Akri instead of generic-device-plugin if dynamic SDR discovery and scheduling becomes a feature rather than plumbing
+- Direction finding (KrakenSDR) for locating interference sources
+- Multi-technology expansion beyond LoRa: receive-only monitoring of CB (27 MHz), GMRS, and amateur bands is just more spectrum sensing and can land any time; *managing* additional radio services only makes sense where a digital control surface exists (ham digital modes, GMRS data), and never analog CB as a transport (see `docs/faq.md`)
+- SigMF IQ capture plus IQEngine for post-hoc analysis of interesting events
+- Pin Nephio release: R6 today; watch R7's "modularization and easier onboarding for new use cases", a roadmap item aimed at projects like this one
