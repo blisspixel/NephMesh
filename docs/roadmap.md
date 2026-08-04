@@ -83,7 +83,7 @@ Goal: the smallest end-to-end declarative pipeline. No radios, no Nephio yet. Ru
 - [x] In-cluster Mosquitto broker; MQTT module enabled (protobuf topics observed as `msh/2/e/...` on firmware 2.7.26; JSON topics on for demo readability)
 - [x] Pipeline validated end to end in Docker against the real image: sendtext reached both protobuf and JSON MQTT topics (see `docs/plans/phase-1-virtual-mesh.md` section 10)
 - [x] The 0.1 gate: the full demo script passed on a kind cluster on 2026-08-04, including the idempotency re-run; persistence across pod restarts (V1) also validated (see `demo/phase1/README.md`, gate result)
-- [ ] Stretch: multi-node mesh via Meshtasticator (real firmware, emulated RF propagation) so routing behavior is testable in CI
+- [x] Stretch (attempt-and-record per plan OD4): Meshtasticator attempted headless in containers 2026-08-04; script mode needs a terminal emulator and an X display, and under Xvfb plus xterm the spawned nodes refused connections. Recorded in `docs/research/meshtastic.md`; CI stays single-node simulation. Revisit via its Docker mode or upstream headless support
 
 ## Phase 2: Real radios and spectrum sensing ($0, uses owned hardware)
 

@@ -44,6 +44,8 @@ Fully scriptable via the [Python CLI](https://meshtastic.org/docs/software/pytho
   1. `meshtasticd -s` - no radio at all; fully functional API endpoint on 4403 (configure it, enable MQTT). **Ideal CI / Phase 1 target.** A lone `-s` node is a mesh of one.
   2. [Meshtasticator](https://github.com/GUVWAF/Meshtasticator) - spawns multiple meshtasticd instances whose simulated LoRa chips exchange packets over local TCP with RF propagation modeling - multi-hop mesh behavior with zero radios.
 
+  Attempted 2026-08-04 (containerized, headless): inside the meshtasticd debian image with Tk and Xvfb installed, `interactiveSim.py --help` runs, but script mode (`-s 2 -p /usr/bin`) requires gnome-terminal or xterm to spawn nodes; with xterm under Xvfb the nodes boot but the simulator fails to connect to them (Errno 111 connection refused). Verdict: not practical headless in containers today without deeper surgery (possible future paths: its Docker mode against a real Docker socket, or upstream headless support). Phase 1 CI therefore stays single-node simulation, the fallback the roadmap names.
+
 ## Prior art in Kubernetes
 
 Thin. No official or community Helm chart/operator for meshtasticd found. Closest: [MeshMonitor](https://meshmonitor.org/) - a monitoring web app with a maintained Helm chart, whose docs describe running meshtasticd in simulation mode as a containerized virtual node. Nobody has published declarative node-state reconciliation - **the Phase-4 operator would be the first**.
