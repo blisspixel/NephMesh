@@ -70,18 +70,19 @@ Goal: a repo worth contributing to.
 - [x] AGENTS.md and CLAUDE.md for AI coding agents
 - [x] Detailed plans: Phase 1, Phase 2, CRD API design, engineering conventions (`docs/plans/`)
 - [ ] Resolve the open decisions flagged in `docs/plans/*.md` (each plan ends with items marked for a human call)
-- [ ] Repo scaffolding: `packages/`, `demo/`, CI lint for kpt packages (kpt render + validate)
+- [x] Repo scaffolding: CONTRIBUTING, SECURITY, CHANGELOG, license header and style checks (`hack/`), CI workflow, root Makefile, line-ending and ignore rules (kpt render checks arrive with Phase 3 packages)
 - [ ] Optional: email brand@linuxfoundation.org to sanity-check the name (low risk: "NephMesh" does not contain the "Nephio" mark, and the README carries a prominent disclaimer)
 
 ## Phase 1: Virtual mesh on a single-node cluster ($0)
 
 Goal: the smallest end-to-end declarative pipeline. No radios, no Nephio yet. Runs on k3s (Orange Pi 5) or k3d/kind (PC).
 
-- [ ] Deployment for `meshtastic/meshtasticd` in simulation mode (`-s` flag: official image, real firmware, no radio, standard device API on TCP 4403)
-- [ ] Persistent volume for `/var/lib/meshtasticd/.portduino` so node identity survives pod restarts; stable hardware ID via the `-h` flag
-- [ ] Declarative node config: desired state as YAML (the Meshtastic CLI `--export-config` / `--configure` format), applied by a Job or init container over TCP
-- [ ] In-cluster Mosquitto broker; enable the node's MQTT module (protobuf topics `msh/REGION/2/e/...`; JSON topics for easy inspection)
-- [ ] Demo: `kubectl apply` (or a Git commit plus a GitOps agent) creates a virtual node; `meshtastic --host ... --sendtext hello` round-trips and the message appears on the MQTT topic; deleting the manifest tears it all down
+- [x] Deployment for `meshtastic/meshtasticd` in simulation mode (`--sim`: official image, real firmware, no radio, device API on TCP 4403); explicit `command` because the image has no entrypoint (validated)
+- [x] Persistent volume at `/var/lib/meshtasticd` (the `--fsdir` state root; prefs at `<fsdir>/prefs/`, validated) with a stable `--hwid` for deterministic node identity
+- [x] Declarative node config: desired state as YAML (the CLI `--export-config` / `--configure` format), applied by an idempotent Job over TCP (export, subset-compare, apply only on drift, verify after the post-apply reboot)
+- [x] In-cluster Mosquitto broker; MQTT module enabled (protobuf topics observed as `msh/2/e/...` on firmware 2.7.26; JSON topics on for demo readability)
+- [x] Pipeline validated end to end in Docker against the real image: sendtext reached both protobuf and JSON MQTT topics (see `docs/plans/phase-1-virtual-mesh.md` section 10)
+- [ ] The 0.1 gate: the full demo script passing on a Kubernetes cluster (kind/k3d/k3s), including the idempotency re-run and teardown
 - [ ] Stretch: multi-node mesh via Meshtasticator (real firmware, emulated RF propagation) so routing behavior is testable in CI
 
 ## Phase 2: Real radios and spectrum sensing ($0, uses owned hardware)
@@ -152,6 +153,8 @@ The repo should be as easy for AI agents to work on as for humans, and eventuall
 ## Later / open questions
 
 - Propose lessons learned (or packages) upstream; `nephio-experimental` exists for exactly this kind of PoC
+- Contribution strategy: once Phase 4 ships, the Meshtastic community is the natural first audience (a working operator plus packages), ahead of the Nephio community; treat the operator as the project's flagship deliverable
+- Unexplored upside, deliberately left open: the SDR plus LoRa plus intent-automation intersection likely holds ideas this roadmap has not found yet (spectrum-aware mesh optimization, wider LoRa ecosystems beyond Meshtastic, multi-radio transport abstraction); revisit after Phase 2 gives real data
 - Akri instead of generic-device-plugin if dynamic SDR discovery and scheduling becomes a feature rather than plumbing
 - Direction finding (KrakenSDR) for locating interference sources
 - Multi-technology expansion beyond LoRa: receive-only monitoring of CB (27 MHz), GMRS, and amateur bands is just more spectrum sensing and can land any time; *managing* additional radio services only makes sense where a digital control surface exists (ham digital modes, GMRS data), and never analog CB as a transport (see `docs/faq.md`)

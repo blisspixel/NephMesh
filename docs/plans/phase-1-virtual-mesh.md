@@ -249,3 +249,21 @@ No real radios, no USB or SPI passthrough, no SDR, no Nephio components (Porch, 
 - OD2: Region value for the simulated node (US assumed above, which fixes the MQTT topic prefix `msh/US/...`). Cosmetic but bakes into scripts and docs.
 - OD3: Whether to build and publish a small Meshtastic CLI image now (removes Job egress dependency, adds a registry and build pipeline this phase otherwise does not need).
 - OD4: Whether V3 (Meshtasticator) blocks the 0.1 release notes as "attempted with recorded outcome" or is deferred wholesale; this plan proposes attempt-and-record, not gate.
+
+## 10. Validation results (Docker rehearsal, 2026-08-04)
+
+The full pipeline (simulated node, YAML configure, channel uplink, sendtext, MQTT observation) was rehearsed end to end in plain Docker against `meshtastic/meshtasticd:beta-debian` (firmware 2.7.26) before the manifests were written. Where findings differ from the sections above, the manifests in `demo/phase1/manifests/` are authoritative. Resolved VERIFY items:
+
+- Image tag: `beta-debian` exists on Docker Hub, multi-arch (amd64, arm64, arm, riscv64). Resolved.
+- Entrypoint: none; default cmd is `sh -cx "meshtasticd --fsdir=/var/lib/meshtasticd"`. The Deployment sets an explicit `command`. Resolved (section 3.1 assumption corrected).
+- Persistence: `--fsdir` is the state root and prefs land at `<fsdir>/prefs/`; the PVC mounts at `/var/lib/meshtasticd`, not `.portduino`. Section 3.2 corrected by the manifests.
+- `-h` format: `--hwid=dc2c6e000001` (12 hex digits, no colons) produced MAC `dc:2c:6e:00:00:01` and node ID `!6e000001`. Deterministic identity confirmed.
+- Reboot behavior: applying config makes the process exit with code 1. In Kubernetes the Deployment restart covers it; the applier waits and re-verifies.
+- Lone-node uplink: confirmed yes. A single simulated node publishes its own sent text to both protobuf and JSON topics. The gate observable stands as written.
+- Topic shape: observed `msh/2/e/CHANNEL/!id`, with no region segment (docs elsewhere describe `msh/REGION/2/e/...`). Demo assertions subscribe to `msh/#`.
+- MQTT address: hostname did not connect (no error logged, just "MQTT not connected" retries); the broker IP connected instantly. The applier resolves the Service DNS name to its ClusterIP and configures that. Whether in-cluster DNS behaves differently remains open; the IP path works regardless.
+- `--configure` round trip: partial YAML (only the desired subset) applies cleanly; export output is prefixed with a comment marker line the applier strips.
+- Mosquitto: `eclipse-mosquitto:2` ships a built-in `/mosquitto-no-auth.conf`, removing the need for a custom broker ConfigMap. Section 3.6 simplified accordingly.
+- Duplicates: the same packet id appears multiple times on the broker (rebroadcast); consumers dedupe on `id`, as the research predicted.
+
+Still open from section 5: V1 (PVC identity across pod restarts) and V3 (Meshtasticator) need a Kubernetes run, not a Docker one.
