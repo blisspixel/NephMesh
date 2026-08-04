@@ -1,0 +1,51 @@
+# Copyright 2026 The NephMesh Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Phase 0 CI: header, style, and DCO checks. Grows per phase, always
+# hardware-free (docs/plans/engineering-conventions.md, section 4).
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: License headers
+        run: sh hack/check-headers.sh
+      - name: Writing style rules
+        run: sh hack/check-style.sh
+
+  dco:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: All commits signed off
+        run: |
+          missing=0
+          for sha in $(git rev-list origin/${{ github.base_ref }}..HEAD); do
+            if ! git log -1 --format=%B "$sha" | grep -q '^Signed-off-by: '; then
+              echo "commit $sha lacks Signed-off-by"
+              missing=1
+            fi
+          done
+          exit $missing

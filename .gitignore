@@ -1,0 +1,14 @@
+# Local Go workspace files (relative replace directives are canonical; see
+# docs/plans/engineering-conventions.md)
+go.work
+go.work.sum
+
+# Golden test scratch output
+_actual_output.yaml
+
+# Editor and OS noise
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

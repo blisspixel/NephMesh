@@ -1,0 +1,7 @@
+# Normalize line endings. Shell scripts and manifests with CRLF break inside
+# Linux containers, and the maintainer's dev machine is Windows, so LF is
+# enforced at the repo level rather than trusting local git config.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.gif binary
