@@ -44,10 +44,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: Install kpt
+      - name: Install kpt (checksum-verified)
+        # Verify the download before trusting it, rather than piping curl
+        # straight into sudo tar. Bump KPT_VERSION and KPT_SHA256 together;
+        # the checksum comes from the release's checksums.txt.
+        env:
+          KPT_VERSION: v1.0.0-beta.67
+          KPT_SHA256: 5769ef31efb5a18a1b94e1e766443c685aabd72f9f52bfc83079e1f4b1c3d532
         run: |
-          curl -sL "https://github.com/kptdev/kpt/releases/download/v1.0.0-beta.67/kpt_linux_amd64-1.0.0-beta.67.tar.gz" \
-            | sudo tar -xz -C /usr/local/bin kpt
+          curl -sSL -o kpt.tar.gz \
+            "https://github.com/kptdev/kpt/releases/download/${KPT_VERSION}/kpt_linux_amd64-${KPT_VERSION#v}.tar.gz"
+          echo "${KPT_SHA256}  kpt.tar.gz" | sha256sum -c -
+          sudo tar -xz -C /usr/local/bin -f kpt.tar.gz kpt
+          rm -f kpt.tar.gz
           kpt version
       - name: Render all kpt packages
         run: sh hack/check-packages.sh

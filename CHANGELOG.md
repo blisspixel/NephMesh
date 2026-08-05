@@ -27,7 +27,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ### Added
 
-- Supply-chain hardening for CI: every GitHub Action is pinned to an immutable commit SHA (with the human-readable version in a trailing comment) instead of a mutable tag like `@v4`, closing the hole where a moved or compromised tag would run arbitrary code with the workflow token. A deterministic gate (`hack/check-actions.sh`, `make check-actions`) fails the build if any action is ever left on a tag, and Dependabot keeps the SHAs current. Proven to catch a planted unpinned action.
+- Supply-chain hardening for CI: every GitHub Action is pinned to an immutable commit SHA (with the human-readable version in a trailing comment) instead of a mutable tag like `@v4`, closing the hole where a moved or compromised tag would run arbitrary code with the workflow token. A deterministic gate (`hack/check-actions.sh`, `make check-actions`) fails the build if any action is ever left on a tag, and Dependabot keeps the SHAs current. Proven to catch a planted unpinned action. The kpt install in CI now downloads to a file and verifies its SHA-256 against the release checksum before extracting, instead of piping `curl` straight into `sudo tar`.
 
 ### Changed
 
