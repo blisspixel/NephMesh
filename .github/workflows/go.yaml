@@ -119,3 +119,28 @@ jobs:
         env:
           MESH_TEST_HOST: 127.0.0.1:14403
         run: go test -tags integration ./internal/reconcile -run Integration -v
+
+  envtest:
+    # The controller tier against a real API server and etcd: proves the CRD's
+    # CEL and OpenAPI validations reject hostile resources at admission, and the
+    # reconciler's finalizer and idempotency behavior, which the fake client
+    # cannot reproduce. setup-envtest provisions the control-plane binaries.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: operators/meshtastic-operator
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.25.12"
+      - name: Provision envtest binaries
+        # setup-envtest is built with a newer Go than this module targets, so
+        # let the toolchain float for the tool install only; the test build
+        # still runs on 1.25.12.
+        run: |
+          GOTOOLCHAIN=auto go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+          SETUP_ENVTEST="$(go env GOPATH)/bin/setup-envtest"
+          echo "KUBEBUILDER_ASSETS=$("$SETUP_ENVTEST" use -p path)" >> "$GITHUB_ENV"
+      - name: Controller envtest suite
+        run: go test -tags envtest ./internal/controller/ -v
