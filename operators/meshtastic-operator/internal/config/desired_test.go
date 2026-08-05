@@ -33,6 +33,19 @@ func TestBuildDesiredRegionOnly(t *testing.T) {
 	}, d)
 }
 
+func TestBuildDesiredModemPresetAndRole(t *testing.T) {
+	// Paths verified against meshtasticd: modemPreset -> config.lora.modemPreset,
+	// role -> config.device.role.
+	d := BuildDesired(meshv1alpha1.MeshtasticNodeSpec{
+		Region: "US", ModemPreset: "MEDIUM_SLOW", Role: "ROUTER",
+	}, "")
+	lora := d["config"].(map[string]any)["lora"].(map[string]any)
+	device := d["config"].(map[string]any)["device"].(map[string]any)
+	assert.Equal(t, "US", lora["region"])
+	assert.Equal(t, "MEDIUM_SLOW", lora["modemPreset"])
+	assert.Equal(t, "ROUTER", device["role"])
+}
+
 func TestBuildDesiredMQTTUsesResolvedAddress(t *testing.T) {
 	spec := meshv1alpha1.MeshtasticNodeSpec{
 		Region: "US",

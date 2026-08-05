@@ -51,7 +51,12 @@ func TestIntegrationConvergeAgainstSimDevice(t *testing.T) {
 		t.Skip("set MESH_TEST_HOST=host:port of a running meshtasticd --sim to run this")
 	}
 	cli := &device.CLIClient{Host: host, Bin: os.Getenv("MESH_BIN")}
-	desired := map[string]any{"config": map[string]any{"lora": map[string]any{"region": "US"}}}
+	// Exercise every field whose export path the builder emits, so the test
+	// fails if any of them does not round-trip (the never-converge risk).
+	desired := map[string]any{"config": map[string]any{
+		"lora":   map[string]any{"region": "US", "modemPreset": "MEDIUM_SLOW"},
+		"device": map[string]any{"role": "ROUTER"},
+	}}
 
 	// Drive the state machine to Ready. Poll on a short fixed interval rather
 	// than the production Requeue delays so the test finishes promptly, while

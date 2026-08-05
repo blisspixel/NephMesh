@@ -20,21 +20,28 @@ import meshv1alpha1 "github.com/blisspixel/nephmesh/api/mesh/v1alpha1"
 
 // BuildDesired translates a MeshtasticNode spec into the subset of the device's
 // exported configuration that the spec declares, so IsConverged can compare it
-// against a live export. Only fields whose export paths were validated against
-// the real device in the Phase 1 demo are emitted today (LoRa region and the
-// MQTT module); modemPreset, role, owner, and channels are added incrementally
-// as each field's export path is confirmed on hardware, because emitting a path
-// the device does not echo back would look like permanent drift and re-apply
-// forever. The mqttAddress argument is the resolved broker address to write,
-// since the device needs a reachable address, not a Service name it cannot use.
+// against a live export. Each field is emitted only after its export path has
+// been confirmed to round-trip against a real device (validated against
+// meshtasticd, region and MQTT in the Phase 1 demo, role and modemPreset in the
+// operator integration test), because emitting a path the device does not echo
+// back would look like permanent drift and re-apply forever. Owner and channels
+// are added the same way when their paths are confirmed. The mqttAddress
+// argument is the resolved broker address to write, since the device needs a
+// reachable address, not a Service name it cannot use.
 //
 // This function is pure and fully unit tested; the device round-trip itself is
-// the empirical Phase 4 hardware validation.
+// covered by the sim integration test.
 func BuildDesired(spec meshv1alpha1.MeshtasticNodeSpec, mqttAddress string) map[string]any {
 	desired := map[string]any{}
 
 	if spec.Region != "" {
 		setPath(desired, []string{"config", "lora"}, "region", spec.Region)
+	}
+	if spec.ModemPreset != "" {
+		setPath(desired, []string{"config", "lora"}, "modemPreset", spec.ModemPreset)
+	}
+	if spec.Role != "" {
+		setPath(desired, []string{"config", "device"}, "role", spec.Role)
 	}
 
 	if spec.MQTT != nil && spec.MQTT.Enabled {
