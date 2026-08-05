@@ -42,9 +42,12 @@ for pat in 'Co-Authored-By:' 'Generated with \[' "$(printf '\360\237\244\226')";
     fi
 done
 
-# Common emoji blocks, checked with perl when available (CI has it).
+# Common emoji blocks, checked with perl when available (CI has it). Binary
+# files (images, fonts) are skipped: git grep -I finds nothing in them, so
+# their bytes cannot false-positive against the emoji ranges.
 if command -v perl >/dev/null 2>&1; then
     for f in $(git ls-files | grep -v '^hack/check-style\.sh$'); do
+        git grep -Iq . -- "$f" 2>/dev/null || continue
         if perl -CSD -ne 'exit 1 if /[\x{1F300}-\x{1FAFF}\x{2700}-\x{27BF}\x{2B00}-\x{2BFF}\x{FE0F}]/' "$f" 2>/dev/null; then :; else
             echo "emoji found: $f"
             fail=1
