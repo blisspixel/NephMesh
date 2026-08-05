@@ -1,0 +1,40 @@
+# Keeps dependencies current with minimal churn. Grouped so a week's
+# patch and minor bumps arrive as one reviewable PR per ecosystem, not
+# a swarm. Every update still runs the full CI gates before it can land.
+# Dependabot commits carry no DCO sign-off, so the dco gate exempts the
+# bot actor (see .github/workflows/ci.yaml).
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directories:
+      - /api
+      - /operators/meshtastic-operator
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      go-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: "deps"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: "ci"
+
+  - package-ecosystem: docker
+    directory: /operators/meshtastic-operator
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps"

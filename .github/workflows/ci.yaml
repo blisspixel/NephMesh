@@ -51,7 +51,8 @@ jobs:
         run: sh hack/check-packages.sh
 
   dco:
-    if: github.event_name == 'pull_request'
+    # Dependabot commits carry no Signed-off-by; its PRs are exempt.
+    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
