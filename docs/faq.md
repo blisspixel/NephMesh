@@ -20,6 +20,21 @@ No. Nephio supports Kubernetes cluster lifecycle, 5G core network functions (fre
 
 Realistically: core contributors focused on carrier-grade 5G production will mostly not, and that is fine. The project does not need their adoption to be useful. The plausible audiences are different: the `nephio-experimental` org exists precisely for PoCs that test the platform's limits; researchers in intent-driven networking get a reproducible testbed that costs two orders of magnitude less than USRP-based ones; and the resilience, emergency-comms, and private-network communities get fleet management that does not exist today. The strongest standalone artifact, a Meshtastic operator, is valuable to the Meshtastic community regardless of what anyone in telecom thinks.
 
+## Is this only for rare, dramatic scenarios?
+
+No, and that is the point. The failures NephMesh targets are common and recurring, not hypothetical. Wildfire seasons force evacuations and take out cell sites every year; earthquakes drop service across whole regions; hurricanes and floods do the same on a schedule; and ordinary grid or backhaul outages leave a valley or a neighborhood with no bars for hours. In all of these, low-power LoRa mesh keeps carrying text and location when the towers are dark. The extreme adversarial case (a hostile actor degrading infrastructure) sits at the far end of the same spectrum and uses the same tool, but the everyday driver is the wildfire and the earthquake, which is where the design should be judged. Resilience here is measured, not asserted: the roadmap defines message delivery ratio during an outage and time to failover as gate criteria.
+
+## What makes the comms secure, and can channels be private?
+
+Secure, private channels are a core capability, built on mechanisms that mostly exist already:
+
+- Meshtastic channels are AES-256 encrypted by default; a channel's traffic is readable only by holders of its pre-shared key.
+- NephMesh treats a private channel as first-class intent. The `MeshtasticNode` custom resource declares channels whose PSKs are referenced from Kubernetes Secrets (`pskSecretRef`), never inlined in a resource or committed to Git. Different teams, families, or response groups get separate encrypted channels, so coordination stays within the group.
+- Keys are managed as declared state, so key rotation becomes a policy the reconciliation loop enforces rather than a manual re-flash of every radio (rotation lands with the closed loop in Phase 6).
+- The honest limits: a channel's key is symmetric and shared, so any member can impersonate any other within that channel, and the default channel's key is public (never use it for anything private). Metadata (that a transmission happened, roughly where) is never hidden. These are properties of the medium, stated plainly in the [threat model](security/threat-model.md).
+
+So open broadcast is supported and useful, but the harder, more valuable case, provisioning and maintaining private encrypted channels for a group across a fleet of radios, is exactly what the intent model is for.
+
 ## Why not just cellular? Why mesh at all?
 
 Because the interesting failure mode is "there is no carrier": disasters, remote areas, overloaded networks, infrastructure failure. LoRa mesh is the tractable off-grid layer (long range, low power, license-free, fully scriptable). The point is not that mesh replaces cellular; it is that a declaratively managed system can hold both, prefer cellular when it exists, and fail over to mesh when it does not, with encryption and channel policy managed as data the whole time.
