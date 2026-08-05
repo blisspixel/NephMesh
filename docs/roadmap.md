@@ -51,6 +51,16 @@ Each phase's gate earns a 0.x release. Versions are earned by working demos, not
 
 Phases 6 and 7 are not 1.0 gates: the closed loop and the cellular leg are research features and can mature after 1.0.
 
+## Resilience, defined (so "survives" is measurable, not a slogan)
+
+"Secure communication survives when there is no carrier" is only meaningful if it is measurable, so the project commits to concrete metrics rather than an adjective:
+
+- **Message delivery ratio (MDR) during a simulated outage:** with the carrier path killed, the fraction of messages sent that are received across the mesh. The failover demos report a number, not "it worked."
+- **Time to failover:** wall-clock from carrier loss to the first message delivered over the mesh path.
+- **Control-plane independence:** the mesh's MDR must not change when the Kubernetes control plane is killed. This is the load-bearing claim, that the control plane provisions but is not a runtime dependency, and it gets its own validation: bring up a configured mesh, delete the entire management cluster, and show messages keep delivering. Until that test passes, "resilient" is unproven.
+
+These metrics become gate criteria for Phases 6 and 7 and appear in the 1.0 definition below.
+
 ## What research cannot answer (validate by testing)
 
 Desk research is done; it was enough to order the phases and pick the tools. The remaining unknowns are empirical and are resolved inside the phases that touch them:
@@ -103,8 +113,8 @@ Goal: the Phase 1 workload becomes a proper Nephio-consumable catalog (the Phase
 
 - [x] Convert to kpt packages: `mesh-gateway` and `mqtt-bridge` blueprints with Kptfile pipeline (set-namespace from package-context, set-labels), `package-context.yaml`, and a placeholder `WorkloadCluster` on the gateway (pkg-example-bp pattern). Both render clean against kpt v1.0.0-beta.67; a render gate (`make check-packages`) is wired into CI. The `spectrum-sensor` blueprint is deferred with Phase 2 (hardware)
 - [x] `PackageVariant` and `PackageVariantSet` examples specializing the gateway per site, plus a Porch registration and propose/approve guide (`docs/guides/porch-registration.md`, `packages/examples/`)
-- [ ] Slim management path on the PC: kind + Porch + Config Sync (the full Nephio sandbox needs 16 vCPU / 32 GB and stays optional)
-- [ ] The 0.3 gate: register this repo with Porch (`porchctl repo register`), then approve a proposed PackageRevision and have it deploy a configured mesh gateway. Needs a running Porch install; the packages and specialization resources are render-validated and derived from the passing Phase 1 demo, but the end-to-end Porch run is not yet done
+- [ ] Slim management path on the PC (research complete, 2026-08-05): Porch installs standalone on a single kind cluster via its released kpt package (`porch-kpt-package.tar.gz`, v1.6.2), about 1 vCPU and under 1 GB with the default CR cache, no full 16 vCPU / 32 GB Nephio sandbox and no Config Sync needed for the gate. Windows note: there is no `porchctl` Windows binary, so run it from WSL2; a local gitea gives a fully offline loop. Details in the Phase 3 research notes
+- [ ] The 0.3 gate: register this repo with Porch (`porchctl repo register`), clone/propose/approve a PackageRevision, then `rpkg pull` plus `kubectl apply` to actuate a configured mesh gateway (Config Sync and a second cluster are only needed for cross-cluster GitOps, out of scope for the gate). Write `PackageVariant` as `config.porch.kpt.dev/v1alpha1` and `PackageVariantSet` as `v1alpha2` (the current served version). Packages are render-validated and derived from the passing Phase 1 demo; the end-to-end Porch run is the remaining work
 
 ## Phase 4: The Meshtastic operator ($0)
 
@@ -123,23 +133,24 @@ Goal: more than one site, managed from one place.
 - [ ] The Pi or Orange Pi becomes a second k3s cluster, registered as a `WorkloadCluster` on the management cluster
 - [ ] `PackageVariantSet` fan-out over `WorkloadCluster` labels (for example `nephmesh.io/site-type: mesh-edge`) with per-site specialization
 - [ ] Demo: one Git commit configures both sites; each site runs its own gateway (and sensor where hardware is attached)
+- [ ] Control-plane-independence validation (the load-bearing resilience claim): with both sites configured and messaging, delete the entire management cluster and show message delivery ratio is unchanged. Proves the control plane provisions but is not a runtime dependency
 
 ## Phase 6: Closed-loop spectrum-aware automation ($0)
 
 Goal: sensed spectrum feeds back into intent.
 
-- [ ] Policy controller: watch spectrum-occupancy metrics; occupancy above threshold on the current channel commits a channel or preset intent change to Git, which reconciles out to the mesh. A miniature analog of an O-RAN xApp loop on commodity hardware
+- [ ] Policy controller: watch spectrum-occupancy metrics; occupancy above threshold on the current channel commits a channel or preset intent change to Git, which reconciles out to the mesh. A miniature analog of an O-RAN xApp loop on commodity hardware. Must be built with anti-herding controls from the start (hysteresis, minimum dwell time, rate-limited changes, and treating "every candidate channel is congested" as evidence of jamming rather than a reason to keep hopping), because an attacker who can jam can otherwise drive the loop; see the induced-reconfiguration entry in `docs/security/threat-model.md`. The loop only ever proposes through Porch approval and never keys a transmitter
 - [ ] Interference for testing comes from the mesh itself (traffic generation, board placement) or from attenuated bench setups. Transmit note: the HackRF Pro is not a certified Part 15 transmitter, so over-the-air transmission happens only in an authorized context (for example under an amateur license, on amateur frequencies, unencrypted). Receive-only covers everything this phase needs
 - [ ] Security and resilience experiments: dynamic channel and PSK rotation driven by observed interference, as declared policy reconciled to radios
 - [ ] Demo: raise occupancy on the active channel, watch the intent change propagate to the radios without human action beyond the Porch approval
 
-## Phase 7: Hybrid cellular leg (optional, most compute)
+## Phase 7: Hybrid backhaul leg (optional, most compute)
 
-Goal: the disaster-resilience story end to end, no cellular hardware.
+Goal: the disaster-resilience story end to end, no cellular hardware. Cellular is the concrete first implementation of a broader idea: a Primary backhaul tier that also covers cloud and satellite links (for example Starlink) when they exist, with the mesh as the always-present floor beneath them. UERANSIM stands in for the cellular leg so this is demonstrable without hardware; the same bridge pattern generalizes to other backhaul.
 
 - [ ] Open5GS or free5GC plus UERANSIM (simulated gNB and UE) via the same package pipeline (roughly 4 vCPU / 8 GB floor; runs on the PC; Nephio's Exercise 1 is the template)
 - [ ] Mesh to cellular bridge: MQTT protobuf topics (full-fidelity ServiceEnvelope on the private broker) to a service reachable over the 5G data plane
-- [ ] Failover demo: kill the simulated gNB (a "cell outage"); an intent promotes the Meshtastic path; messages keep flowing; restore the cell and traffic bridges back
+- [ ] Failover demo, reported as numbers not adjectives: kill the simulated gNB (a "cell outage"); an intent promotes the Meshtastic path; measure message delivery ratio during the outage and time to failover; restore the cell and traffic bridges back (see "Resilience, defined")
 - [ ] Full reproducible demo environment: management plus edge clusters, one script
 
 ## Cross-cutting: agent-native from day one (in progress)
@@ -155,6 +166,11 @@ The repo should be as easy for AI agents to work on as for humans, and eventuall
 
 - Propose lessons learned (or packages) upstream; `nephio-experimental` exists for exactly this kind of PoC
 - Contribution strategy: once Phase 4 ships, the Meshtastic community is the natural first audience (a working operator plus packages), ahead of the Nephio community; treat the operator as the project's flagship deliverable
+- Scale envelope (state it plainly, it is a credibility point): a Meshtastic channel is airtime-limited to roughly tens of active nodes, not thousands. NephMesh is a resilience layer for small teams and sites, not a carrier network, and that is a respectable thing to be. The control plane can manage many sites; each mesh stays small by physics
+- Day-2 operations (the part real deployments live in): fleet firmware upgrade of nodes, coordinated channel and PSK rotation, and node decommissioning. Design these before claiming production-readiness; they are thin today
+- Air-gapped and offline operation as a first-class path: mirror every container image, pre-provision nodes onto SD-card images, never ship a default key, and never require kubectl-from-the-field. The $0 local-first posture already points this way; make it explicit and tested
+- ATAK integration: the emergency and defense audience already uses ATAK (Android Team Awareness Kit), and Meshtastic has an ATAK bridge. Provisioning that bridge would let NephMesh speak the operator's existing tooling. High-value interop, later
+- Mesh and telecom KPIs beyond spectrum: packet delivery ratio, neighbor churn, last-heard age, exported as first-class metrics (MeshMonitor is prior art to integrate rather than reinvent)
 - Unexplored upside, deliberately left open: the SDR plus LoRa plus intent-automation intersection likely holds ideas this roadmap has not found yet (spectrum-aware mesh optimization, wider LoRa ecosystems beyond Meshtastic, multi-radio transport abstraction); revisit after Phase 2 gives real data
 - Akri instead of generic-device-plugin if dynamic SDR discovery and scheduling becomes a feature rather than plumbing
 - Direction finding (KrakenSDR) for locating interference sources

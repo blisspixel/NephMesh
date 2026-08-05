@@ -4,7 +4,9 @@ These instructions apply to any AI coding agent working in this repository.
 
 ## What this project is
 
-An independent experimental project applying Nephio-style intent-driven automation (Kubernetes, kpt/Porch, Configuration as Data) to Meshtastic LoRa mesh gateways and SDR spectrum sensing. It is not affiliated with the official Nephio project or the Linux Foundation. We consume Nephio as a third party, the same pattern OpenAirInterface uses for its packages.
+An independent experimental project applying Nephio-style intent-driven automation (Kubernetes, kpt/Porch, Configuration as Data) to radio systems generally: LoRa mesh, wider LoRa, and software defined radio. It is not affiliated with the official Nephio project or the Linux Foundation. We consume Nephio as a third party, the same pattern OpenAirInterface uses for its packages.
+
+Scope is deliberately broader than any single radio. Meshtastic is the first concrete driver because it has the most complete programmable control surface (a documented API, scriptable config, a simulation mode), not because the project is only about Meshtastic. Software defined radio (the HackRF Pro and cheaper receivers) is a co-equal pillar, spectrum sensing today and more later, not a Meshtastic accessory. The design keeps a radio-agnostic seam so other LoRa ecosystems (LoRaWAN, other mesh firmwares) and richer SDR workloads can become additional drivers behind the same intent model. A new radio earns its way in by having a control surface worth reconciling; see `docs/faq.md`.
 
 ## Orientation
 
@@ -67,6 +69,8 @@ Do not skip consult solely because documents and conversations are zero.
 - Minimal-diff reconciliation: Meshtastic nodes reboot on config apply, so operators must export, diff, and apply only drift.
 - kpt packages are plain KRM YAML mutated by Kptfile pipelines. No Helm-style templating.
 - Provider-neutral core: nothing in core packages, CRDs, or operators may import or assume a specific cloud provider (GCP, AWS, Azure). Local-first (kind, k3s, bare SBCs) is the default and the only environment CI depends on. Cloud-specific material, if it ever exists, lives in clearly separated distro directories, mirroring the Nephio catalog's `distros/` pattern.
+- Control plane is not in the field: the Kubernetes layer provisions and manages the mesh from a powered site; deployed Meshtastic nodes run autonomously once configured and must keep working with the cluster gone. Never design the mesh to depend on the control plane at runtime.
+- Air-gapped and offline is a first-class path, not an afterthought: prefer designs that can mirror every image, pre-provision nodes offline, and never require network-from-the-field or a default key. Do not add a hard dependency on an internet-only service.
 - Cross-platform development: contributors may be on Windows, macOS, or Linux (the maintainer's dev machine is Windows). Everything hardware-free must work from any of the three via Docker Desktop plus kind or k3d, with WSL2 as the recommended Windows path. Scripts assume a POSIX shell (Git Bash or WSL2 on Windows); never write Windows-only or Mac-only tooling. Hardware-attached steps (USB radios, the SDR) are documented for Linux hosts, because that is where devices plug in (a Linux box or the arm64 SBCs), and never block the hardware-free path.
 - Upstream-compatible engineering: follow the conventions in `docs/research/nephio-codebase.md` (Go 1.25.x, kptdev fn SDK, condkptsdk pattern, golden tests with testify, Apache-2.0 file headers, DCO sign-off) so code could integrate into the Nephio ecosystem later with minimal rework. We are humbly experimenting with what an extension might look like; planning ahead keeps the door open without presuming anything gets upstreamed.
 

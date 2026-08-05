@@ -8,13 +8,15 @@ Cellular networks fail: disasters, remote areas, overload, infrastructure loss. 
 
 ## The idea
 
-Declare in Git: *"edge site X shall run a mesh gateway on channel preset Y, bridge it to MQTT, prefer cellular when available, and report spectrum occupancy."* The system makes it so, keeps it so, and feeds sensed RF conditions back into the intent loop. Three workload types, none of which telecom automation has touched before:
+Declare in Git: *"edge site X shall run a mesh gateway on channel preset Y, bridge it to MQTT, prefer cellular when available, and report spectrum occupancy."* The system makes it so, keeps it so, and feeds sensed RF conditions back into the intent loop. The scope is radio systems broadly, not one product:
 
-- **[Meshtastic](https://meshtastic.org) LoRa mesh gateways** as declarative, reconciled network functions. No Meshtastic Kubernetes operator exists today; building the first one is this project's most broadly useful deliverable.
-- **SDR spectrum sensing** (HackRF, RTL-SDR) as containerized, fleet-managed edge workloads. Receive-only by default.
+- **LoRa mesh, starting with [Meshtastic](https://meshtastic.org)** as the first driver, because it has the most complete programmable control surface. The abstraction is meant to widen to other LoRa ecosystems (LoRaWAN, other mesh firmwares) over time. No Meshtastic Kubernetes operator exists today; building the first one is the most broadly useful near-term deliverable, and it doubles as the reference for what a radio "driver" looks like here.
+- **Software defined radio** (the HackRF Pro and cheaper receivers) as a co-equal pillar, not a mesh accessory: containerized, fleet-managed spectrum sensing today, with room for a much larger SDR possibility space later. Receive-only by default.
 - Later, a **lightweight 5G core** with a simulated RAN as the cellular leg of a hybrid failover fabric.
 
-Our research found every pairwise combination of these ideas in the wild, but not the three-way intersection: see the [gap analysis](docs/research/prior-art-and-lab.md). Whether any of it deserves to exist is part of what the experiment is for.
+The through-line is a radio-agnostic intent model: any radio with a control surface worth reconciling can become a driver. Our research found every pairwise combination of these ideas in the wild, but not the three-way intersection: see the [gap analysis](docs/research/prior-art-and-lab.md). Whether any of it deserves to exist is part of what the experiment is for.
+
+One thing to be clear about up front, because it is easy to misread: the Kubernetes control plane is not in the field. It provisions and manages the mesh from a powered site; the deployed Meshtastic nodes run autonomously once configured and keep carrying traffic even if the cluster, and the site running it, are gone. NephMesh is a management layer, not a runtime dependency of the mesh. In PACE terms (Primary, Alternate, Contingency, Emergency), it prepares and maintains the contingency tier before you need it.
 
 ## Status
 
@@ -25,7 +27,7 @@ Pre-alpha. The 0.1 gate has shipped: a virtual Meshtastic node deployed, declara
 | Doc | What it covers |
 |---|---|
 | [Roadmap](docs/roadmap.md) | Phased plan in dependency order, the version path to 1.0, and how much runs with zero hardware (most of it) |
-| [FAQ](docs/faq.md) | Why Kubernetes, why mesh, the resilient-comms lineage, legality, what the industry calls this |
+| [FAQ](docs/faq.md) | The north star (a self-adapting multi-transport fabric), why Meshtastic first, power and autonomy, PACE/DIL, legality |
 | [Architecture](docs/architecture.md) | Components, planned CRDs, data flows, design principles |
 | [Plans](docs/plans/) | Implementation plans: Phase 1, Phase 2, CRD API design, engineering conventions |
 | [Research](docs/research/) | Sourced research: Nephio mechanics and codebase conventions, Meshtastic, SDR, prior art, terminology and legality |

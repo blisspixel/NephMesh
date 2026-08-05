@@ -30,6 +30,26 @@ Philosophically, yes. Paul Baran's 1964 RAND work on distributed communications,
 
 One historical footnote worth getting right: the popular story that "ARPANET was built to survive nuclear war" is an oversimplification. ARPANET itself was built for resource sharing among research sites; it was Baran's survivability work that contributed the distributed packet-switching concept ARPANET adopted. The honest version of the parallel is still strong: the resilience DNA of the internet came from asking "what if the infrastructure is gone", and that is the exact question this project starts from. The scale is obviously different: ARPANET became the internet; this is a small experimental resilience layer. But the motivation is genuinely the same lineage.
 
+## Wait, Kubernetes needs power and a datacenter. How is that "resilient" when the grid is down?
+
+This is the most important thing to understand about the architecture, and it is easy to miss: the Kubernetes control plane is not in the field. It provisions and manages the mesh from a powered site (a homelab, an emergency operations center, a vehicle with power, a cloud region while one exists). The deployed Meshtastic nodes run the real firmware and, once configured, operate completely autonomously. They do not need the cluster, the operator, Porch, or any network back to them to keep carrying traffic.
+
+So the resilience story is honest and specific: NephMesh is a management and provisioning layer, not a runtime dependency of the mesh. Kill the cluster (grid loss, flood, the manager site is gone) and every already-configured node keeps meshing. The cluster is how you configure fifty nodes consistently and reconfigure them when you can reach them again; it is not the thing the field depends on. A validation for this is explicit on the roadmap: kill the control plane and prove the mesh keeps delivering messages.
+
+Two consequences the docs commit to: the mesh nodes are low-power by design (Meshtastic runs for days on a small battery), while the control plane is not something you run off a solar panel in a tent; and field bootstrapping must not require kubectl-from-a-canoe, so an offline, air-gapped path (mirrored images, pre-provisioned SD cards, no default keys) is a first-class goal, not an afterthought.
+
+## What is the north star, the fully realized version?
+
+A self-adapting, multi-transport communications fabric that keeps working while its pieces fail around it. The declared intent is not "run this radio" but "keep secure communication available here," and the system chooses how: use cloud and cellular backhaul when they exist (the Primary tier, and satellite links like Starlink fit here too), bridge onto the mesh when they degrade, and fall all the way to a local off-grid mesh when there is no telco at all. As conditions change, it adapts: the closed loop shifts channels away from interference, rotates keys and channels on a security policy, and re-homes traffic across whatever transport is currently alive.
+
+The design property to aim for is what you might call cockroach resilience: no single point of failure, graceful degradation rather than collapse, and autonomous survival of the edge. Because the control plane is not in the field (see the power question above), the mesh keeps carrying traffic even when the managing site, the cloud, and the carrier are all gone. Every tier that is present makes the system better; no tier being present is required for it to keep working at some level.
+
+Be clear about status: this is the destination, not a claim about today. The building blocks are already on the roadmap (PACE tiers, the spectrum-to-intent closed loop, control-plane-independent nodes, dynamic channel and PSK rotation, the cellular-and-cloud bridge). The current phases build toward it one honest, demoable gate at a time, and much of it is still research. The point of the experiment is to find out how much of the cockroach actually holds up.
+
+## Is there a doctrine this maps to?
+
+Yes, and using its vocabulary makes the project far clearer to the people who need it. Emergency and defense communicators plan comms as PACE: Primary, Alternate, Contingency, Emergency. Cellular is Primary; NephMesh's managed mesh is a Contingency or Emergency tier that is already configured and waiting. The environment these operators name is DIL: Disconnected, Intermittent, Limited. NephMesh is a tool for DIL conditions, and its receive-only-by-default posture doubles as emission control (EMCON): a radio that only listens does not advertise its position to direction finding. Transmitting is emitting, and emitting is detectable; that trade is the operator's to make deliberately, which is exactly why transmit is opt-in.
+
 ## What about CB, GMRS, ham, other radio services?
 
 Honest answer: diversity of technologies is the right instinct, but each service has to earn its way in by having a programmable control surface.

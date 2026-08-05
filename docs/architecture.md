@@ -8,6 +8,16 @@ Nephio's model: intent lives in Git as kpt packages of plain KRM YAML; Porch orc
 
 NephMesh adds nothing to that machinery. It supplies **new blueprints, CRDs, and operators for radio workloads** and registers its own catalog repo with Porch - the same third-party pattern OpenAirInterface uses for its RAN packages.
 
+## Radio-agnostic by design
+
+The project is about radio systems in general, not one product. The intent model treats a radio as a **driver**: a CRD plus an operator that knows how to reconcile one kind of control surface. Meshtastic is the first driver because its control surface is the most complete (a scriptable API, config round-trip, simulation mode), and the `MeshtasticNode` operator doubles as the reference for what a driver looks like. The seam is meant to widen:
+
+- **Wider LoRa:** LoRaWAN (for example ChirpStack, whose network server is already cloud-native) and other mesh firmwares can become additional drivers behind the same propose-approve-reconcile flow.
+- **SDR as a co-equal pillar:** spectrum sensing is a first-class workload today (a `SpectrumScan` driver over SoapySDR, hardware-agnostic by design), with a larger SDR possibility space later, not a mesh accessory.
+- **Multi-transport adaptation:** the longer arc is a fabric that keeps secure comms alive across whatever transport is currently available (cloud and cellular and satellite backhaul when present, mesh when not), adapting channels, keys, and routing as conditions change. The north star and its honest status are in `docs/faq.md`; the building blocks (PACE tiers, the closed loop, control-plane-independent nodes) are on the roadmap.
+
+A new radio earns inclusion by having a control surface worth reconciling; analog services with no digital control (for example CB voice) stay out of scope as managed transports, though the SDR side can still monitor them.
+
 ## Topology
 
 ```
