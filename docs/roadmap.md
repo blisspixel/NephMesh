@@ -22,17 +22,19 @@ Most of it. Hardware-free on the Windows PC alone: all of Phase 0, all of Phase 
 
 ## Ordering rationale
 
-Prove the workload runs in containers first (Phase 1), then prove the same pipeline drives real hardware (Phase 2), then formalize the packaging so Nephio machinery can consume it (Phase 3), then replace one-shot config jobs with true reconciliation (Phase 4), then scale to multiple sites (Phase 5), then close the loop from sensed spectrum back to intent (Phase 6). The cellular leg (Phase 7) is independent of 4 through 6 in principle, but it is last because it needs the most compute and adds the least learning until the mesh side works.
+Prove the workload runs in containers first (Phase 1), then replace one-shot config jobs with true reconciliation (Phase 4), scale to multiple sites (Phase 5), close the loop from sensed spectrum back to intent (Phase 6). Two phases branch off Phase 1 and depend only on it, not on each other: real hardware and spectrum sensing (Phase 2) and Nephio-native packaging (Phase 3). Because they are independent, they can be built in either order. In practice packaging (Phase 3) came first because it is hardware-free, while the hardware phase waits for devices to be plugged in. The cellular leg (Phase 7) is independent of 4 through 6 in principle, but it is last because it needs the most compute and adds the least learning until the mesh side works.
+
+The phase numbers are stable identifiers (they name plan files and appear throughout the docs); they are not a strict linear sequence you must follow integer by integer. The dependency graph, not the numbering, is the build order.
 
 ## Version path
 
-Each phase's demo gates a 0.x release. Versions are earned by working demos, not by calendar.
+Each phase's gate earns a 0.x release. Versions are earned by working demos, not by calendar, and because Phase 2 and Phase 3 are independent, their releases can land in either order (0.3's packaging is already done and its Porch gate is next; 0.2 waits on hardware).
 
 | Version | Gate |
 |---|---|
 | 0.1 | Phase 1 demo: a virtual mesh node deployed, configured, and torn down declaratively (passed 2026-08-04) |
-| 0.2 | Phase 2 demo: intent drives real radios; the mesh is visible in sensed spectrum |
-| 0.3 | Phase 3 demo: packages consumable by a stock Porch install (this repo registered as a catalog) |
+| 0.2 | Phase 2 demo: intent drives real radios; the mesh is visible in sensed spectrum (waits on hardware) |
+| 0.3 | Phase 3 demo: packages consumable by a stock Porch install (this repo registered as a catalog). Packaging and specialization resources done and render-validated; the end-to-end Porch run is the remaining gate |
 | 0.4 | Phase 4 demo: the MeshtasticNode operator reconciling drift on real hardware |
 | 0.5 | Phase 5 demo: two sites managed from one Git repo with per-site specialization |
 | 0.6 | Phase 6 demo: closed loop from sensed occupancy to reconciled channel change |
@@ -60,7 +62,7 @@ Desk research is done; it was enough to order the phases and pick the tools. The
 
 If one of these fails, the research docs list fallbacks (Akri or host-level SoapySDRServer for device access; plain serial sidecars instead of the device plugin; single-node simulation instead of Meshtasticator).
 
-## Phase 0: Foundations (in progress)
+## Phase 0: Foundations (complete; one optional item left)
 
 Goal: a repo worth contributing to.
 
@@ -73,7 +75,7 @@ Goal: a repo worth contributing to.
 - [x] Repo scaffolding: CONTRIBUTING, SECURITY, CHANGELOG, license header and style checks (`hack/`), CI workflow, root Makefile, line-ending and ignore rules (kpt render checks arrive with Phase 3 packages)
 - [ ] Optional: email brand@linuxfoundation.org to sanity-check the name (low risk: "NephMesh" does not contain the "Nephio" mark, and the README carries a prominent disclaimer)
 
-## Phase 1: Virtual mesh on a single-node cluster ($0)
+## Phase 1: Virtual mesh on a single-node cluster ($0) (complete, v0.1.0)
 
 Goal: the smallest end-to-end declarative pipeline. No radios, no Nephio yet. Runs on k3s (Orange Pi 5) or k3d/kind (PC).
 
@@ -85,7 +87,7 @@ Goal: the smallest end-to-end declarative pipeline. No radios, no Nephio yet. Ru
 - [x] The 0.1 gate: the full demo script passed on a kind cluster on 2026-08-04, including the idempotency re-run; persistence across pod restarts (V1) also validated (see `demo/phase1/README.md`, gate result)
 - [x] Stretch (attempt-and-record per plan OD4): Meshtasticator attempted headless in containers 2026-08-04; script mode needs a terminal emulator and an X display, and under Xvfb plus xterm the spawned nodes refused connections. Recorded in `docs/research/meshtastic.md`; CI stays single-node simulation. Revisit via its Docker mode or upstream headless support
 
-## Phase 2: Real radios and spectrum sensing ($0, uses owned hardware)
+## Phase 2: Real radios and spectrum sensing ($0, uses owned hardware) (not started; depends only on Phase 1)
 
 Goal: the same pipeline drives physical RF, and the mesh is visible in the sensed spectrum.
 
@@ -95,9 +97,9 @@ Goal: the same pipeline drives physical RF, and the mesh is visible in the sense
 - [ ] Exporter: parse sweep CSV into per-band aggregate Prometheus gauges (occupancy percent, max/mean dB, not per-bin series). Research found no existing exporter for sweep data; this is novel glue
 - [ ] Demo: a Git intent change (for example modem preset LongFast to MediumSlow) propagates to the physical boards; a message crosses real RF; the mesh's own transmissions appear in the occupancy metrics
 
-## Phase 3: Nephio-native packaging ($0)
+## Phase 3: Nephio-native packaging ($0) (in progress; packaging done, Porch gate open; depends only on Phase 1)
 
-Goal: the Phase 1 and 2 workloads become a proper Nephio-consumable catalog.
+Goal: the Phase 1 workload becomes a proper Nephio-consumable catalog (the Phase 2 sensor blueprint joins later, when that hardware phase lands).
 
 - [x] Convert to kpt packages: `mesh-gateway` and `mqtt-bridge` blueprints with Kptfile pipeline (set-namespace from package-context, set-labels), `package-context.yaml`, and a placeholder `WorkloadCluster` on the gateway (pkg-example-bp pattern). Both render clean against kpt v1.0.0-beta.67; a render gate (`make check-packages`) is wired into CI. The `spectrum-sensor` blueprint is deferred with Phase 2 (hardware)
 - [x] `PackageVariant` and `PackageVariantSet` examples specializing the gateway per site, plus a Porch registration and propose/approve guide (`docs/guides/porch-registration.md`, `packages/examples/`)
