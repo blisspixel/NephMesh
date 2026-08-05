@@ -24,8 +24,12 @@ import meshv1alpha1 "github.com/blisspixel/nephmesh/api/mesh/v1alpha1"
 // been confirmed to round-trip against a real device (validated against
 // meshtasticd, region and MQTT in the Phase 1 demo, role and modemPreset in the
 // operator integration test), because emitting a path the device does not echo
-// back would look like permanent drift and re-apply forever. Owner and channels
-// are added the same way when their paths are confirmed. The mqttAddress
+// back would look like permanent drift and re-apply forever. Owner is emitted
+// as the top-level owner/owner_short scalars the export uses, confirmed to
+// round-trip through --configure against meshtasticd --sim. Channels are not
+// emitted here: the export encodes the whole channel set as a single
+// channel_url (a base64 protobuf), not discrete per-channel fields, so they
+// need a different apply path and are handled separately. The mqttAddress
 // argument is the resolved broker address to write, since the device needs a
 // reachable address, not a Service name it cannot use.
 //
@@ -42,6 +46,15 @@ func BuildDesired(spec meshv1alpha1.MeshtasticNodeSpec, mqttAddress string) map[
 	}
 	if spec.Role != "" {
 		setPath(desired, []string{"config", "device"}, "role", spec.Role)
+	}
+
+	if spec.Owner != nil {
+		if spec.Owner.LongName != "" {
+			desired["owner"] = spec.Owner.LongName
+		}
+		if spec.Owner.ShortName != "" {
+			desired["owner_short"] = spec.Owner.ShortName
+		}
 	}
 
 	if spec.MQTT != nil && spec.MQTT.Enabled {

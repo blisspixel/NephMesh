@@ -1,3 +1,5 @@
+//go:build integration
+
 /*
 Copyright 2026 The NephMesh Authors.
 
@@ -13,8 +15,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-
-//go:build integration
 
 // Integration test: drive the real Converge loop, through the CLI-backed device
 // client, against a live meshtasticd running in simulation mode. It is gated by
@@ -52,11 +52,16 @@ func TestIntegrationConvergeAgainstSimDevice(t *testing.T) {
 	}
 	cli := &device.CLIClient{Host: host, Bin: os.Getenv("MESH_BIN")}
 	// Exercise every field whose export path the builder emits, so the test
-	// fails if any of them does not round-trip (the never-converge risk).
-	desired := map[string]any{"config": map[string]any{
-		"lora":   map[string]any{"region": "US", "modemPreset": "MEDIUM_SLOW"},
-		"device": map[string]any{"role": "ROUTER"},
-	}}
+	// fails if any of them does not round-trip (the never-converge risk). Owner
+	// is a top-level scalar pair confirmed to round-trip through --configure.
+	desired := map[string]any{
+		"owner":       "NephMesh Sim 01",
+		"owner_short": "NM01",
+		"config": map[string]any{
+			"lora":   map[string]any{"region": "US", "modemPreset": "MEDIUM_SLOW"},
+			"device": map[string]any{"role": "ROUTER"},
+		},
+	}
 
 	// Drive the state machine to Ready. Poll on a short fixed interval rather
 	// than the production Requeue delays so the test finishes promptly, while

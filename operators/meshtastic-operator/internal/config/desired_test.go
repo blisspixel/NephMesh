@@ -46,6 +46,32 @@ func TestBuildDesiredModemPresetAndRole(t *testing.T) {
 	assert.Equal(t, "ROUTER", device["role"])
 }
 
+func TestBuildDesiredOwner(t *testing.T) {
+	// Paths verified against meshtasticd --sim: the export uses top-level
+	// owner (long name) and owner_short scalars, and both round-trip through
+	// --configure.
+	d := BuildDesired(meshv1alpha1.MeshtasticNodeSpec{
+		Owner: &meshv1alpha1.OwnerSpec{LongName: "NephMesh Sim 01", ShortName: "NM01"},
+	}, "")
+	assert.Equal(t, "NephMesh Sim 01", d["owner"])
+	assert.Equal(t, "NM01", d["owner_short"])
+}
+
+func TestBuildDesiredOwnerPartialAndEmpty(t *testing.T) {
+	// Only the fields that are set are emitted, so an unset half cannot look
+	// like drift against a device that already has its own value there.
+	longOnly := BuildDesired(meshv1alpha1.MeshtasticNodeSpec{
+		Owner: &meshv1alpha1.OwnerSpec{LongName: "Base Camp"},
+	}, "")
+	assert.Equal(t, "Base Camp", longOnly["owner"])
+	_, hasShort := longOnly["owner_short"]
+	assert.False(t, hasShort, "owner_short must be absent when unset")
+
+	none := BuildDesired(meshv1alpha1.MeshtasticNodeSpec{Owner: &meshv1alpha1.OwnerSpec{}}, "")
+	_, hasOwner := none["owner"]
+	assert.False(t, hasOwner, "owner must be absent when both names are empty")
+}
+
 func TestBuildDesiredMQTTUsesResolvedAddress(t *testing.T) {
 	spec := meshv1alpha1.MeshtasticNodeSpec{
 		Region: "US",
