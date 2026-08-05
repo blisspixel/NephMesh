@@ -81,6 +81,7 @@ func main() {
 
 	reconciler := &controller.MeshtasticNodeReconciler{
 		Client:    mgr.GetClient(),
+		Reader:    mgr.GetAPIReader(), // uncached, for namespaced Secret reads
 		NewDevice: newCLIDevice,
 	}
 	if err := reconciler.SetupWithManager(mgr); err != nil {

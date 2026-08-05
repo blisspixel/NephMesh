@@ -38,7 +38,11 @@ import (
 // real artifact means drift cannot hide behind a test-only copy.
 const shippedRBACPath = "../../../../packages/meshtastic-operator/rbac.yaml"
 
-func loadClusterRoles(t *testing.T, path string) []rbacv1.ClusterRole {
+// rolesByKind returns the rules of every document of the given kind (ClusterRole
+// or Role) in the shipped manifest. Both share the PolicyRule structure, so a
+// ClusterRole decode target captures either; other documents populate only
+// TypeMeta and are filtered out by kind.
+func rolesByKind(t *testing.T, path, kind string) []rbacv1.ClusterRole {
 	t.Helper()
 	f, err := os.Open(filepath.Clean(path))
 	if err != nil {
@@ -49,9 +53,6 @@ func loadClusterRoles(t *testing.T, path string) []rbacv1.ClusterRole {
 	var roles []rbacv1.ClusterRole
 	dec := k8syaml.NewYAMLOrJSONDecoder(f, 4096)
 	for {
-		// Every document decodes into a ClusterRole; non-ClusterRole
-		// documents (ServiceAccount, ClusterRoleBinding) populate only
-		// TypeMeta and are filtered out by Kind.
 		var obj rbacv1.ClusterRole
 		if err := dec.Decode(&obj); err != nil {
 			if err == io.EOF {
@@ -59,7 +60,7 @@ func loadClusterRoles(t *testing.T, path string) []rbacv1.ClusterRole {
 			}
 			t.Fatalf("decode %s: %v", path, err)
 		}
-		if obj.Kind == "ClusterRole" {
+		if obj.Kind == kind {
 			roles = append(roles, obj)
 		}
 	}
@@ -85,7 +86,7 @@ func ruleKey(r rbacv1.PolicyRule) string {
 }
 
 func TestShippedRBACMatchesLeastPrivilegeAllowlist(t *testing.T) {
-	roles := loadClusterRoles(t, shippedRBACPath)
+	roles := rolesByKind(t, shippedRBACPath, "ClusterRole")
 	if len(roles) != 1 {
 		t.Fatalf("expected exactly one ClusterRole in the shipped package, got %d", len(roles))
 	}
@@ -120,7 +121,7 @@ func TestShippedRBACMatchesLeastPrivilegeAllowlist(t *testing.T) {
 
 func TestShippedRBACForbidsSecretsWildcardEscalation(t *testing.T) {
 	forbiddenVerbs := map[string]bool{"*": true, "escalate": true, "bind": true, "impersonate": true}
-	roles := loadClusterRoles(t, shippedRBACPath)
+	roles := rolesByKind(t, shippedRBACPath, "ClusterRole")
 	if len(roles) == 0 {
 		t.Fatal("no ClusterRole found in the shipped package")
 	}
@@ -142,5 +143,26 @@ func TestShippedRBACForbidsSecretsWildcardEscalation(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestShippedSecretRoleIsMinimalAndNamespaced(t *testing.T) {
+	// Secret access is a namespaced Role (Kind Role, so inherently namespace
+	// scoped), granting get only on core Secrets and nothing else, so a
+	// compromised operator token cannot list, watch, or write Secrets, or read
+	// them cluster-wide.
+	roles := rolesByKind(t, shippedRBACPath, "Role")
+	if len(roles) != 1 {
+		t.Fatalf("expected exactly one namespaced Role for Secret access, got %d", len(roles))
+	}
+	got := roles[0].Rules
+	if len(got) != 1 {
+		t.Fatalf("the Secret Role should carry exactly one rule, got %d", len(got))
+	}
+	wantKey := ruleKey(rbacv1.PolicyRule{
+		APIGroups: []string{""}, Resources: []string{"secrets"}, Verbs: []string{"get"},
+	})
+	if ruleKey(got[0]) != wantKey {
+		t.Errorf("the Secret Role rule is not get-only on core secrets: %s", ruleKey(got[0]))
 	}
 }

@@ -22,6 +22,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -38,6 +39,7 @@ import (
 func testScheme(t *testing.T) *runtime.Scheme {
 	s := runtime.NewScheme()
 	require.NoError(t, meshv1alpha1.AddToScheme(s))
+	require.NoError(t, corev1.AddToScheme(s)) // Secrets, for the credential path
 	return s
 }
 
@@ -61,7 +63,7 @@ func reconcilerFor(t *testing.T, node *meshv1alpha1.MeshtasticNode, factory Devi
 		WithObjects(node).
 		WithStatusSubresource(&meshv1alpha1.MeshtasticNode{}).
 		Build()
-	return &MeshtasticNodeReconciler{Client: c, NewDevice: factory}, c
+	return &MeshtasticNodeReconciler{Client: c, Reader: c, NewDevice: factory}, c
 }
 
 func request() ctrl.Request {

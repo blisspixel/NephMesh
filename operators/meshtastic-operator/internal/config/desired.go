@@ -16,7 +16,10 @@ limitations under the License.
 
 package config
 
-import meshv1alpha1 "github.com/blisspixel/nephmesh/api/mesh/v1alpha1"
+import (
+	meshv1alpha1 "github.com/blisspixel/nephmesh/api/mesh/v1alpha1"
+	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/secret"
+)
 
 // BuildDesired translates a MeshtasticNode spec into the subset of the device's
 // exported configuration that the spec declares, so IsConverged can compare it
@@ -31,11 +34,13 @@ import meshv1alpha1 "github.com/blisspixel/nephmesh/api/mesh/v1alpha1"
 // channel_url (a base64 protobuf), not discrete per-channel fields, so they
 // need a different apply path and are handled separately. The mqttAddress
 // argument is the resolved broker address to write, since the device needs a
-// reachable address, not a Service name it cannot use.
+// reachable address, not a Service name it cannot use. mqttPassword is the
+// broker password resolved from its Secret; it is revealed here, at the single
+// point that builds the config the device applies, and nowhere else.
 //
 // This function is pure and fully unit tested; the device round-trip itself is
 // covered by the sim integration test.
-func BuildDesired(spec meshv1alpha1.MeshtasticNodeSpec, mqttAddress string) map[string]any {
+func BuildDesired(spec meshv1alpha1.MeshtasticNodeSpec, mqttAddress string, mqttPassword secret.Value) map[string]any {
 	desired := map[string]any{}
 
 	if spec.Region != "" {
@@ -73,6 +78,12 @@ func BuildDesired(spec meshv1alpha1.MeshtasticNodeSpec, mqttAddress string) map[
 		}
 		if spec.MQTT.Root != "" {
 			mqtt["root"] = spec.MQTT.Root
+		}
+		if spec.MQTT.Username != "" {
+			mqtt["username"] = spec.MQTT.Username
+		}
+		if !mqttPassword.IsZero() {
+			mqtt["password"] = mqttPassword.Reveal()
 		}
 		desired["module_config"] = map[string]any{"mqtt": mqtt}
 	}

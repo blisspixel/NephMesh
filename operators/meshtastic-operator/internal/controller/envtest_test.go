@@ -165,6 +165,7 @@ func TestFinalizerLifecycleAndIdempotency(t *testing.T) {
 	fake := device.NewFake(map[string]any{}, 0)
 	r := &MeshtasticNodeReconciler{
 		Client:    envtestClient,
+		Reader:    envtestClient,
 		NewDevice: func(context.Context, *meshv1alpha1.MeshtasticNode) (device.Client, error) { return fake, nil },
 	}
 
