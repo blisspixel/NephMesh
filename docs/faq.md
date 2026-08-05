@@ -59,6 +59,8 @@ A self-adapting, multi-transport communications fabric that keeps working while 
 
 The design property to aim for is what you might call cockroach resilience: no single point of failure, graceful degradation rather than collapse, and autonomous survival of the edge. Because the control plane is not in the field (see the power question above), the mesh keeps carrying traffic even when the managing site, the cloud, and the carrier are all gone. Every tier that is present makes the system better; no tier being present is required for it to keep working at some level.
 
+Another way to see it: picture the carrier and cloud infrastructure as a dense core, and NephMesh as the resilient periphery around it. It is the layer that reaches past the last tower and keeps working where the core cannot go or has stopped going, deep in the backcountry, underground, inside a wildfire's footprint, and in principle off-world where there is no carrier by definition. Every place the infrastructure thins out is exactly where survivable communication matters most, and that edge, the part that has to keep adapting and living on its own, is what this experiment is for.
+
 Be clear about status: this is the destination, not a claim about today. The building blocks are already on the roadmap (PACE tiers, the spectrum-to-intent closed loop, control-plane-independent nodes, dynamic channel and PSK rotation, the cellular-and-cloud bridge). The current phases build toward it one honest, demoable gate at a time, and much of it is still research. The point of the experiment is to find out how much of the cockroach actually holds up.
 
 ## Is there a doctrine this maps to?
