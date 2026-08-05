@@ -1,0 +1,25 @@
+apiVersion: kpt.dev/v1
+kind: Kptfile
+metadata:
+  name: meshtastic-operator
+  annotations:
+    config.kubernetes.io/local-config: "true"
+info:
+  description: |
+    The NephMesh MeshtasticNode operator, deployed per workload cluster. It
+    reconciles MeshtasticNode resources against their devices: export live
+    config, apply only drift, wait out the device reboot, re-verify. This is
+    the operator-package half of the free5gc-operator / oai-operator pattern;
+    per-site MeshtasticNode instances are shipped by the mesh-gateway package
+    and specialized by PackageVariant.
+
+    The CRD and ClusterRole are cluster-scoped; set-namespace places only the
+    ServiceAccount and Deployment into the per-clone namespace.
+pipeline:
+  mutators:
+    - image: ghcr.io/kptdev/krm-functions-catalog/set-namespace:v0.4.1
+      configPath: package-context.yaml
+    - image: ghcr.io/kptdev/krm-functions-catalog/set-labels:v0.2.0
+      configMap:
+        app.kubernetes.io/part-of: nephmesh
+        app.kubernetes.io/managed-by: nephmesh-catalog

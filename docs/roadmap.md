@@ -124,7 +124,8 @@ Goal: true reconciliation instead of one-shot config jobs. The most broadly usef
 - [x] Controller reconcile loop (`operators/meshtastic-operator`): a non-blocking, reboot-aware state machine (export live config, diff against spec, apply only drift, mark RebootPending, re-verify after the device returns) driven by `RequeueAfter` so the worker never blocks. A CLI-backed device client execs the Meshtastic CLI; the core is fully unit-tested against an in-memory fake and a fake Kubernetes client (config 100%, reconcile 100%, controller 85%, device 83%), all hardware-free
 - [x] Status conditions: Reachable, ConfigInSync, RebootPending, Ready (plus NodeID, firmware, neighbor count, last-heard), managed with `metav1.Condition` and observedGeneration
 - [ ] Reconcile the remaining config surface on real hardware: modemPreset, role, owner, and channels (PSKs from Secrets), each field's export path verified against a device, with a bounded-apply guard so a wrong path degrades rather than loops. Serial and viaGateway transports (today a graceful "unsupported" that reports unreachable)
-- [ ] Ship as an `operator` kpt package deployed per cluster (the free5gc-operator / oai-operator pattern), and add an envtest and testcontainers (`meshtasticd --sim`) integration job
+- [x] Ship as an `operator` kpt package (`packages/meshtastic-operator`): CRD, least-privilege RBAC, ServiceAccount, and Deployment, rendering clean through the render gate (set-namespace correctly namespaces the ServiceAccount and Deployment while leaving the CRD and ClusterRole cluster-scoped and fixing the binding subject). A multi-stage Dockerfile bundles the pinned CLI the operator execs
+- [ ] Add an envtest and testcontainers (`meshtasticd --sim`) integration job, and publish the operator image to a registry with a digest so the package is deployable end to end
 
 ## Phase 5: Multi-site fan-out ($0)
 

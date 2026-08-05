@@ -1,0 +1,38 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - mesh.nephmesh.io
+  resources:
+  - meshtasticnodes
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - mesh.nephmesh.io
+  resources:
+  - meshtasticnodes/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - mesh.nephmesh.io
+  resources:
+  - meshtasticnodes/status
+  verbs:
+  - get
+  - patch
+  - update

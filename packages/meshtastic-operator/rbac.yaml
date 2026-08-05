@@ -1,0 +1,62 @@
+# Copyright 2026 The NephMesh Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Least-privilege access for the operator, matching the generated role
+# (api/operators kubebuilder markers). It may read the MeshtasticNode
+# resources it reconciles, update their status and finalizers, and read the
+# Secrets that channel PSKs and MQTT passwords are referenced from. Nothing
+# more: it cannot create workloads, read other namespaces' arbitrary objects,
+# or escalate.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: meshtastic-operator
+  labels:
+    app.kubernetes.io/name: meshtastic-operator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: meshtastic-operator
+  labels:
+    app.kubernetes.io/name: meshtastic-operator
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list, watch]
+  - apiGroups: [mesh.nephmesh.io]
+    resources: [meshtasticnodes]
+    verbs: [get, list, watch, update, patch]
+  - apiGroups: [mesh.nephmesh.io]
+    resources: [meshtasticnodes/status]
+    verbs: [get, update, patch]
+  - apiGroups: [mesh.nephmesh.io]
+    resources: [meshtasticnodes/finalizers]
+    verbs: [update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: meshtastic-operator
+  labels:
+    app.kubernetes.io/name: meshtastic-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: meshtastic-operator
+subjects:
+  - kind: ServiceAccount
+    name: meshtastic-operator
+    # namespace is set by set-namespace at render time.
+    namespace: meshtastic-operator

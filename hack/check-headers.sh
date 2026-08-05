@@ -26,6 +26,8 @@ for f in $(git ls-files '*.go' '*.sh' '*.mk' 'Makefile' '*/Makefile' 'Dockerfile
         # conventional minimal ConfigMap) are not first-party source.
         */testdata/*) continue ;;
         */package-context.yaml) continue ;;
+        # generated CRD copies carry no header (controller-gen would strip it).
+        */crd.yaml) continue ;;
     esac
     if ! head -20 "$f" | grep -q "The NephMesh Authors"; then
         echo "missing license header: $f"
