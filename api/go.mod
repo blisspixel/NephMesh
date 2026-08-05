@@ -2,6 +2,8 @@ module github.com/blisspixel/nephmesh/api
 
 go 1.25.0
 
+toolchain go1.26.5
+
 require (
 	github.com/stretchr/testify v1.10.0
 	k8s.io/api v0.34.1
