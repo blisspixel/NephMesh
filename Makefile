@@ -16,9 +16,9 @@
 # modules land (docs/plans/engineering-conventions.md, section 6). For now it
 # carries the Phase 0 checks and the Phase 1 demo entry points.
 
-.PHONY: check check-all check-headers check-style check-manifests check-transmit check-packages kpt-runner demo-phase1 demo-phase1-down help
+.PHONY: check check-all check-headers check-style check-manifests check-transmit check-actions check-packages kpt-runner demo-phase1 demo-phase1-down help
 
-check: check-headers check-style check-manifests check-transmit ## Run all fast repo checks (no Docker)
+check: check-headers check-style check-manifests check-transmit check-actions ## Run all fast repo checks (no Docker)
 
 check-all: ## Run every gate (repo, Go modules, package render), skipping absent tooling
 	@sh hack/check-all.sh
@@ -34,6 +34,9 @@ check-manifests: ## Enforce the threat model: never expose the control surface
 
 check-transmit: ## Enforce the transmit interlock: no unmarked RF-transmit entry points
 	@sh hack/check-transmit.sh
+
+check-actions: ## Enforce SHA-pinned GitHub Actions (no mutable tag pins)
+	@sh hack/check-actions.sh
 
 check-packages: ## Render every kpt package and fail on any pipeline error (needs Docker)
 	@sh hack/check-packages.sh

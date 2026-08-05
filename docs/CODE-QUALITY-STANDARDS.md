@@ -9,8 +9,8 @@ Two principles run through everything:
 
 ## Already enforced (the current floor)
 
-- Go: `go build`, `go vet`, `golangci-lint` (v2.8.0, standard set), unit tests, and an 80% meaningful-coverage gate (generated and cmd/main excluded), plus a real integration test that drives the reconcile loop against a live `meshtasticd --sim`. Native fuzzing of the untrusted-input parsers.
-- Repo gates: license headers, writing style (no emojis, em dashes, or attribution), manifest control-surface exposure, the transmit interlock, and kpt package render. DCO sign-off. One command runs them all: `sh hack/check-all.sh`.
+- Go: `go build`, `go vet`, `golangci-lint` (v2.12.2, standard set), unit tests, the race detector, and an 80% meaningful-coverage gate (generated and cmd/main excluded), plus a real integration test that drives the reconcile loop against a live `meshtasticd --sim`. Native fuzzing of the untrusted-input parsers, and `govulncheck` reachability scanning on every module.
+- Repo gates: license headers, writing style (no emojis, em dashes, or attribution), manifest control-surface exposure, the transmit interlock, SHA-pinned GitHub Actions (`hack/check-actions.sh`), ShellCheck on the gate scripts, and kpt package render. DCO sign-off. One command runs them all: `sh hack/check-all.sh`.
 - Containers: multi-stage, `CGO_ENABLED=0`, non-root. Manifests: non-root, dropped capabilities, no privilege escalation, seccomp, NetworkPolicy isolation.
 
 ## The bar, by area
@@ -48,7 +48,7 @@ Every threat-model boundary should have a test that proves the control, not assu
 
 ### Supply chain and reproducibility
 
-- **GitHub Actions pinned by commit SHA** (not mutable tag), with least-privilege top-level `permissions`.
+- **GitHub Actions pinned by commit SHA** (not mutable tag), enforced by `hack/check-actions.sh` and kept current by Dependabot. Least-privilege top-level `permissions` on each workflow is the remaining piece.
 - **Network artifacts verified by checksum** before use (the kpt download is verified, not `curl | tar` with sudo).
 - **Reproducible builds:** `-trimpath` and version stamping; committed `go.sum`; base images digest-pinned; a dependency-update tool keeps the pins fresh.
 - **Image and dependency scanning** (trivy for the image, `govulncheck` for Go, `pip-audit` for the bundled CLI tree), gating on high and critical with a documented exceptions path.
@@ -71,4 +71,4 @@ Honesty about overkill is part of quality. The research explicitly de-scoped, an
 
 ## How this rolls out
 
-These are tracked as prioritized roadmap items under Phase 4 hardening rather than done all at once, so each lands with its own validation. The tier order, highest leverage first: the race detector and `govulncheck` in CI, envtest as the controller-test tier, SHA-pinned Actions and a verified kpt download, ShellCheck, reproducible-build flags and digest-pinned bases, then the assume-breach control-proving tests, then SBOM and signing when publishing begins. The fuzzers and the fix for the production logger mode are already in.
+These are tracked as prioritized roadmap items under Phase 4 hardening rather than done all at once, so each lands with its own validation. Already in: the race detector and `govulncheck` in CI, ShellCheck, SHA-pinned Actions with a gate and Dependabot, the fuzzers, and the fix for the production logger mode. The tier order for what remains, highest leverage first: envtest as the controller-test tier, a verified kpt download, reproducible-build flags and digest-pinned bases, least-privilege workflow `permissions`, then the assume-breach control-proving tests, then SBOM and signing when publishing begins.

@@ -26,7 +26,7 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: License headers
         run: sh hack/check-headers.sh
       - name: Writing style rules
@@ -35,13 +35,15 @@ jobs:
         run: sh hack/check-manifests.sh
       - name: Transmit interlock gate
         run: sh hack/check-transmit.sh
+      - name: Actions are SHA-pinned
+        run: sh hack/check-actions.sh
       - name: ShellCheck the gate scripts
         run: shellcheck hack/*.sh
 
   packages:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Install kpt
         run: |
           curl -sL "https://github.com/kptdev/kpt/releases/download/v1.0.0-beta.67/kpt_linux_amd64-1.0.0-beta.67.tar.gz" \
@@ -55,7 +57,7 @@ jobs:
     if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
       - name: All commits signed off
