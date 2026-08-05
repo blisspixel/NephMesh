@@ -22,17 +22,19 @@ One thing to be clear about up front, because it is easy to misread: the Kuberne
 
 ## Status
 
-Pre-alpha. The 0.1 gate has shipped: a virtual Meshtastic node deployed, declaratively configured, observed on MQTT, and torn down on a plain Kubernetes cluster, with an idempotent applier and persistence across pod restarts. Transcript and findings: [demo/phase1](demo/phase1/README.md). Demo captures land in this section as each roadmap gate ships. Contributions, questions, and skepticism are welcome.
+Pre-alpha, and further along than that sounds. The 0.1 gate shipped (a virtual Meshtastic node deployed, configured, observed on MQTT, and torn down declaratively; transcript in [demo/phase1](demo/phase1/README.md)). Since then: the `MeshtasticNode` operator is built in Go and validated against a live `meshtasticd --sim` device in CI (it reconciles region, modem preset, role, and MQTT), the kpt packages render through a gate, and the Go code holds a lint and coverage floor. Demo captures land here as each roadmap gate ships. Contributions, questions, and skepticism are welcome.
 
 ## Start here
 
 | Doc | What it covers |
 |---|---|
 | [Roadmap](docs/roadmap.md) | Phased plan in dependency order, the version path to 1.0, and how much runs with zero hardware (most of it) |
-| [FAQ](docs/faq.md) | The north star (a self-adapting multi-transport fabric), why Meshtastic first, power and autonomy, PACE/DIL, legality |
-| [Architecture](docs/architecture.md) | Components, planned CRDs, data flows, design principles |
-| [Plans](docs/plans/) | Implementation plans: Phase 1, Phase 2, CRD API design, engineering conventions |
+| [FAQ](docs/faq.md) | The north star (a self-adapting multi-transport fabric), why Meshtastic first, secure private channels, power and autonomy, PACE/DIL, legality |
+| [Architecture](docs/architecture.md) | Components, the radio-driver seam, planned CRDs, data flows, design principles |
+| [Plans](docs/plans/) | Implementation plans: Phase 1, Phase 2, the operator, CRD API design, engineering conventions |
 | [Research](docs/research/) | Sourced research: Nephio mechanics and codebase conventions, Meshtastic, SDR, prior art, terminology and legality |
+| [Guides](docs/guides/) | How-to guides, for example registering the packages with Nephio Porch |
+| [Agent playbook](docs/agent-playbook.md) | Tool-agnostic commands and entry points for any coding agent or human |
 | [AGENTS.md](AGENTS.md) | Conventions for AI coding agents; the repo is agent-native from day one |
 | [DISCLAIMER](DISCLAIMER.md) | Research-project and lawful-use terms: legality is your responsibility |
 | [Threat model](docs/security/threat-model.md) | Security-first analysis with unmitigated risks named honestly |
@@ -41,7 +43,7 @@ Pre-alpha. The 0.1 gate has shipped: a virtual Meshtastic node deployed, declara
 
 Everything runs at $0 first: simulated radios, a simulated RAN, and kind/k3s on machines you already own. Real hardware (a ~$20 LoRa board, a ~$35 receive-only SDR) enters only when you want RF to be real.
 
-This is a research project. It defaults to receive-only and has no transmit code today. Radio and encryption rules vary by country, band, and licensing, they change, and no one here claims to know the laws that apply to you. **You are solely responsible for ensuring that anything you do with this code and any radio hardware is legal where you are.** Please read the [DISCLAIMER](DISCLAIMER.md); any legality notes in the docs are informal, US-scoped, non-lawyer research, not legal advice. Security posture and known gaps: [threat model](docs/security/threat-model.md).
+This is a research project. Its SDR side is receive-only, and nothing here uses a software defined radio to transmit or to raise power. A Meshtastic mesh node transmits by design on license-free bands as its normal function, which the operator configures. Radio and encryption rules vary by country, band, and licensing, they change, and no one here claims to know the laws that apply to you. **You are solely responsible for ensuring that anything you do with this code and any radio hardware is legal where you are.** Please read the [DISCLAIMER](DISCLAIMER.md); any legality notes in the docs are informal, US-scoped, non-lawyer research, not legal advice. Security posture and known gaps: [threat model](docs/security/threat-model.md).
 
 ## License
 
