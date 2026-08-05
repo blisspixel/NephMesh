@@ -17,6 +17,16 @@ updates:
         update-types:
           - minor
           - patch
+    # The Kubernetes libraries move the go directive forward (k8s v0.36
+    # requires go 1.26), which reintroduces the stdlib-vulnerability versus
+    # toolchain churn the 1.25.12 pin avoids and needs a tested migration.
+    # Take only their patch releases automatically; the framework major and
+    # minor jumps are a deliberate, tracked upgrade, not an auto-merge.
+    ignore:
+      - dependency-name: k8s.io/*
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: sigs.k8s.io/controller-runtime
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     commit-message:
       prefix: "deps"
 
