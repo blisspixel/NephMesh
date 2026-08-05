@@ -219,9 +219,13 @@ annotated and signed-off like commits.
    so module paths are `github.com/blisspixel/nephmesh/<dir>` (lowercase, per Go module convention;
    GitHub resolves repo names case-insensitively) and images are `ghcr.io/blisspixel/nephmesh-<name>`.
    Reversible until the first go.mod ships.
-2. Domain for API groups: DEFERRED with a hard precondition. Design docs keep `nephmesh.io`; the
-   first CRD does not ship until the domain is confirmed owned (or the group is changed). API group
-   renames are breaking, so this blocks Phase 4, not Phase 3.
+2. Domain for API groups: DECIDED (provisional). Use `nephmesh.io` (`mesh.nephmesh.io`,
+   `sense.nephmesh.io`) as a placeholder. An API group is just a stable DNS-style string; it does not
+   require owning the domain to use in a private, experimental cluster, and there are no external
+   consumers. It is explicitly provisional: while the CRDs are `v1alpha1` and pre-alpha, renaming the
+   group is cheap, so this does not block Phase 4. Revisit before any public or 1.0 release, at which
+   point group stability (and ideally a domain that is actually controlled) matters; the CRD
+   versioning and conversion plan makes that rename orderly rather than breaking.
 3. SPDX license scanning: DECIDED. Adopt at Phase 4 when the Go dependency tree becomes real.
 4. DCO enforcement: DECIDED and implemented. The in-repo Actions check in `.github/workflows/ci.yaml`
    verifies Signed-off-by on every PR commit; no third-party app dependency.

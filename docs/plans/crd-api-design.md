@@ -20,6 +20,8 @@ Rationale: a single `nephmesh.io` group would work today, but the two areas matu
 postures (mesh CRs reference PSK Secrets, sensing CRs do not), and per-area groups are the pattern
 a Nephio reviewer would expect. Splitting later is a breaking change; splitting now is free.
 
+The `nephmesh.io` domain is a provisional placeholder. An API group is a stable DNS-style string, not a claim that the domain is registered; for a pre-alpha experiment with no external consumers this is fine, and renaming the group while at `v1alpha1` is cheap. Revisit before any public or 1.0 release, when a controlled domain (or a deliberately chosen stable group) starts to matter.
+
 Version: `v1alpha1` for both. No conversion webhooks until a v1beta1 exists.
 
 Module layout (types-only `api/` module, exactly the api-repo shape):

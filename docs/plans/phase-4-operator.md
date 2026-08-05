@@ -54,7 +54,7 @@ Ship the operator as a kpt package (`operators/meshtastic-operator` plus a deplo
 
 ## 7. Hard preconditions and open items
 
-- The `nephmesh.io` API-group domain must be confirmed owned before the first CRD ships (group renames are breaking). This blocks Phase 4 start.
+- The `nephmesh.io` API group is a provisional placeholder, not a domain that has to be owned. An API group is a stable DNS-style string; for a private, pre-alpha experiment with no external consumers, using it does not require registering the domain, and this does not block Phase 4. Keep the CRDs at `v1alpha1` so a group rename stays cheap, and revisit before any public or 1.0 release (buying the domain then, or picking a group that is actually controlled, becomes worthwhile once other people depend on the API).
 - No stable Go Meshtastic client exists; the sidecar-CLI path is the safe start, verified read-back is mandatory.
 - Confirm the exact SSA-for-status call against the controller-runtime v0.22 GoDoc for the pinned patch (research flagged it as first-class but under-documented).
 - kro and Crossplane were assessed and set aside for the device loop: they orchestrate declarative resource composition well but are weak at stateful reconciliation against a flaky single-client endpoint, which is exactly what a hand-written controller is for. They remain optional as a higher-level per-site composition layer.

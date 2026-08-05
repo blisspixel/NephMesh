@@ -19,7 +19,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 ### Changed
 
 - Legality notes across the docs are now uniformly hedged, US-scoped, marked as informal non-lawyer research, and linked to the disclaimer. No document asserts legality as settled fact.
-- Phase 0 close-out: the open decisions in the plan docs are resolved with evidence (GitHub owner, `deletionPolicy` enum over a boolean, secrets story, SPDX and DCO and lib direction); explicit code-quality bars and cross-platform rules added to `AGENTS.md`. The `nephmesh.io` domain check is recorded as a hard precondition for the first CRD.
+- Phase 0 close-out: the open decisions in the plan docs are resolved with evidence (GitHub owner, `deletionPolicy` enum over a boolean, secrets story, SPDX and DCO and lib direction); explicit code-quality bars and cross-platform rules added to `AGENTS.md`. The `nephmesh.io` API group is a provisional placeholder (no domain owned; renaming stays cheap at v1alpha1) and revisited only before a public or 1.0 release.
 - Recorded the Meshtasticator attempt: multi-node simulation is not practical headless in containers today, so CI stays single-node; revisit paths noted.
 
 ## [0.1.0] - 2026-08-04
