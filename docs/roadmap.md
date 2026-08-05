@@ -99,11 +99,10 @@ Goal: the same pipeline drives physical RF, and the mesh is visible in the sense
 
 Goal: the Phase 1 and 2 workloads become a proper Nephio-consumable catalog.
 
-- [ ] Convert to kpt packages: `mesh-gateway` and `spectrum-sensor` blueprints with Kptfile pipeline, `package-context.yaml`, placeholder `WorkloadCluster` (copying the `pkg-example-*-bp` pattern from the official catalog)
+- [x] Convert to kpt packages: `mesh-gateway` and `mqtt-bridge` blueprints with Kptfile pipeline (set-namespace from package-context, set-labels), `package-context.yaml`, and a placeholder `WorkloadCluster` on the gateway (pkg-example-bp pattern). Both render clean against kpt v1.0.0-beta.67; a render gate (`make check-packages`) is wired into CI. The `spectrum-sensor` blueprint is deferred with Phase 2 (hardware)
+- [x] `PackageVariant` and `PackageVariantSet` examples specializing the gateway per site, plus a Porch registration and propose/approve guide (`docs/guides/porch-registration.md`, `packages/examples/`)
 - [ ] Slim management path on the PC: kind + Porch + Config Sync (the full Nephio sandbox needs 16 vCPU / 32 GB and stays optional)
-- [ ] Register this repo with Porch (`porchctl repo register`): NephMesh becomes a peer of `nephio-project/catalog`, the OAI third-party model
-- [ ] `PackageVariant` example specializing one gateway per site
-- [ ] Demo: approving a proposed PackageRevision in Porch deploys a configured mesh gateway to the cluster
+- [ ] The 0.3 gate: register this repo with Porch (`porchctl repo register`), then approve a proposed PackageRevision and have it deploy a configured mesh gateway. Needs a running Porch install; the packages and specialization resources are render-validated and derived from the passing Phase 1 demo, but the end-to-end Porch run is not yet done
 
 ## Phase 4: The Meshtastic operator ($0)
 

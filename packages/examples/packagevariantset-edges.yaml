@@ -1,0 +1,48 @@
+# Copyright 2026 The NephMesh Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Fan the mesh-gateway blueprint out to every workload cluster labelled as a
+# mesh edge, one specialized package per cluster. This is the mechanism by
+# which a single intent ("every mesh edge runs a gateway") becomes many
+# per-site deployments. The objectSelector matches Nephio WorkloadCluster
+# objects on the management cluster; the injectors bring each cluster's
+# WorkloadCluster into its cloned package, replacing the placeholder, so
+# future specializer functions see real site context.
+apiVersion: config.porch.kpt.dev/v1alpha2
+kind: PackageVariantSet
+metadata:
+  name: mesh-gateway-edges
+spec:
+  upstream:
+    repo: nephmesh-catalog
+    package: mesh-gateway
+    revision: v1
+  targets:
+    - objectSelector:
+        apiVersion: infra.nephio.org/v1alpha1
+        kind: WorkloadCluster
+        matchLabels:
+          nephmesh.io/site-type: mesh-edge
+      template:
+        downstream:
+          packageExpr: "'mesh-gateway'"
+          repoExpr: "target.name + '-deployments'"
+        packageContext:
+          data:
+            - key: name
+              valueExpr: "target.name + '-mesh-gateway'"
+        injectors:
+          - apiVersion: infra.nephio.org/v1alpha1
+            kind: WorkloadCluster
+            nameExpr: target.name

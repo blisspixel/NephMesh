@@ -6,6 +6,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ### Added
 
+- Phase 3 kpt packages: `mesh-gateway` and `mqtt-bridge` blueprints following the Nephio catalog pattern (Kptfile pipeline, package-context, placeholder WorkloadCluster), namespace-neutral with short service names. A render gate (`hack/check-packages.sh`, `make check-packages`) renders every package and fails on pipeline errors, wired into CI; a pinned kpt-runner image gives local Windows and macOS the same toolchain. PackageVariant and PackageVariantSet examples plus a Porch registration and propose/approve guide.
 - Security-first threat model (`docs/security/threat-model.md`) written from an adversary's standpoint, honest about unmitigated risks, with a transmit-interlock principle now enforced by a deterministic gate.
 - `DISCLAIMER.md`: research-project framing and strong user-responsibility terms; the project makes no claim to know the laws that apply to any user.
 - Deterministic security gates wired into CI and `make check`: `hack/check-manifests.sh` (fails on any manifest exposing the control surface, tolerant of quoting and flow style, scanning all tracked and untracked YAML) and `hack/check-transmit.sh` (fails on unmarked SDR-transmit entry points). Both proven to catch planted violations.

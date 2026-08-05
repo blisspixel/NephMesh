@@ -1,0 +1,36 @@
+# Copyright 2026 The NephMesh Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Clone the mesh-gateway blueprint into one site's deployment repo. Porch
+# creates a draft PackageRevision in the downstream repo; a human approves it
+# (see the propose/approve flow in docs/guides/porch-registration.md) before
+# it is pushed to the site cluster. Replace repository names to match your
+# registered repositories (porchctl repo get -A).
+apiVersion: config.porch.kpt.dev/v1alpha2
+kind: PackageVariant
+metadata:
+  name: mesh-gateway-site1
+spec:
+  upstream:
+    repo: nephmesh-catalog
+    package: mesh-gateway
+    revision: v1
+  downstream:
+    repo: site1-deployments
+    package: mesh-gateway
+  # Rename the downstream package context so set-namespace places this site's
+  # gateway into its own namespace.
+  packageContext:
+    data:
+      name: site1-mesh-gateway
