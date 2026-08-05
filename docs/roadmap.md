@@ -120,7 +120,7 @@ Goal: the Phase 1 workload becomes a proper Nephio-consumable catalog (the Phase
 
 Goal: true reconciliation instead of one-shot config jobs. The most broadly useful deliverable: no Meshtastic Kubernetes operator exists today.
 
-- [ ] `MeshtasticNode` CRD: region, role, modem preset, channels (PSKs via Secrets), MQTT module, owner info
+- [x] `MeshtasticNode` CRD: region, role, modem preset, channels (PSKs via `secretKeyRef`), MQTT module, owner, plus a `connection` oneof (tcp/serial/viaGateway) enforced by a CEL rule, open-string enums for firmware-churn tolerance, and status conditions. Lives in the `api/` Go module (`mesh.nephmesh.io/v1alpha1`); builds, vets, and tests clean (hand-written logic at 100% coverage), with a generated CRD and a `go` CI job
 - [ ] Controller reconcile loop using the Meshtastic Python API (TCP 4403): export live config, diff against spec, apply only drift (each applied section reboots the node, so minimal diffs matter)
 - [ ] Status conditions: reachable, config in sync, mesh neighbor count, last-heard telemetry
 - [ ] Remote admin: manage radio-only mesh nodes through a gateway (admin channel, `--dest '!nodeid'`), so one managed gateway can reconcile nodes across the mesh
