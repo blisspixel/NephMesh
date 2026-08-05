@@ -97,9 +97,16 @@ type ConnectionSpec struct {
 
 // TCPConnection reaches the device over TCP.
 type TCPConnection struct {
-	// host is the device address (a Service name or IP).
+	// host is the device address (a Service name, FQDN, or IP). The pattern
+	// forbids a leading dash so the value cannot be misread as a CLI flag, and
+	// bounds the length; it is a hostname or IP shape, not an arbitrary string,
+	// to limit where the operator can be pointed.
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$`
+	// +kubebuilder:validation:MaxLength=253
 	Host string `json:"host"`
 	// port defaults to 4403.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
 	// +kubebuilder:default=4403
 	// +optional
 	Port int32 `json:"port,omitempty"`
@@ -198,15 +205,15 @@ type MeshtasticNodeStatus struct {
 	// nodeID is the device node id, for example "!6e000001".
 	// +optional
 	NodeID string `json:"nodeID,omitempty"`
-	// firmwareVersion is the device firmware version.
-	// +optional
-	FirmwareVersion string `json:"firmwareVersion,omitempty"`
-	// neighborCount is the number of mesh neighbors last observed.
-	// +optional
-	NeighborCount int32 `json:"neighborCount,omitempty"`
 	// lastHeard is when the device was last reachable.
 	// +optional
 	LastHeard *metav1.Time `json:"lastHeard,omitempty"`
+	// applyAttempts counts consecutive config applies that have not yet
+	// converged. It resets to zero on convergence and bounds the reboot loop:
+	// after too many attempts the node is marked Degraded rather than rebooting
+	// forever, which protects against a desired field the device never echoes.
+	// +optional
+	ApplyAttempts int32 `json:"applyAttempts,omitempty"`
 }
 
 // +kubebuilder:object:root=true

@@ -57,14 +57,24 @@ func TestDriftReportsMissingAndChangedPaths(t *testing.T) {
 	assert.False(t, IsConverged(desired, live))
 }
 
-func TestScalarValuesCompareTolerantly(t *testing.T) {
-	// YAML decoding can yield different representations; compare tolerantly.
-	assert.True(t, IsConverged(
-		map[string]any{"enabled": true},
-		map[string]any{"enabled": "True"}))
+func TestScalarValuesCompareToleratesRepresentation(t *testing.T) {
+	// A number and its string form should compare equal (YAML decoding varies).
 	assert.True(t, IsConverged(
 		map[string]any{"port": 4403},
 		map[string]any{"port": "4403"}))
+	// Whitespace differences are not drift.
+	assert.True(t, IsConverged(
+		map[string]any{"name": "primary"},
+		map[string]any{"name": " primary "}))
+}
+
+func TestScalarComparisonIsCaseSensitive(t *testing.T) {
+	// Regression: values must compare case-sensitively, or case-significant
+	// drift (an MQTT root topic here) would be hidden and never corrected.
+	assert.False(t, IsConverged(
+		map[string]any{"root": "msh/Site1"},
+		map[string]any{"root": "msh/site1"}),
+		"a differently-cased value is real drift, not convergence")
 }
 
 func TestMapVersusScalarMismatchIsDrift(t *testing.T) {

@@ -17,6 +17,7 @@ limitations under the License.
 package config
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -64,6 +65,24 @@ func TestBuildDesiredOmitsDisabledMQTT(t *testing.T) {
 	}, "10.0.0.5")
 	_, hasModule := d["module_config"]
 	assert.False(t, hasModule, "a disabled MQTT module contributes no desired config")
+}
+
+func TestBuildDesiredNeverEmitsTransmitPowerKeys(t *testing.T) {
+	// Defense for the transmit interlock: the operator configures a mesh node
+	// (which transmits by design on license-free ISM, its legitimate job), but
+	// it must never emit a transmit-power or region-power escalation key. This
+	// asserts the builder cannot be a path to raising power.
+	spec := meshv1alpha1.MeshtasticNodeSpec{
+		Region:      "US",
+		ModemPreset: "LONG_FAST",
+		Role:        "ROUTER",
+		MQTT:        &meshv1alpha1.MQTTSpec{Enabled: true},
+	}
+	blob := fmt.Sprintf("%v", BuildDesired(spec, "10.0.0.5"))
+	forbidden := []string{"txPower", "tx_power", "power", "txEnabled", "tx_enabled"} // transmit-ok: asserted absent, never emitted
+	for _, key := range forbidden {
+		assert.NotContains(t, blob, key, "BuildDesired must never emit a transmit-power key")
+	}
 }
 
 func TestBuildDesiredRoundTripsThroughConverge(t *testing.T) {

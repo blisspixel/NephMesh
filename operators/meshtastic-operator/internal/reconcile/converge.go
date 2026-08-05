@@ -36,9 +36,15 @@ import (
 // approximates how long a config-triggered reboot takes; the drift check is a
 // slow steady-state poll.
 const (
-	ReconnectBackoff  = 10 * time.Second
-	RebootWait        = 25 * time.Second
+	ReconnectBackoff   = 10 * time.Second
+	RebootWait         = 25 * time.Second
 	DriftCheckInterval = 5 * time.Minute
+	// MaxApplyAttempts bounds the apply-and-reboot loop. If the device has not
+	// converged after this many consecutive applies, the desired state is very
+	// likely unreachable (for example a field whose value the device never
+	// echoes back in its export), so the node is marked Degraded and left
+	// alone rather than rebooting every RebootWait forever.
+	MaxApplyAttempts = 5
 )
 
 // Outcome is the result of one convergence step: the condition state to record
@@ -50,29 +56,41 @@ type Outcome struct {
 	ConfigInSync  bool
 	RebootPending bool
 	Ready         bool
+	Degraded      bool
 	Reason        string
 	Requeue       time.Duration
+	// ApplyAttempts is the running count of consecutive non-converging applies,
+	// to be persisted in status and fed back on the next step.
+	ApplyAttempts int32
 	// Info is populated when the device was reachable this step.
 	Info device.Info
 }
 
+// State is the reconcile memory Converge needs from the previous step: whether a
+// reboot was pending, and how many consecutive applies have not yet converged.
+type State struct {
+	RebootPending bool
+	ApplyAttempts int32
+}
+
 // Converge performs one non-blocking step toward making the device match
-// desired. wasRebootPending carries the prior RebootPending condition so a
-// device that is unreachable right after an apply is reported as still
-// rebooting rather than as a fresh connection failure. It returns an error only
-// for genuinely unexpected failures (which the controller should retry with
-// backoff); an unreachable device is a normal requeue, not an error.
-func Converge(ctx context.Context, dev device.Client, desired map[string]any, wasRebootPending bool) (Outcome, error) {
+// desired. The prior State carries the RebootPending condition (so a device
+// unreachable right after an apply is reported as still rebooting, not as a
+// fresh connection failure) and the apply-attempt count (so the reboot loop is
+// bounded). It returns an error only for genuinely unexpected failures (which
+// the controller should retry with backoff); an unreachable device is a normal
+// requeue, not an error.
+func Converge(ctx context.Context, dev device.Client, desired map[string]any, prior State) (Outcome, error) {
 	live, err := dev.ExportConfig(ctx)
 	if errors.Is(err, device.ErrUnreachable) {
 		reason := meshv1alpha1.ReasonConnectFailed
-		if wasRebootPending {
+		if prior.RebootPending {
 			reason = meshv1alpha1.ReasonConfigApplied
 		}
-		return Outcome{Reachable: false, RebootPending: wasRebootPending, Reason: reason, Requeue: ReconnectBackoff}, nil
+		return Outcome{Reachable: false, RebootPending: prior.RebootPending, ApplyAttempts: prior.ApplyAttempts, Reason: reason, Requeue: ReconnectBackoff}, nil
 	}
 	if err != nil {
-		return Outcome{}, err
+		return Outcome{ApplyAttempts: prior.ApplyAttempts}, err
 	}
 
 	if config.IsConverged(desired, live) {
@@ -80,22 +98,38 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, wa
 		return Outcome{
 			Reachable: true, ConfigInSync: true, Ready: true,
 			Reason: meshv1alpha1.ReasonInSync, Info: info, Requeue: DriftCheckInterval,
+			ApplyAttempts: 0, // converged: reset the counter
+		}, nil
+	}
+
+	// Drift remains. If we have already applied MaxApplyAttempts times without
+	// converging, stop: the desired state is very likely something the device
+	// will not echo back, so rebooting again would loop forever. Surface it.
+	if prior.ApplyAttempts >= MaxApplyAttempts {
+		return Outcome{
+			Reachable: true, ConfigInSync: false, Degraded: true,
+			Reason: meshv1alpha1.ReasonApplyFailed, ApplyAttempts: prior.ApplyAttempts,
+			Requeue: DriftCheckInterval,
 		}, nil
 	}
 
 	if err := dev.Apply(ctx, desired); err != nil {
 		if errors.Is(err, device.ErrUnreachable) {
-			return Outcome{Reachable: false, RebootPending: wasRebootPending, Reason: meshv1alpha1.ReasonConfigApplied, Requeue: ReconnectBackoff}, nil
+			return Outcome{Reachable: false, RebootPending: prior.RebootPending, ApplyAttempts: prior.ApplyAttempts, Reason: meshv1alpha1.ReasonConfigApplied, Requeue: ReconnectBackoff}, nil
 		}
-		return Outcome{}, err
+		return Outcome{ApplyAttempts: prior.ApplyAttempts}, err
 	}
 	// The MQTT module thread starts only at boot, so reboot explicitly after an
-	// apply to make its activation deterministic. Best effort: the device may
-	// already be rebooting from the apply itself.
-	_ = dev.Reboot(ctx)
+	// apply to make its activation deterministic. The device may already be
+	// rebooting from the apply itself, in which case the reboot is refused as
+	// unreachable; only a genuinely unexpected reboot error is surfaced.
+	if rebootErr := dev.Reboot(ctx); rebootErr != nil && !errors.Is(rebootErr, device.ErrUnreachable) {
+		return Outcome{ApplyAttempts: prior.ApplyAttempts + 1}, rebootErr
+	}
 
 	return Outcome{
 		Reachable: true, ConfigInSync: false, RebootPending: true,
 		Reason: meshv1alpha1.ReasonConfigApplied, Requeue: RebootWait,
+		ApplyAttempts: prior.ApplyAttempts + 1,
 	}, nil
 }

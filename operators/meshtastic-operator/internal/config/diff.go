@@ -85,7 +85,12 @@ func collectDrift(prefix string, desired, live map[string]any, out *[]string) {
 	}
 }
 
+// scalarEqual compares values by their string form, trimmed of surrounding
+// whitespace so YAML representation quirks (a trailing newline, spacing) do not
+// register as drift. It is deliberately case-sensitive: values like an MQTT
+// root topic are case-significant, and folding case here would hide real drift
+// and leave the device permanently misconfigured. Key comparison, not value
+// comparison, is where case is ignored (see normKey).
 func scalarEqual(a, b any) bool {
-	return strings.TrimSpace(strings.ToLower(fmt.Sprint(a))) ==
-		strings.TrimSpace(strings.ToLower(fmt.Sprint(b)))
+	return strings.TrimSpace(fmt.Sprint(a)) == strings.TrimSpace(fmt.Sprint(b))
 }

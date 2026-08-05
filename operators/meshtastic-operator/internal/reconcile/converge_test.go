@@ -32,7 +32,7 @@ func desiredUS() map[string]any {
 
 func TestAlreadyConvergedIsReadyWithoutApply(t *testing.T) {
 	dev := device.NewFake(desiredUS(), 0)
-	out, err := Converge(context.Background(), dev, desiredUS(), false)
+	out, err := Converge(context.Background(), dev, desiredUS(), State{})
 	require.NoError(t, err)
 	assert.True(t, out.Ready)
 	assert.True(t, out.ConfigInSync)
@@ -41,28 +41,36 @@ func TestAlreadyConvergedIsReadyWithoutApply(t *testing.T) {
 	assert.Equal(t, 0, dev.Applies, "a converged device must not be written")
 }
 
+func TestConvergedResetsApplyAttempts(t *testing.T) {
+	dev := device.NewFake(desiredUS(), 0)
+	out, err := Converge(context.Background(), dev, desiredUS(), State{ApplyAttempts: 3})
+	require.NoError(t, err)
+	assert.Equal(t, int32(0), out.ApplyAttempts, "convergence clears the attempt counter")
+}
+
 func TestDriftedDeviceAppliesOnceThenConvergesAcrossReboot(t *testing.T) {
 	// Device starts empty (drifted from desired US) and stays unreachable for
 	// two calls after a reboot.
 	dev := device.NewFake(map[string]any{}, 2)
 
 	// Step 1: drift detected, config applied, reboot pending.
-	out, err := Converge(context.Background(), dev, desiredUS(), false)
+	out, err := Converge(context.Background(), dev, desiredUS(), State{})
 	require.NoError(t, err)
 	assert.True(t, out.RebootPending)
 	assert.False(t, out.Ready)
 	assert.Equal(t, RebootWait, out.Requeue)
+	assert.Equal(t, int32(1), out.ApplyAttempts)
 	assert.Equal(t, 1, dev.Applies)
 
 	// Steps 2..n: device is rebooting (unreachable). Reported as still
 	// rebooting because reboot was pending, not as a fresh connect failure.
-	rebootPending := out.RebootPending
+	state := State{RebootPending: out.RebootPending, ApplyAttempts: out.ApplyAttempts}
 	sawUnreachable := false
 	var final Outcome
 	for i := 0; i < 6; i++ {
-		out, err = Converge(context.Background(), dev, desiredUS(), rebootPending)
+		out, err = Converge(context.Background(), dev, desiredUS(), state)
 		require.NoError(t, err)
-		rebootPending = out.RebootPending
+		state = State{RebootPending: out.RebootPending, ApplyAttempts: out.ApplyAttempts}
 		if !out.Reachable {
 			sawUnreachable = true
 			assert.Equal(t, ReconnectBackoff, out.Requeue)
@@ -76,19 +84,45 @@ func TestDriftedDeviceAppliesOnceThenConvergesAcrossReboot(t *testing.T) {
 	assert.True(t, final.Ready, "the device converges once it comes back")
 	assert.True(t, final.ConfigInSync)
 	assert.False(t, final.RebootPending)
+	assert.Equal(t, int32(0), final.ApplyAttempts, "converged: counter reset")
 	assert.Equal(t, 1, dev.Applies, "config is applied exactly once, not on every pass")
 }
 
+func TestApplyLoopIsBoundedThenDegraded(t *testing.T) {
+	// A device that never converges (its export never contains the desired
+	// value) must not reboot forever. After MaxApplyAttempts it is Degraded.
+	dev := &neverConverges{}
+	state := State{}
+	var out Outcome
+	var err error
+	for i := 0; i < MaxApplyAttempts+2; i++ {
+		out, err = Converge(context.Background(), dev, desiredUS(), state)
+		require.NoError(t, err)
+		state = State{RebootPending: out.RebootPending, ApplyAttempts: out.ApplyAttempts}
+	}
+	assert.True(t, out.Degraded, "an unconvergeable device becomes Degraded, not an infinite loop")
+	assert.False(t, out.RebootPending)
+	assert.Equal(t, MaxApplyAttempts, dev.applies, "apply stops once the bound is reached")
+}
+
 func TestUnreachableFromStartRequeuesWithoutError(t *testing.T) {
-	dev := device.NewFake(map[string]any{}, 0)
-	dev.Apply(context.Background(), map[string]any{}) // opens no window (rebootWindow 0)
-	// Force an unreachable window directly by seeding a reboot.
-	dev = device.NewFake(map[string]any{}, 3)
+	dev := device.NewFake(map[string]any{}, 3)
 	dev.Reboot(context.Background()) // now unreachable for 3 calls
 
-	out, err := Converge(context.Background(), dev, desiredUS(), false)
+	out, err := Converge(context.Background(), dev, desiredUS(), State{})
 	require.NoError(t, err, "an unreachable device is a requeue, not an error")
 	assert.False(t, out.Reachable)
 	assert.Equal(t, ReconnectBackoff, out.Requeue)
 	assert.Equal(t, 0, dev.Applies, "cannot apply to an unreachable device")
 }
+
+// neverConverges is a device whose export never reflects the desired config, so
+// applies never converge. It counts applies so the bound can be asserted.
+type neverConverges struct{ applies int }
+
+func (n *neverConverges) ExportConfig(context.Context) (map[string]any, error) {
+	return map[string]any{}, nil // always empty: never matches desired
+}
+func (n *neverConverges) Apply(context.Context, map[string]any) error { n.applies++; return nil }
+func (n *neverConverges) Reboot(context.Context) error                { return nil }
+func (n *neverConverges) Info(context.Context) (device.Info, error)   { return device.Info{}, nil }

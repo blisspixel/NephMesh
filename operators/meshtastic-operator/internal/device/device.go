@@ -49,9 +49,10 @@ type Client interface {
 	Info(ctx context.Context) (Info, error)
 }
 
-// Info is a small snapshot of device identity used to populate status.
+// Info is a small snapshot of device identity used to populate status. It
+// carries only what the client can actually produce today (the node id parsed
+// from the CLI); firmware version and neighbor count are added when their parse
+// paths are verified against real hardware, rather than advertised as empty.
 type Info struct {
-	NodeID          string
-	FirmwareVersion string
-	NeighborCount   int32
+	NodeID string
 }

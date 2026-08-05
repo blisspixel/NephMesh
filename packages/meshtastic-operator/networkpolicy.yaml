@@ -1,0 +1,51 @@
+# Copyright 2026 The NephMesh Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Egress bounds for the operator. Its device connection host comes from a
+# custom resource, so without a policy a crafted MeshtasticNode could point the
+# operator at arbitrary in-cluster addresses and use its reachability status as
+# a port-scan oracle. This restricts the operator to DNS, the Kubernetes API
+# (which it needs), and the device API port (4403) inside the cluster; it does
+# not, and cannot, validate that 4403 targets are genuine devices, so the host
+# field also carries a shape pattern in the CRD. Requires a policy-enforcing
+# CNI. Tune the API-server rule to your cluster if the control plane is off the
+# in-cluster CIDR.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: meshtastic-operator-egress
+  labels:
+    app.kubernetes.io/name: meshtastic-operator
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: meshtastic-operator
+  policyTypes: [Egress]
+  egress:
+    # DNS.
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    # Device API (Meshtastic TCP client API) inside the cluster only.
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - {protocol: TCP, port: 4403}
+    # Kubernetes API server. 443 covers the common in-cluster kubernetes
+    # Service; adjust for a control plane reached on another port or address.
+    - ports:
+        - {protocol: TCP, port: 443}
+        - {protocol: TCP, port: 6443}

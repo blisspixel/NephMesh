@@ -13,11 +13,11 @@
 # limitations under the License.
 
 # Least-privilege access for the operator, matching the generated role
-# (api/operators kubebuilder markers). It may read the MeshtasticNode
-# resources it reconciles, update their status and finalizers, and read the
-# Secrets that channel PSKs and MQTT passwords are referenced from. Nothing
-# more: it cannot create workloads, read other namespaces' arbitrary objects,
-# or escalate.
+# (operators kubebuilder markers). It may read the MeshtasticNode resources it
+# reconciles and update their status and finalizers. Nothing more: no Secret
+# access (channel PSK and MQTT password reading is not implemented yet, and
+# will use a namespaced Role scoped to the operator namespace when it is, never
+# a cluster-wide Secret grant), no workload creation, no escalation.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -32,9 +32,6 @@ metadata:
   labels:
     app.kubernetes.io/name: meshtastic-operator
 rules:
-  - apiGroups: [""]
-    resources: [secrets]
-    verbs: [get, list, watch]
   - apiGroups: [mesh.nephmesh.io]
     resources: [meshtasticnodes]
     verbs: [get, list, watch, update, patch]

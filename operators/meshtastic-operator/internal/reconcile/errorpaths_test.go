@@ -33,6 +33,7 @@ type stubClient struct {
 	exportErr error
 	live      map[string]any
 	applyErr  error
+	rebootErr error
 }
 
 func (s stubClient) ExportConfig(context.Context) (map[string]any, error) {
@@ -42,26 +43,33 @@ func (s stubClient) ExportConfig(context.Context) (map[string]any, error) {
 	return s.live, nil
 }
 func (s stubClient) Apply(context.Context, map[string]any) error { return s.applyErr }
-func (s stubClient) Reboot(context.Context) error                { return nil }
+func (s stubClient) Reboot(context.Context) error                { return s.rebootErr }
 func (s stubClient) Info(context.Context) (device.Info, error)   { return device.Info{}, nil }
 
 func TestExportUnexpectedErrorPropagates(t *testing.T) {
 	boom := errors.New("boom")
-	_, err := Converge(context.Background(), stubClient{exportErr: boom}, desiredUS(), false)
+	_, err := Converge(context.Background(), stubClient{exportErr: boom}, desiredUS(), State{})
 	assert.ErrorIs(t, err, boom, "a non-unreachable export error is returned for rate-limited retry")
 }
 
 func TestApplyUnexpectedErrorPropagates(t *testing.T) {
 	boom := errors.New("apply failed")
 	dev := stubClient{live: map[string]any{}, applyErr: boom} // drifted, apply errors
-	_, err := Converge(context.Background(), dev, desiredUS(), false)
+	_, err := Converge(context.Background(), dev, desiredUS(), State{})
 	assert.ErrorIs(t, err, boom)
 }
 
 func TestApplyUnreachableIsRequeueNotError(t *testing.T) {
 	dev := stubClient{live: map[string]any{}, applyErr: device.ErrUnreachable} // drifted, apply hits reboot
-	out, err := Converge(context.Background(), dev, desiredUS(), false)
+	out, err := Converge(context.Background(), dev, desiredUS(), State{})
 	require.NoError(t, err)
 	assert.False(t, out.Reachable)
 	assert.Equal(t, ReconnectBackoff, out.Requeue)
+}
+
+func TestRebootUnexpectedErrorPropagates(t *testing.T) {
+	boom := errors.New("reboot failed")
+	dev := stubClient{live: map[string]any{}, rebootErr: boom} // drifted, apply ok, reboot errors
+	_, err := Converge(context.Background(), dev, desiredUS(), State{})
+	assert.ErrorIs(t, err, boom, "an unexpected reboot error is surfaced, not swallowed")
 }

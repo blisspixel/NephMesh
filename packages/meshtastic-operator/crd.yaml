@@ -140,13 +140,20 @@ spec:
                       4403 by default).
                     properties:
                       host:
-                        description: host is the device address (a Service name or
-                          IP).
+                        description: |-
+                          host is the device address (a Service name, FQDN, or IP). The pattern
+                          forbids a leading dash so the value cannot be misread as a CLI flag, and
+                          bounds the length; it is a hostname or IP shape, not an arbitrary string,
+                          to limit where the operator can be pointed.
+                        maxLength: 253
+                        pattern: ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$
                         type: string
                       port:
                         default: 4403
                         description: port defaults to 4403.
                         format: int32
+                        maximum: 65535
+                        minimum: 1
                         type: integer
                     required:
                     - host
@@ -287,6 +294,14 @@ spec:
             description: MeshtasticNodeStatus is the observed state of a Meshtastic
               node.
             properties:
+              applyAttempts:
+                description: |-
+                  applyAttempts counts consecutive config applies that have not yet
+                  converged. It resets to zero on convergence and bounds the reboot loop:
+                  after too many attempts the node is marked Degraded rather than rebooting
+                  forever, which protects against a desired field the device never echoes.
+                format: int32
+                type: integer
               conditions:
                 description: |-
                   conditions follow the standard Kubernetes convention. Reachability and
@@ -349,17 +364,10 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              firmwareVersion:
-                description: firmwareVersion is the device firmware version.
-                type: string
               lastHeard:
                 description: lastHeard is when the device was last reachable.
                 format: date-time
                 type: string
-              neighborCount:
-                description: neighborCount is the number of mesh neighbors last observed.
-                format: int32
-                type: integer
               nodeID:
                 description: nodeID is the device node id, for example "!6e000001".
                 type: string

@@ -83,6 +83,8 @@ Standing rules, now enforced by a deterministic gate (`hack/check-transmit.sh`, 
 
 This principle is the single most important line in this document, and it is now wired, not just written.
 
+A clarification that matters once the operator drives real radios: a Meshtastic mesh node transmits by design. It beacons and relays on license-free ISM as its normal, legal function, which is not the hazard this interlock governs. The interlock governs SDR transmit and programmatic power escalation. Two consequences the operator honors: it configures region and channels (legitimate mesh management) but never emits a transmit-power or `tx_power` key, enforced by a unit test on the config builder, so it cannot raise power; and because region determines legal frequencies and power limits, region changes stay human-approved through the Porch lifecycle rather than being applied by an unattended loop. The receive-only default is a property of the SDR sensing side, not of a comms node whose job is to carry traffic.
+
 ## Deterministic gates in place
 
 - `hack/check-manifests.sh` (wired into CI and `make check`): fails on any manifest that exposes the control surface (NodePort, LoadBalancer, externalIPs, hostPort, host namespaces, privileged, allowPrivilegeEscalation, hostPath, dangerous capabilities, or an Ingress/Gateway resource). Scans every tracked and not-yet-committed YAML, tolerant of quoting and flow style, so the tidy-form bypasses a first draft missed are closed.

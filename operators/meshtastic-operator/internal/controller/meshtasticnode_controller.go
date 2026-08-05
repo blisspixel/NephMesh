@@ -53,7 +53,12 @@ type MeshtasticNodeReconciler struct {
 // +kubebuilder:rbac:groups=mesh.nephmesh.io,resources=meshtasticnodes,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=mesh.nephmesh.io,resources=meshtasticnodes/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=mesh.nephmesh.io,resources=meshtasticnodes/finalizers,verbs=update
-// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+//
+// Note: no Secret access is granted. Channel PSK and MQTT password secrets are
+// not read yet; when that path ships it will use a namespaced Role scoped to
+// the operator namespace, not a cluster-wide Secret grant. A broad unused grant
+// plus the pod's service-account token would be a cluster-wide exfiltration
+// path on compromise, so it is deliberately absent (least privilege).
 
 // Reconcile runs one bounded convergence step and records conditions.
 func (r *MeshtasticNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -90,9 +95,12 @@ func (r *MeshtasticNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	desired := config.BuildDesired(node.Spec, r.resolveBroker(ctx, &node))
-	wasRebootPending := meta.IsStatusConditionTrue(node.Status.Conditions, meshv1alpha1.ConditionRebootPending)
+	prior := reconcile.State{
+		RebootPending: meta.IsStatusConditionTrue(node.Status.Conditions, meshv1alpha1.ConditionRebootPending),
+		ApplyAttempts: node.Status.ApplyAttempts,
+	}
 
-	outcome, err := reconcile.Converge(ctx, dev, desired, wasRebootPending)
+	outcome, err := reconcile.Converge(ctx, dev, desired, prior)
 	if err != nil {
 		log.Error(err, "convergence step failed")
 		return ctrl.Result{}, err // rate-limited retry for unexpected failures
@@ -135,6 +143,7 @@ func applyOutcome(node *meshv1alpha1.MeshtasticNode, o reconcile.Outcome) {
 	set(meshv1alpha1.ConditionReachable, o.Reachable, o.Reason)
 	set(meshv1alpha1.ConditionConfigInSync, o.ConfigInSync, o.Reason)
 	set(meshv1alpha1.ConditionRebootPending, o.RebootPending, o.Reason)
+	set(meshv1alpha1.ConditionDegraded, o.Degraded, o.Reason)
 	readyReason := meshv1alpha1.ReasonNotReady
 	if o.Ready {
 		readyReason = meshv1alpha1.ReasonReady
@@ -142,10 +151,9 @@ func applyOutcome(node *meshv1alpha1.MeshtasticNode, o reconcile.Outcome) {
 	set(meshv1alpha1.ConditionReady, o.Ready, readyReason)
 
 	node.Status.ObservedGeneration = gen
+	node.Status.ApplyAttempts = o.ApplyAttempts
 	if o.Reachable {
 		node.Status.NodeID = o.Info.NodeID
-		node.Status.FirmwareVersion = o.Info.FirmwareVersion
-		node.Status.NeighborCount = o.Info.NeighborCount
 		now := metav1.NewTime(time.Now())
 		node.Status.LastHeard = &now
 	}

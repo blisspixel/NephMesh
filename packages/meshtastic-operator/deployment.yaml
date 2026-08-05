@@ -48,8 +48,18 @@ spec:
             - --metrics-bind-address=:8080
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+          # The CLI Apply writes a short-lived config file under TMPDIR; a
+          # writable emptyDir keeps the root filesystem read-only so a
+          # compromised process cannot rewrite the binary or the bundled CLI.
+          env:
+            - name: TMPDIR
+              value: /tmp
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           ports:
             - {name: metrics, containerPort: 8080}
             - {name: health, containerPort: 8081}
@@ -67,3 +77,6 @@ spec:
               memory: 128Mi
             limits:
               memory: 256Mi
+      volumes:
+        - name: tmp
+          emptyDir: {}

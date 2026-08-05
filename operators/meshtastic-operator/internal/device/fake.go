@@ -48,7 +48,7 @@ func NewFake(initial map[string]any, rebootWindow int) *Fake {
 	return &Fake{
 		config:       initial,
 		rebootWindow: rebootWindow,
-		info:         Info{NodeID: "!6e000001", FirmwareVersion: "2.7.26"},
+		info:         Info{NodeID: "!6e000001"},
 	}
 }
 
