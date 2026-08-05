@@ -54,4 +54,20 @@ if [ -n "$violations" ]; then
   exit 1
 fi
 
+# Every workflow must declare top-level permissions. A missing declaration
+# inherits the repository default token scope, which is usually broader than
+# the workflow needs; scoping it down limits blast radius on compromise.
+missing_perms=$(
+  for f in "$dir"/*.yaml "$dir"/*.yml; do
+    [ -f "$f" ] || continue
+    grep -qE '^permissions:' "$f" || echo "$f"
+  done
+)
+
+if [ -n "$missing_perms" ]; then
+  echo "Workflows missing a top-level 'permissions:' block (declare least privilege):"
+  echo "$missing_perms"
+  exit 1
+fi
+
 echo "check-actions: OK"

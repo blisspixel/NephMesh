@@ -48,7 +48,7 @@ Every threat-model boundary should have a test that proves the control, not assu
 
 ### Supply chain and reproducibility
 
-- **GitHub Actions pinned by commit SHA** (not mutable tag), enforced by `hack/check-actions.sh` and kept current by Dependabot. Least-privilege top-level `permissions` on each workflow is the remaining piece.
+- **GitHub Actions pinned by commit SHA** (not mutable tag) and **least-privilege top-level `permissions`** on every workflow, both enforced by `hack/check-actions.sh`; Dependabot keeps the SHAs current.
 - **Network artifacts verified by checksum** before use (the kpt download is verified, not `curl | tar` with sudo).
 - **Reproducible builds:** `-trimpath` and version stamping; committed `go.sum`; base images digest-pinned; a dependency-update tool keeps the pins fresh.
 - **Image and dependency scanning** (trivy for the image, `govulncheck` for Go, `pip-audit` for the bundled CLI tree), gating on high and critical with a documented exceptions path.
@@ -71,4 +71,4 @@ Honesty about overkill is part of quality. The research explicitly de-scoped, an
 
 ## How this rolls out
 
-These are tracked as prioritized roadmap items under Phase 4 hardening rather than done all at once, so each lands with its own validation. Already in: the race detector and `govulncheck` in CI, ShellCheck, SHA-pinned Actions with a gate and Dependabot, a checksum-verified kpt download, the fuzzers, the RBAC least-privilege golden test, and the fix for the production logger mode. The tier order for what remains, highest leverage first: envtest as the controller-test tier, reproducible-build flags and digest-pinned bases, least-privilege workflow `permissions`, then the assume-breach control-proving tests, then SBOM and signing when publishing begins.
+These are tracked as prioritized roadmap items under Phase 4 hardening rather than done all at once, so each lands with its own validation. Already in: the race detector and `govulncheck` in CI, ShellCheck, SHA-pinned Actions with a gate and Dependabot, a checksum-verified kpt download, the fuzzers, the RBAC least-privilege golden test, and the fix for the production logger mode. The tier order for what remains, highest leverage first: envtest as the controller-test tier, reproducible-build flags and digest-pinned bases, then the rest of the assume-breach control-proving tests, then SBOM and signing when publishing begins.
