@@ -57,7 +57,7 @@ The LoRa PHY is shared, unauthenticated, and receivable by anyone in range. This
 
 ### 6. Supply chain
 
-- **Compromised image or dependency.** STATUS: partially MITIGATED. Images are pinned by tag today and the plan requires digest pinning at build time; CI forbids cloud SDKs in core; DCO and license checks gate contributions. OPEN: no SBOM or image signing yet (planned: SPDX scan at Phase 4). The Phase 1 demo pulls `meshtastic/meshtasticd`, `eclipse-mosquitto`, and `python` from public registries; a consumer who does not trust those should mirror and digest-pin them, documented in the demo README's spirit.
+- **Compromised image or dependency.** STATUS: partially MITIGATED, and stronger on the CI side than before. Every GitHub Action is pinned to an immutable commit SHA and enforced by `hack/check-actions.sh` (a moved or compromised tag cannot inject code into CI), the kpt download is checksum-verified before extraction, both workflows run with a least-privilege `permissions: contents: read` token, `govulncheck` reachability-scans both modules, and Dependabot keeps dependencies current. CI forbids cloud SDKs in core; DCO and license checks gate contributions. Container images are still pinned by tag today and the plan requires digest pinning at build time. OPEN: no SBOM or image signing yet (planned when the operator image is published to a registry with a digest and provenance). The Phase 1 demo pulls `meshtastic/meshtasticd`, `eclipse-mosquitto`, and `python` from public registries; a consumer who does not trust those should mirror and digest-pin them, documented in the demo README's spirit.
 
 ### 5. Host to container (Phase 2+, not in scope yet)
 
@@ -89,6 +89,7 @@ A clarification that matters once the operator drives real radios: a Meshtastic 
 
 - `hack/check-manifests.sh` (wired into CI and `make check`): fails on any manifest that exposes the control surface (NodePort, LoadBalancer, externalIPs, hostPort, host namespaces, privileged, allowPrivilegeEscalation, hostPath, dangerous capabilities, or an Ingress/Gateway resource). Scans every tracked and not-yet-committed YAML, tolerant of quoting and flow style, so the tidy-form bypasses a first draft missed are closed.
 - `hack/check-transmit.sh` (wired into CI): fails on any unmarked SDR-transmit or programmatic-power-escalation entry point (see the interlock section).
+- `hack/check-actions.sh` (wired into CI): fails the build if any GitHub Action is pinned to a mutable tag instead of a commit SHA, or if a workflow omits a least-privilege top-level `permissions` block. A supply-chain gate against a moved-tag or over-privileged-token attack on CI.
 - `hack/check-style.sh`, `hack/check-headers.sh`: enforce the no-attribution writing rules and license headers.
 
 ## What a hostile reviewer should check next

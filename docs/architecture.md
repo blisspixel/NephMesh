@@ -42,7 +42,7 @@ A new radio earns inclusion by having a control surface worth reconciling; analo
 
 ## Components
 
-### Packages (kpt, in `packages/` eventually)
+### Packages (kpt, in `packages/`)
 
 | Package | Contents |
 |---|---|
@@ -52,9 +52,9 @@ A new radio earns inclusion by having a control surface worth reconciling; analo
 | `mqtt-bridge` | Mosquitto (or the official Meshtastic packet-aware broker) + bridge config |
 | `demo/*` | PackageVariant/PVS examples, sandbox scripts |
 
-### CRDs (planned)
+### CRDs
 
-- **`MeshtasticNode`** - desired radio state: region, modem preset, role, channels (PSKs referenced from Secrets), MQTT module config, owner. Reconciled over the TCP 4403 device API by export → diff → apply-only-drift (config applies reboot the node per section, so minimal diffs matter). Can target remote radio-only nodes through a gateway via Meshtastic remote admin.
+- **`MeshtasticNode`** (implemented; `api/mesh/v1alpha1`) - desired radio state: region, modem preset, role, channels (PSKs referenced from Secrets), MQTT module config, owner. Reconciled over the TCP 4403 device API by export → diff → apply-only-drift (config applies reboot the node per section, so minimal diffs matter). Can target remote radio-only nodes through a gateway via Meshtastic remote admin. Region, modem preset, role, and MQTT are reconciled today; owner and channels (with PSKs read from Secrets) are the remaining config surface. The rest below are planned.
 - **`SpectrumScan`** - band(s) to sweep, bin width, interval, output (Prometheus aggregates and/or MQTT full spectra), which SDR (SoapySDR driver string - same CR works for RTL-SDR and HackRF).
 - Later: a policy CR closing the loop (occupancy threshold → channel-change intent).
 

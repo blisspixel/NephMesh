@@ -22,7 +22,7 @@ One thing to be clear about up front, because it is easy to misread: the Kuberne
 
 ## Status
 
-Pre-alpha, and further along than that sounds. The 0.1 gate shipped (a virtual Meshtastic node deployed, configured, observed on MQTT, and torn down declaratively; transcript in [demo/phase1](demo/phase1/README.md)). Since then: the `MeshtasticNode` operator is built in Go and validated against a live `meshtasticd --sim` device in CI (it reconciles region, modem preset, role, and MQTT), the kpt packages render through a gate, and the Go code holds a lint and coverage floor. Demo captures land here as each roadmap gate ships. Contributions, questions, and skepticism are welcome.
+Pre-alpha, and further along than that sounds. The 0.1 gate shipped (a virtual Meshtastic node deployed, configured, observed on MQTT, and torn down declaratively; transcript in [demo/phase1](demo/phase1/README.md)). Since then: the `MeshtasticNode` operator is built in Go and validated against a live `meshtasticd --sim` device in CI (it reconciles region, modem preset, role, and MQTT), the kpt packages render through a gate, and the Go code holds lint, coverage, race-detector, and vulnerability-scan floors, with SHA-pinned CI actions and the first assume-breach control-proving test. Demo captures land here as each roadmap gate ships. Contributions, questions, and skepticism are welcome.
 
 ## Start here
 
