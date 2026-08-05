@@ -121,10 +121,10 @@ Goal: the Phase 1 workload becomes a proper Nephio-consumable catalog (the Phase
 Goal: true reconciliation instead of one-shot config jobs. The most broadly useful deliverable: no Meshtastic Kubernetes operator exists today.
 
 - [x] `MeshtasticNode` CRD: region, role, modem preset, channels (PSKs via `secretKeyRef`), MQTT module, owner, plus a `connection` oneof (tcp/serial/viaGateway) enforced by a CEL rule, open-string enums for firmware-churn tolerance, and status conditions. Lives in the `api/` Go module (`mesh.nephmesh.io/v1alpha1`); builds, vets, and tests clean (hand-written logic at 100% coverage), with a generated CRD and a `go` CI job
-- [ ] Controller reconcile loop using the Meshtastic Python API (TCP 4403): export live config, diff against spec, apply only drift (each applied section reboots the node, so minimal diffs matter)
-- [ ] Status conditions: reachable, config in sync, mesh neighbor count, last-heard telemetry
-- [ ] Remote admin: manage radio-only mesh nodes through a gateway (admin channel, `--dest '!nodeid'`), so one managed gateway can reconcile nodes across the mesh
-- [ ] Ship as an `operator` kpt package deployed per cluster (the free5gc-operator / oai-operator pattern)
+- [x] Controller reconcile loop (`operators/meshtastic-operator`): a non-blocking, reboot-aware state machine (export live config, diff against spec, apply only drift, mark RebootPending, re-verify after the device returns) driven by `RequeueAfter` so the worker never blocks. A CLI-backed device client execs the Meshtastic CLI; the core is fully unit-tested against an in-memory fake and a fake Kubernetes client (config 100%, reconcile 100%, controller 85%, device 83%), all hardware-free
+- [x] Status conditions: Reachable, ConfigInSync, RebootPending, Ready (plus NodeID, firmware, neighbor count, last-heard), managed with `metav1.Condition` and observedGeneration
+- [ ] Reconcile the remaining config surface on real hardware: modemPreset, role, owner, and channels (PSKs from Secrets), each field's export path verified against a device, with a bounded-apply guard so a wrong path degrades rather than loops. Serial and viaGateway transports (today a graceful "unsupported" that reports unreachable)
+- [ ] Ship as an `operator` kpt package deployed per cluster (the free5gc-operator / oai-operator pattern), and add an envtest and testcontainers (`meshtasticd --sim`) integration job
 
 ## Phase 5: Multi-site fan-out ($0)
 
