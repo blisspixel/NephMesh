@@ -7,6 +7,8 @@ Two principles run through everything:
 - **A wired gate beats an instruction.** If a rule matters, it is a CI check that fails the build, not a sentence someone must remember. The gaps below become gates, not guidelines.
 - **Assume breach.** Tests start from a compromised position (a hostile custom resource, a spoofed device, a tampered intent, a pod that is already owned) and prove a control holds, rather than assuming it.
 
+![The repo gates passing and the operator module coverage above its floor](media/quality-gates.png)
+
 ## Already enforced (the current floor)
 
 - Go: `go build`, `go vet`, `golangci-lint` (v2.12.2, standard set), unit tests, the race detector, and an 80% meaningful-coverage gate (generated and cmd/main excluded), plus a real integration test that drives the reconcile loop against a live `meshtasticd --sim`. Native fuzzing of the untrusted-input parsers, and `govulncheck` reachability scanning on every module.

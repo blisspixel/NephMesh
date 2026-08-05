@@ -16,6 +16,10 @@
 # modules land (docs/plans/engineering-conventions.md, section 6). For now it
 # carries the Phase 0 checks and the Phase 1 demo entry points.
 
+# Bare `make` shows the documented target list rather than silently running a
+# gate, so a newcomer sees the command surface first.
+.DEFAULT_GOAL := help
+
 .PHONY: check check-all check-headers check-style check-manifests check-transmit check-actions check-packages kpt-runner demo-phase1 demo-phase1-down help
 
 check: check-headers check-style check-manifests check-transmit check-actions ## Run all fast repo checks (no Docker)
