@@ -3,16 +3,16 @@ module github.com/blisspixel/nephmesh/api
 go 1.25.0
 
 require (
-	github.com/stretchr/testify v1.10.0
-	k8s.io/api v0.34.1
-	k8s.io/apimachinery v0.34.1
-	sigs.k8s.io/controller-runtime v0.22.4
+	github.com/stretchr/testify v1.11.1
+	k8s.io/api v0.34.10
+	k8s.io/apimachinery v0.34.10
+	sigs.k8s.io/controller-runtime v0.22.5
 )
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
-	github.com/go-logr/logr v1.4.2 // indirect
+	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kr/text v0.2.0 // indirect
