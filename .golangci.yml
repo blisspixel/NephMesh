@@ -12,24 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# meshtastic-operator module.
-
-.PHONY: build vet lint test coverage help
-
-build: ## Compile
-	go build ./...
-
-vet: ## go vet
-	go vet ./...
-
-lint: ## golangci-lint (shared root config)
-	golangci-lint run ./...
-
-test: ## Run unit tests with coverage (hardware-free, cluster-free)
-	go test ./... -cover
-
-coverage: ## Enforce the meaningful-coverage floor (generated + cmd excluded)
-	sh ../../hack/check-coverage.sh 80
-
-help: ## Show targets
-	@grep -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-8s %s\n", $$1, $$2}'
+# Shared golangci-lint config for every Go module. The standard set
+# (errcheck, govet, ineffassign, staticcheck, unused) is a principled,
+# low-false-positive baseline; generated deepcopy files are excluded because
+# they are machine-authored.
+version: "2"
+linters:
+  default: standard
+  exclusions:
+    generated: lax
+    paths:
+      - ".*zz_generated.*"

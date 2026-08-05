@@ -73,13 +73,13 @@ func TestReconcileAddsFinalizerFirst(t *testing.T) {
 	r, c := reconcilerFor(t, node, func(context.Context, *meshv1alpha1.MeshtasticNode) (device.Client, error) {
 		return device.NewFake(desiredUS(), 0), nil
 	})
-	res, err := r.Reconcile(context.Background(), request())
+	_, err := r.Reconcile(context.Background(), request())
 	require.NoError(t, err)
-	assert.True(t, res.Requeue, "the first pass adds the finalizer and requeues")
 
 	var got meshv1alpha1.MeshtasticNode
 	require.NoError(t, c.Get(context.Background(), request().NamespacedName, &got))
-	assert.Contains(t, got.Finalizers, meshv1alpha1.Finalizer)
+	assert.Contains(t, got.Finalizers, meshv1alpha1.Finalizer,
+		"the first pass adds the finalizer; the Update re-triggers reconcile via the watch")
 }
 
 func TestReconcileConvergedSetsReady(t *testing.T) {

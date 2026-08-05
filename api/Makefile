@@ -17,7 +17,7 @@ CONTROLLER_GEN_VERSION ?= v0.19.0
 CONTROLLER_GEN ?= go run sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_VERSION)
 PKG := ./mesh/v1alpha1
 
-.PHONY: generate manifests build vet test verify help
+.PHONY: generate manifests build vet lint test coverage verify help
 
 generate: ## Regenerate deepcopy code
 	$(CONTROLLER_GEN) object:headerFile=../hack/boilerplate.go.txt paths=$(PKG)
@@ -31,8 +31,14 @@ build: ## Compile
 vet: ## go vet
 	go vet ./...
 
+lint: ## golangci-lint (shared root config)
+	golangci-lint run ./...
+
 test: ## Run unit tests with coverage
 	go test ./... -cover
+
+coverage: ## Enforce the meaningful-coverage floor (generated excluded)
+	sh ../hack/check-coverage.sh 80
 
 verify: generate manifests ## Fail if generated code or manifests are stale
 	@git diff --exit-code -- mesh config >/dev/null 2>&1 || \

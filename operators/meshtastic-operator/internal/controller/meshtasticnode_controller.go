@@ -86,7 +86,9 @@ func (r *MeshtasticNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		if err := r.Update(ctx, &node); err != nil {
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{Requeue: true}, nil
+		// The Update above changes the object, which re-triggers a reconcile
+		// through the watch, so no explicit requeue is needed here.
+		return ctrl.Result{}, nil
 	}
 
 	dev, err := r.NewDevice(ctx, &node)

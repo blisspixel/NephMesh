@@ -107,7 +107,7 @@ func TestApplyLoopIsBoundedThenDegraded(t *testing.T) {
 
 func TestUnreachableFromStartRequeuesWithoutError(t *testing.T) {
 	dev := device.NewFake(map[string]any{}, 3)
-	dev.Reboot(context.Background()) // now unreachable for 3 calls
+	_ = dev.Reboot(context.Background()) // now unreachable for 3 calls
 
 	out, err := Converge(context.Background(), dev, desiredUS(), State{})
 	require.NoError(t, err, "an unreachable device is a requeue, not an error")
