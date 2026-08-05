@@ -33,7 +33,7 @@ Secure, private channels are a core capability, built on mechanisms that mostly 
 - Keys are managed as declared state, so key rotation becomes a policy the reconciliation loop enforces rather than a manual re-flash of every radio (rotation lands with the closed loop in Phase 6).
 - The honest limits: a channel's key is symmetric and shared, so any member can impersonate any other within that channel, and the default channel's key is public (never use it for anything private). Metadata (that a transmission happened, roughly where) is never hidden. These are properties of the medium, stated plainly in the [threat model](security/threat-model.md).
 
-So open broadcast is supported and useful, but the harder, more valuable case, provisioning and maintaining private encrypted channels for a group across a fleet of radios, is exactly what the intent model is for.
+Both modes are first-class, not one at the expense of the other. An open public channel, the free community net that anyone in range can join during a wildfire or an outage, is a real and valuable use case, and the intent model provisions and maintains it just as readily as a locked-down group channel. The point is that public-service and high-security deployments run on the same declarative machinery: the operator does not privilege one over the other, it just reconciles the channels, keys, and policy you declare. Security is core to the design precisely because it has to hold across that whole range, from a wide-open relief net to a private, key-rotated response group.
 
 ## Why not just cellular? Why mesh at all?
 
