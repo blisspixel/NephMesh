@@ -8,6 +8,10 @@ Scope today is Phase 1 (the virtual mesh demo). Later sections mark risks as the
 
 We enumerate assets, then trust boundaries, then adversaries and their capabilities, then concrete attacks per boundary, each with a status: MITIGATED (with the control), ACCEPTED (with why it is tolerable at this phase), or OPEN (a real gap, tracked). We favor deterministic controls (a wired check, a dropped capability) over documentation promises.
 
+A control is only real once it is proven. The assume-breach tests start from a compromised position and show a control holds; for example, admission refuses every hostile `MeshtasticNode` (a leading-dash host, an out-of-range port, two transports at once, an illegal region, an over-long owner name) against a real API server, and accepts only the well-formed one:
+
+![Six hostile custom resources each rejected at admission, the valid one accepted](../media/assume-breach-admission.png)
+
 ## Assets
 
 - Channel PSKs and any MQTT or admin credentials. Compromise breaks message confidentiality and lets an attacker inject or manage traffic.

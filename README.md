@@ -22,7 +22,11 @@ One thing to be clear about up front, because it is easy to misread: the Kuberne
 
 ## Status
 
-Pre-alpha, and further along than that sounds. The 0.1 gate shipped (a virtual Meshtastic node deployed, configured, observed on MQTT, and torn down declaratively; transcript in [demo/phase1](demo/phase1/README.md)). Since then: the `MeshtasticNode` operator is built in Go and validated against a live `meshtasticd --sim` device in CI (it reconciles region, modem preset, role, and MQTT), the kpt packages render through a gate, and the Go code holds lint, coverage, race-detector, and vulnerability-scan floors, with SHA-pinned CI actions and the first assume-breach control-proving test. Demo captures land here as each roadmap gate ships. Contributions, questions, and skepticism are welcome.
+Pre-alpha, and further along than that sounds. The 0.1 gate shipped (a virtual Meshtastic node deployed, configured, observed on MQTT, and torn down declaratively; transcript in [demo/phase1](demo/phase1/README.md)). Since then: the `MeshtasticNode` operator is built in Go and validated against a live `meshtasticd --sim` device in CI (it reconciles region, modem preset, role, and MQTT), the kpt packages render through a gate, and the Go code holds lint, coverage, race-detector, and vulnerability-scan floors, with SHA-pinned CI actions and assume-breach control-proving tests. Demo captures land here as each roadmap gate ships.
+
+![The operator reconciling a live meshtasticd sim node to the declared owner and region](docs/media/operator-reconcile.png)
+
+*The `MeshtasticNode` operator's reconcile loop against a live `meshtasticd --sim` device: read the exported config, diff against the declared intent, apply only the drift, reboot, and re-verify. These are the exact device-API operations the operator's CLI-backed client runs, captured from a real run.* Contributions, questions, and skepticism are welcome.
 
 ## Start here
 
