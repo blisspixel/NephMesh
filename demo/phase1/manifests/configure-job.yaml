@@ -14,8 +14,15 @@
 
 # One-shot declarative config apply. A Job rather than an init container
 # because nothing listens on 4403 before the meshtasticd container starts.
-# pip needs egress; a prebuilt CLI image is the documented offline
-# fallback (docs/plans/phase-1-virtual-mesh.md, open decision 3).
+#
+# The container is the locally built, version-pinned nephmesh/meshtastic-cli
+# image (demo/phase1/images/meshtastic-cli), so nothing is pulled from PyPI
+# at runtime: no supply-chain surface on each run, no dependence on pod
+# internet egress. The Job runs as a non-root user with a writable HOME on
+# an emptyDir and no service-account token, so even a compromised image has
+# no cluster credentials to steal and no privilege to escalate. Build the
+# image first with demo/phase1/scripts/build-cli-image.sh (the demo script
+# does this automatically).
 
 apiVersion: batch/v1
 kind: Job
@@ -34,19 +41,33 @@ spec:
         app.kubernetes.io/name: meshnode-configure
     spec:
       restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: configure
-          image: python:3.13-slim
-          command: ["/bin/sh", "-c"]
-          args:
-            - |
-              pip install --quiet "meshtastic[cli]" PyYAML
-              python /config/apply.py
+          image: nephmesh/meshtastic-cli:2.7.11
+          imagePullPolicy: IfNotPresent
+          command: ["python", "/config/apply.py"]
           env:
             - name: MESH_HOST
               value: meshnode-sim.nephmesh.svc.cluster.local
             - name: MQTT_SERVICE
               value: mosquitto.nephmesh.svc.cluster.local
+          # readOnlyRootFilesystem is intentionally not set here: the image
+          # keeps the pinned CLI in the user's HOME, which apply.py also
+          # writes its rendered config into, and the CLI's own scratch-write
+          # behavior is unverified. The high-value controls (non-root, no
+          # capabilities, no privilege escalation, no service-account token)
+          # are all present and validated.
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           resources:
             requests:
               cpu: 100m

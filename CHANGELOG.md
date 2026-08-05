@@ -4,6 +4,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+### Added
+
+- Security-first threat model (`docs/security/threat-model.md`) written from an adversary's standpoint, honest about unmitigated risks, with a transmit-interlock principle now enforced by a deterministic gate.
+- `DISCLAIMER.md`: research-project framing and strong user-responsibility terms; the project makes no claim to know the laws that apply to any user.
+- Deterministic security gates wired into CI and `make check`: `hack/check-manifests.sh` (fails on any manifest exposing the control surface, tolerant of quoting and flow style, scanning all tracked and untracked YAML) and `hack/check-transmit.sh` (fails on unmarked SDR-transmit entry points). Both proven to catch planted violations.
+- Phase 1 demo hardening, validated by the passing gate: non-root pods with dropped capabilities, no privilege escalation, RuntimeDefault seccomp, no service-account tokens; a read-only root filesystem on the broker; default-deny NetworkPolicies allowing only DNS and intra-namespace traffic (enforced by kindnet on kind v0.30+, verified empirically); and a locally built, version-pinned CLI image that removes all runtime PyPI dependence.
+
+### Changed
+
+- Legality notes across the docs are now uniformly hedged, US-scoped, marked as informal non-lawyer research, and linked to the disclaimer. No document asserts legality as settled fact.
+
 ## [0.1.0] - 2026-08-04
 
 The Phase 1 gate: a virtual Meshtastic mesh node deployed, declaratively configured, observed on MQTT, and torn down, on a plain Kubernetes cluster. Gate transcript and findings: `demo/phase1/README.md`.

@@ -12,6 +12,34 @@ An independent experimental project applying Nephio-style intent-driven automati
 - `docs/research/` holds the sourced research base (Nephio mechanics, Meshtastic automation surface, SDR and Kubernetes device access, prior art, lab setup, terminology and legality). Prefer citing and updating these over re-deriving facts.
 - Planned layout: the full target tree (with the phase that creates each part) is in `docs/plans/engineering-conventions.md`: `packages/`, `api/`, `krm-functions/`, `operators/`, `exporters/`, `demo/`, plus `distros/` only if cloud-specific material ever exists. Do not create a directory until its roadmap phase starts.
 
+## Deepr expert council (optional host capacity)
+
+When the host has the `deepr` MCP server connected (see project `.mcp.json`), use it for design questions against persistent domain experts. Expert store lives at `C:\Users\nicks\.deepr` on the operator machine.
+
+Council (exact names):
+
+- NephMesh Hybrid Resilient Comms
+- Meshtastic LoRa Mesh Automation
+- Commodity SDR and HackRF Spectrum Sensing
+- Nephio Intent Network Automation
+
+Rules for MCP use:
+
+- Prefer read-only first: `deepr_list_experts`, `deepr_expert_handoff`.
+- Consult with `synthesis_backend=local`, `budget=0`. Local synthesis can take several minutes; do not treat a short timeout as empty knowledge.
+- Do not call metered research or mutate expert beliefs unless the operator asks.
+- Experts advise; you write the code. Agent is never the live reconcile control loop.
+
+CLI fallback if MCP tools are missing:
+
+```text
+deepr expert consult "question" -e "NephMesh Hybrid Resilient Comms" -e "Meshtastic LoRa Mesh Automation" -e "Commodity SDR and HackRF Spectrum Sensing" -e "Nephio Intent Network Automation" --local --budget 0 -y
+```
+
+Inventory note: `Documents: 0` is normal after `absorb --file`. Use `Claims` /
+`claim_count` (or `deepr expert health-check`) to decide if knowledge exists.
+Do not skip consult solely because documents and conversations are zero.
+
 ## Writing and output style
 
 - No emojis anywhere: code, docs, commit messages, comments.
@@ -48,4 +76,4 @@ An independent experimental project applying Nephio-style intent-driven automati
 - MQTT JSON topics are lossy and unsupported on nRF52 devices. The protobuf `msh/REGION/2/e/...` ServiceEnvelope topics are canonical.
 - HackRF One was discontinued in September 2025; HackRF Pro is the current product. RTL-SDR Blog V4 is end of line.
 - The public `mqtt.meshtastic.org` broker is heavily restricted; demos use a private broker.
-- Encryption on license-free ISM bands is legal in the US (FCC Part 15). The encryption prohibition is an amateur-radio (Part 97) rule.
+- Our US-scoped research reads FCC Part 15 as permitting encryption on license-free ISM bands; the half-remembered prohibition is an amateur-radio (Part 97) rule. Never state legality as settled fact in docs or code: hedge it, scope it to the US, call it non-lawyer research, and link the DISCLAIMER. Contributions must not imply legal guidance.

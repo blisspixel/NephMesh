@@ -31,7 +31,7 @@ Note: this research record predates the roadmap rewrite. The "tiers" below were 
 ### Tier 1 - ~$70–120
 - 2–3 × Heltec WiFi LoRa 32 V3: ~$18–27 each (V4 @ 28 dBm now out, pin-compatible, worth considering).
 - RTL-SDR Blog V4: $29.95–39.95 - **EOL** (R828D stock exhausted; "V4L" successor pending). V3/clones same price band.
-- Receive-only: no license needed; you sense the 902–928 MHz band your own mesh transmits in.
+- Receive-only: no license needed per our US-scoped research (verify your own jurisdiction; see the repository DISCLAIMER); you sense the 902–928 MHz band your own mesh transmits in.
 
 ### Tier 2 - ~$250 used / ~$500 new
 - **HackRF One discontinued Sept 2025 → HackRF Pro $400** (supply-constrained). Used HackRF Ones ~$200–250; sub-$150 clones exist, quality unverified.

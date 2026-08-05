@@ -55,6 +55,15 @@ spec:
         app.kubernetes.io/name: meshnode-sim
         app.kubernetes.io/part-of: nephmesh
     spec:
+      # The node does not talk to the Kubernetes API; do not hand it a token.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: meshtasticd
           image: meshtastic/meshtasticd:beta-debian
@@ -64,6 +73,10 @@ spec:
             - --fsdir=/var/lib/meshtasticd
             - --hwid=dc2c6e000001
             - --port=4403
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           ports:
             - name: device-api
               containerPort: 4403

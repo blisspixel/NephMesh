@@ -36,10 +36,22 @@ spec:
         app.kubernetes.io/name: mosquitto
         app.kubernetes.io/part-of: nephmesh
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1883
+        runAsGroup: 1883
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: mosquitto
           image: eclipse-mosquitto:2
           command: ["mosquitto", "-c", "/mosquitto-no-auth.conf"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           ports:
             - name: mqtt
               containerPort: 1883

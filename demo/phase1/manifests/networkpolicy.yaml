@@ -1,0 +1,70 @@
+# Copyright 2026 The NephMesh Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Namespace isolation. Without this, "ClusterIP only" still lets any pod in
+# any namespace reach the unauthenticated device API (4403) and broker
+# (1883); the threat model treats that as the real exposure, so this closes
+# it. kind's kindnet (v0.30+) enforces NetworkPolicy, so on the demo cluster
+# these rules bite, verified: with them removed a cross-pod socket to 4403
+# succeeds, with them present only intra-namespace traffic does.
+#
+# The model is deliberately simple and correct rather than per-service
+# micro-policies: deny everything, then allow DNS and allow traffic within
+# the namespace. That blocks all cross-namespace and external ingress, and
+# all external egress except DNS (so a compromised pod cannot exfiltrate or
+# be reached from outside), while letting the node, broker, config Job, and
+# demo helper pods talk to each other. The config Job needs no external
+# egress because the CLI is baked into its image.
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: nephmesh
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# DNS resolution for every pod (kube-dns lives in another namespace).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: nephmesh
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+# Allow traffic among pods in this namespace, both directions. External
+# ingress and non-DNS external egress stay denied by default-deny.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-namespace
+  namespace: nephmesh
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}

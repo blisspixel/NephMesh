@@ -30,10 +30,14 @@ Pre-alpha. The 0.1 gate has shipped: a virtual Meshtastic node deployed, declara
 | [Plans](docs/plans/) | Implementation plans: Phase 1, Phase 2, CRD API design, engineering conventions |
 | [Research](docs/research/) | Sourced research: Nephio mechanics and codebase conventions, Meshtastic, SDR, prior art, terminology and legality |
 | [AGENTS.md](AGENTS.md) | Conventions for AI coding agents; the repo is agent-native from day one |
+| [DISCLAIMER](DISCLAIMER.md) | Research-project and lawful-use terms: legality is your responsibility |
+| [Threat model](docs/security/threat-model.md) | Security-first analysis with unmitigated risks named honestly |
 
-## Cost and legality, briefly
+## Cost, legality, and responsibility
 
-Everything runs at $0 first: simulated radios, a simulated RAN, and kind/k3s on machines you already own. Real hardware (a ~$20 LoRa board, a ~$35 receive-only SDR) enters only when you want RF to be real. Spectrum sensing is receive-only and requires no license in the US, and encrypted mesh networking on license-free ISM bands is legal under the same FCC rules as Wi-Fi. Details and sources: [terminology and legality](docs/research/terminology-and-legality.md).
+Everything runs at $0 first: simulated radios, a simulated RAN, and kind/k3s on machines you already own. Real hardware (a ~$20 LoRa board, a ~$35 receive-only SDR) enters only when you want RF to be real.
+
+This is a research project. It defaults to receive-only and has no transmit code today. Radio and encryption rules vary by country, band, and licensing, they change, and no one here claims to know the laws that apply to you. **You are solely responsible for ensuring that anything you do with this code and any radio hardware is legal where you are.** Please read the [DISCLAIMER](DISCLAIMER.md); any legality notes in the docs are informal, US-scoped, non-lawyer research, not legal advice. Security posture and known gaps: [threat model](docs/security/threat-model.md).
 
 ## License
 

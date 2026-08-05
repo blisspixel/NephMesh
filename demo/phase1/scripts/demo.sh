@@ -20,11 +20,20 @@
 
 set -eu
 
+# In-container paths passed to kubectl exec (for example /tmp/sub.log) are
+# wrapped inside sh -c "..." strings rather than passed as bare arguments,
+# so Git Bash on Windows does not rewrite them into host paths. This keeps
+# the script correct on Linux, macOS, and Git Bash without a global
+# MSYS_NO_PATHCONV, which would break docker build context paths.
+
 NS=nephmesh
 DIR=$(dirname "$0")/../manifests
 MSG="hello nephmesh $(date +%s)"
 
 step() { printf '\n== %s\n' "$1"; }
+
+step "0/6 build and load the pinned CLI image (no runtime PyPI dependency)"
+sh "$(dirname "$0")/build-cli-image.sh"
 
 step "1/6 apply manifests"
 # The namespace goes first: kubectl apply -f <dir> processes files in
@@ -53,27 +62,54 @@ fi
 
 step "5/6 send a message and watch the MQTT topics"
 kubectl -n "$NS" delete pod mqtt-watch sender --ignore-not-found >/dev/null 2>&1
+# Restart the node before sending. The config-apply reboot churn leaves the
+# meshtasticd sim's single-client device API in an unreliable state; a fresh
+# node comes up with a clean listener and, importantly, re-establishes its
+# MQTT client at boot (the module thread only starts at boot). The node
+# reloads its applied config from the PVC, so it comes back configured.
+kubectl -n "$NS" rollout restart deploy/meshnode-sim
+kubectl -n "$NS" rollout status deploy/meshnode-sim --timeout=180s
+# The subscriber restarts mosquitto_sub if it drops (the client can emit a
+# transient bad-descriptor error), appending to a file we read later. This
+# removes the race between a one-shot subscriber and the sender.
 kubectl -n "$NS" run mqtt-watch --image=eclipse-mosquitto:2 --restart=Never -- \
-    sh -c "mosquitto_sub -h mosquitto -t 'msh/#' -v"
+    sh -c "while true; do mosquitto_sub -h mosquitto -t 'msh/#' -v >>/tmp/sub.log 2>&1; sleep 1; done"
 kubectl -n "$NS" wait --for=condition=Ready pod/mqtt-watch --timeout=120s
-kubectl -n "$NS" run sender --image=python:3.13-slim --restart=Never -- \
-    sh -c "pip install --quiet 'meshtastic[cli]' && meshtastic --host meshnode-sim --sendtext '$MSG'"
-kubectl -n "$NS" wait --for=jsonpath='{.status.phase}'=Succeeded pod/sender --timeout=300s
+# The sender waits for the device API to accept a connection before sending,
+# the same reachability poll the config Job uses, then sends exactly once
+# (the API is single-client and dislikes rapid reconnection). One send is
+# enough because the subscriber is already listening and dedupes nothing.
+kubectl -n "$NS" run sender --image=nephmesh/meshtastic-cli:2.7.11 \
+    --image-pull-policy=IfNotPresent --restart=Never --command -- \
+    python -c "
+import socket, subprocess, sys, time
+host = 'meshnode-sim'
+for _ in range(60):
+    try:
+        socket.create_connection((host, 4403), timeout=5).close()
+        break
+    except OSError:
+        time.sleep(3)
+else:
+    sys.exit('device API never became reachable')
+sys.exit(subprocess.run(['meshtastic', '--host', host, '--sendtext', '$MSG']).returncode)
+"
+kubectl -n "$NS" wait --for=jsonpath='{.status.phase}'=Succeeded pod/sender --timeout=180s
 
 step "6/6 verify the message reached MQTT"
 # grep -a: the protobuf topics carry binary payloads on the same stream.
 tries=0
-until kubectl -n "$NS" logs mqtt-watch | grep -aF "$MSG" >/dev/null 2>&1; do
+until kubectl -n "$NS" exec mqtt-watch -- sh -c "grep -aF '$MSG' /tmp/sub.log" >/dev/null 2>&1; do
     tries=$((tries + 1))
     if [ "$tries" -gt 20 ]; then
         echo "GATE FAILED: message not seen on MQTT within 60s"
-        kubectl -n "$NS" logs mqtt-watch | tail -20
+        kubectl -n "$NS" exec mqtt-watch -- sh -c "cat /tmp/sub.log" 2>&1 | tail -20
         exit 1
     fi
     sleep 3
 done
 echo "message observed on MQTT topics:"
-kubectl -n "$NS" logs mqtt-watch | grep -aF "$MSG" | head -4
+kubectl -n "$NS" exec mqtt-watch -- sh -c "grep -aF '$MSG' /tmp/sub.log" | head -4
 
 printf '\nPHASE 1 GATE: PASS\n'
 printf 'Teardown with: sh %s/../scripts/teardown.sh\n' "$(dirname "$0")/../manifests"

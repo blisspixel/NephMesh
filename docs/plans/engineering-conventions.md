@@ -4,6 +4,21 @@ Status: Phase 0 deliverable, drafted 2026-08-04. Primary source: `docs/research/
 Goal: keep NephMesh upstream-compatible with the Nephio ecosystem and provider-neutral, so any
 component is a header-swap and a module-path change away from fitting the Nephio house style.
 
+## 0. Language mix and why the repo is shell-heavy today
+
+Nephio's codebase is roughly 90% Go, with small amounts of Makefile, Python, shell, and Dockerfile.
+NephMesh should converge toward that same profile, because the substance of the project, the
+Meshtastic operator and the specializer functions, is Go (Phases 4 and 5). Until then the repo is
+deliberately shell and YAML: what exists so far is CI gates (`hack/*.sh`), demo glue
+(`demo/phase1/scripts/*.sh`), and Kubernetes manifests, which is exactly the category Nephio also
+implements in shell and Makefile. This is not drift; it is the pre-Go phase of the roadmap.
+
+The load-bearing rule that keeps future integration easy: no domain logic lives in shell. The shell
+here is orchestration and enforcement only (run a demo, fail a build). The moment reconciliation
+logic appears, it is Go, structured per the module layout below, so that a future contribution to
+Nephio is a module-path and header change, not a rewrite. When the operator lands, Go becomes the
+dominant language by volume, matching the upstream profile.
+
 ## 1. Target repo layout (final state)
 
 Single repo. Nephio splits across `nephio`, `api`, `porch`, and `catalog` repos because it has many

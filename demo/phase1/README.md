@@ -64,6 +64,7 @@ Two Kubernetes-specific findings from the gate run, both encoded in the manifest
 
 - A TCP readiness probe on 4403 is harmful: the device API is single-client and each probe connection force-closes the active CLI session, interrupting applies. The Deployment has no probe; the applier does its own reachability waits.
 - The MQTT client thread starts only at device boot; an in-place config write does not start it. The applier issues an explicit `--reboot` after applying, making the outcome deterministic.
+- The device API on 4403 is single-client, and its Portduino implementation wedges (stops accepting connections) under rapid reconnection. The demo opens one connection per step and sends exactly once; this is a real constraint the future operator must respect (serialize access, do not poll tightly).
 
 ## Troubleshooting
 

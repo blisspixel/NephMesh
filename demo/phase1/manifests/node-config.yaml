@@ -108,7 +108,7 @@ data:
             print("already converged; no changes, no reboot")
             return
 
-        rendered = "/tmp/node-rendered.yaml"
+        rendered = os.path.join(os.environ.get("HOME", "/tmp"), "node-rendered.yaml")
         with open(rendered, "w") as f:
             yaml.safe_dump(desired, f)
 

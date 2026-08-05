@@ -51,10 +51,12 @@ The RTL-SDR covers everything early phases need (433/868/**915 MHz ISM** - you c
 
 ## Legal note (US, brief, non-alarmist)
 
-- **Receiving is license-free** (47 U.S.C. § 301 licenses *transmission*). Spectrum sweeps, waterfalls, decoding unencrypted broadcasts: no license. Don't intercept cellular traffic or attempt to decrypt encrypted comms; a few states restrict *mobile* scanner use.
-- **Transmitting needs authorization** outside license-free bands - entry-level FCC Technician license: 35-question exam, $35, 10 years.
-- **Meshtastic TX is license-free:** 902–928 MHz under FCC Part 15, within device power/duty limits. (Meshtastic's optional ham mode: higher power, encryption disabled, callsign ID.)
-- README one-liner: *"NephMesh spectrum sensing is receive-only and requires no license in the US. Transmit features are opt-in and your responsibility: Meshtastic/ISM-band transmission is license-free under FCC Part 15; anything else generally requires an amateur radio license."*
+> Informal non-lawyer research, US-scoped, gathered at one point in time. Not legal advice, not a statement of what the law is, and silent on jurisdictions outside the US. Verify your own situation. See the repository [DISCLAIMER](../../DISCLAIMER.md).
+
+- **Receiving appears license-free** (47 U.S.C. § 301 licenses *transmission*, per our reading). Spectrum sweeps, waterfalls, decoding unencrypted broadcasts: no license found to be required. Do not intercept cellular traffic or attempt to decrypt encrypted comms; some states also restrict *mobile* scanner use.
+- **Transmitting needs authorization** outside license-free bands; the entry-level FCC Technician license is a 35-question exam, roughly $35, 10-year term.
+- **Meshtastic TX appears license-free** at 902–928 MHz under FCC Part 15, within device power/duty limits. (Meshtastic's optional ham mode: higher power, encryption disabled, callsign ID.)
+- Suggested README framing (self-hedged): *"NephMesh spectrum sensing is receive-only; in our US-scoped reading that needs no license, but you are responsible for your own jurisdiction. Transmit features are opt-in and your responsibility; see DISCLAIMER."*
 
 ## Prior art
 

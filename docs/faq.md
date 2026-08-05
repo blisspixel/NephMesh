@@ -35,13 +35,13 @@ One historical footnote worth getting right: the popular story that "ARPANET was
 Honest answer: diversity of technologies is the right instinct, but each service has to earn its way in by having a programmable control surface.
 
 - Meshtastic/LoRa: fully scriptable (API, YAML config, containers). This is why it is first.
-- Receive-only monitoring of anything: easy and legal. The SDR can watch CB (27 MHz), GMRS, ham bands, and ISM occupancy today; that is just more spectrum sensing.
+- Receive-only monitoring: technically easy, and generally unrestricted in our US-scoped reading (receiving is not licensed the way transmitting is, though interception of certain communications is restricted; see the disclaimer caveats). The SDR can watch CB (27 MHz), GMRS, ham bands, and ISM occupancy; that is just more spectrum sensing.
 - CB as a managed transport: poor fit. It is analog voice with essentially no digital control surface; there is nothing to declare or reconcile beyond "a radio exists".
 - Ham digital modes and GMRS data: possible future candidates where digital control surfaces exist, with the licensing caveats in [research/terminology-and-legality.md](research/terminology-and-legality.md) (notably: no encryption on amateur bands).
 
 ## Is an encrypted off-grid network like this legal?
 
-In the US, yes, and it is ordinary: license-free ISM bands under FCC Part 15 are the same rule section Wi-Fi uses, and Part 15 says nothing against encryption. The encryption prohibition people half-remember is an amateur-radio (Part 97) rule. Details and cites in [research/terminology-and-legality.md](research/terminology-and-legality.md).
+Our US-scoped research suggests it is, and ordinary: license-free ISM bands under FCC Part 15 are the same rule section Wi-Fi uses, and Part 15 says nothing against encryption; the encryption prohibition people half-remember is an amateur-radio (Part 97) rule. But that is informal non-lawyer research, not legal advice, and it says nothing about other countries or your specific situation. Radio and encryption rules vary by jurisdiction and change. You are responsible for verifying what applies to you. Details and cites in [research/terminology-and-legality.md](research/terminology-and-legality.md); responsibility terms in the [DISCLAIMER](../DISCLAIMER.md).
 
 ## Is "INaC" a real industry term?
 

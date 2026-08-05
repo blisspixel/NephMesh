@@ -16,15 +16,21 @@
 # modules land (docs/plans/engineering-conventions.md, section 6). For now it
 # carries the Phase 0 checks and the Phase 1 demo entry points.
 
-.PHONY: check check-headers check-style demo-phase1 demo-phase1-down help
+.PHONY: check check-headers check-style check-manifests check-transmit demo-phase1 demo-phase1-down help
 
-check: check-headers check-style ## Run all repo checks
+check: check-headers check-style check-manifests check-transmit ## Run all repo checks
 
 check-headers: ## Verify Apache-2.0 headers on source files
 	@sh hack/check-headers.sh
 
 check-style: ## Enforce AGENTS.md writing rules (no em dashes, emojis, attribution)
 	@sh hack/check-style.sh
+
+check-manifests: ## Enforce the threat model: never expose the control surface
+	@sh hack/check-manifests.sh
+
+check-transmit: ## Enforce the transmit interlock: no unmarked RF-transmit entry points
+	@sh hack/check-transmit.sh
 
 demo-phase1: ## Apply the Phase 1 virtual mesh demo to the current kube context
 	@sh demo/phase1/scripts/demo.sh

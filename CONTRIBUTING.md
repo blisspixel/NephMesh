@@ -22,6 +22,6 @@ Every commit must be signed off (`git commit -s`), certifying the [Developer Cer
 
 Fork, branch, PR against `main`. Run `make check` before pushing. Keep PRs scoped to one concern; reference the roadmap phase they serve.
 
-## Security
+## Security and legality
 
-See `SECURITY.md` for reporting anything sensitive, especially anything touching radio transmission paths.
+See `SECURITY.md` for reporting anything sensitive, especially anything touching radio transmission paths, and `docs/security/threat-model.md` for the standing security principles (above all, the transmit interlock: transmit stays absent and opt-in). Contributions must not weaken the receive-only default or imply legal guidance; see `DISCLAIMER.md`.
