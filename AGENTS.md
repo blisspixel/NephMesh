@@ -10,6 +10,7 @@ Scope is deliberately broader than any single radio. Meshtastic is the first con
 
 ## Orientation
 
+- `docs/agent-playbook.md` is the tool-agnostic command surface (works for any coding agent or a human): the exact commands for building, testing, rendering, and the single `sh hack/check-all.sh` that runs every gate before a commit. Skim it early.
 - Start with `docs/roadmap.md` (phased plan in dependency order; check phase status before proposing work) and `docs/architecture.md`.
 - `docs/research/` holds the sourced research base (Nephio mechanics, Meshtastic automation surface, SDR and Kubernetes device access, prior art, lab setup, terminology and legality). Prefer citing and updating these over re-deriving facts.
 - Planned layout: the full target tree (with the phase that creates each part) is in `docs/plans/engineering-conventions.md`: `packages/`, `api/`, `krm-functions/`, `operators/`, `exporters/`, `demo/`, plus `distros/` only if cloud-specific material ever exists. Do not create a directory until its roadmap phase starts.

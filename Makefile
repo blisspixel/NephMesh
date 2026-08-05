@@ -16,9 +16,12 @@
 # modules land (docs/plans/engineering-conventions.md, section 6). For now it
 # carries the Phase 0 checks and the Phase 1 demo entry points.
 
-.PHONY: check check-headers check-style check-manifests check-transmit check-packages kpt-runner demo-phase1 demo-phase1-down help
+.PHONY: check check-all check-headers check-style check-manifests check-transmit check-packages kpt-runner demo-phase1 demo-phase1-down help
 
 check: check-headers check-style check-manifests check-transmit ## Run all fast repo checks (no Docker)
+
+check-all: ## Run every gate (repo, Go modules, package render), skipping absent tooling
+	@sh hack/check-all.sh
 
 check-headers: ## Verify Apache-2.0 headers on source files
 	@sh hack/check-headers.sh
