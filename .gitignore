@@ -16,3 +16,10 @@ Thumbs.db
 # Agent working files and local logs (loop-engineering protocol)
 .agent/
 logs/
+
+# Local Deepr expert-council ideation and MCP wiring: research aids that
+# stay on the operator machine, never in the repo (see AGENTS.md).
+.deepr/
+.mcp.json
+hack/deepr-*.ps1
+hack/deepr-*.sh
