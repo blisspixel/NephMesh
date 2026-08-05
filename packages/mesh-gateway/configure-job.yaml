@@ -1,0 +1,68 @@
+# Copyright 2026 The NephMesh Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# One-shot declarative config apply. Uses the pinned, prebuilt CLI image so
+# nothing installs from PyPI at runtime. Service names are short and resolve
+# within the package's namespace. Phase 4 replaces this Job with an operator
+# that reconciles continuously. The image must be available to the target
+# cluster (Phase 4 publishes it to a registry with a digest).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: meshnode-configure
+  labels:
+    app.kubernetes.io/name: meshnode-configure
+spec:
+  backoffLimit: 6
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: meshnode-configure
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: configure
+          image: nephmesh/meshtastic-cli:2.7.11
+          imagePullPolicy: IfNotPresent
+          command: ["python", "/config/apply.py"]
+          env:
+            - name: MESH_HOST
+              value: meshnode-sim
+            - name: MQTT_SERVICE
+              value: mosquitto
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: desired
+              mountPath: /config
+      volumes:
+        - name: desired
+          configMap:
+            name: meshnode-desired-state

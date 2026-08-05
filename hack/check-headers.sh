@@ -21,7 +21,11 @@ set -eu
 fail=0
 for f in $(git ls-files '*.go' '*.sh' '*.mk' 'Makefile' '*/Makefile' 'Dockerfile' '*/Dockerfile' 'demo/**/*.yaml' 'packages/**/*.yaml' '.github/**/*.yaml' '.github/**/*.yml'); do
     case "$f" in
+        # testdata fixtures and kpt framework metadata (Kptfile has no
+        # extension so is never matched; package-context.yaml is a
+        # conventional minimal ConfigMap) are not first-party source.
         */testdata/*) continue ;;
+        */package-context.yaml) continue ;;
     esac
     if ! head -20 "$f" | grep -q "The NephMesh Authors"; then
         echo "missing license header: $f"

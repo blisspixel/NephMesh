@@ -1,0 +1,24 @@
+apiVersion: kpt.dev/v1
+kind: Kptfile
+metadata:
+  name: mqtt-bridge
+  annotations:
+    config.kubernetes.io/local-config: "true"
+info:
+  description: |
+    Private MQTT broker for a NephMesh site. Meshtastic gateways uplink mesh
+    traffic here rather than to the heavily restricted public broker. This is
+    a blueprint: clone it per site with a PackageVariant, which sets the
+    package name and namespace through package-context.yaml.
+pipeline:
+  mutators:
+    # Sets the namespace on every resource from the package name in
+    # package-context.yaml, so a per-site clone lands in its own namespace
+    # with no templating.
+    - image: ghcr.io/kptdev/krm-functions-catalog/set-namespace:v0.4.1
+      configPath: package-context.yaml
+    # Common identifying labels across the package.
+    - image: ghcr.io/kptdev/krm-functions-catalog/set-labels:v0.2.0
+      configMap:
+        app.kubernetes.io/part-of: nephmesh
+        app.kubernetes.io/managed-by: nephmesh-catalog

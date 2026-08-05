@@ -16,9 +16,9 @@
 # modules land (docs/plans/engineering-conventions.md, section 6). For now it
 # carries the Phase 0 checks and the Phase 1 demo entry points.
 
-.PHONY: check check-headers check-style check-manifests check-transmit demo-phase1 demo-phase1-down help
+.PHONY: check check-headers check-style check-manifests check-transmit check-packages kpt-runner demo-phase1 demo-phase1-down help
 
-check: check-headers check-style check-manifests check-transmit ## Run all repo checks
+check: check-headers check-style check-manifests check-transmit ## Run all fast repo checks (no Docker)
 
 check-headers: ## Verify Apache-2.0 headers on source files
 	@sh hack/check-headers.sh
@@ -31,6 +31,12 @@ check-manifests: ## Enforce the threat model: never expose the control surface
 
 check-transmit: ## Enforce the transmit interlock: no unmarked RF-transmit entry points
 	@sh hack/check-transmit.sh
+
+check-packages: ## Render every kpt package and fail on any pipeline error (needs Docker)
+	@sh hack/check-packages.sh
+
+kpt-runner: ## Build the pinned kpt render environment used locally on Windows and macOS
+	@docker build -t nephmesh/kpt-runner:v1.0.0-beta.67 hack/kpt
 
 demo-phase1: ## Apply the Phase 1 virtual mesh demo to the current kube context
 	@sh demo/phase1/scripts/demo.sh

@@ -36,6 +36,18 @@ jobs:
       - name: Transmit interlock gate
         run: sh hack/check-transmit.sh
 
+  packages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install kpt
+        run: |
+          curl -sL "https://github.com/kptdev/kpt/releases/download/v1.0.0-beta.67/kpt_linux_amd64-1.0.0-beta.67.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin kpt
+          kpt version
+      - name: Render all kpt packages
+        run: sh hack/check-packages.sh
+
   dco:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest

@@ -1,0 +1,11 @@
+# See packages/mqtt-bridge/package-context.yaml for the convention. Porch
+# rewrites data.name to the deployment package name on clone; set-namespace
+# consumes it so each site's gateway lands in its own namespace.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kptfile.kpt.dev
+  annotations:
+    config.kubernetes.io/local-config: "true"
+data:
+  name: mesh-gateway

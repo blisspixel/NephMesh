@@ -1,0 +1,24 @@
+apiVersion: kpt.dev/v1
+kind: Kptfile
+metadata:
+  name: mesh-gateway
+  annotations:
+    config.kubernetes.io/local-config: "true"
+info:
+  description: |
+    A Meshtastic mesh gateway for a NephMesh site: a meshtasticd node
+    (simulation-first), a declarative config applier, and namespace
+    isolation. This is a blueprint; clone it per site with a PackageVariant,
+    which sets the package name and namespace through package-context.yaml
+    and injects the site's WorkloadCluster for future specialization.
+
+    Simulation-first and receive-only: the node runs with --sim and no radio.
+    A real-radio variant is future work; nothing here transmits with an SDR.
+pipeline:
+  mutators:
+    - image: ghcr.io/kptdev/krm-functions-catalog/set-namespace:v0.4.1
+      configPath: package-context.yaml
+    - image: ghcr.io/kptdev/krm-functions-catalog/set-labels:v0.2.0
+      configMap:
+        app.kubernetes.io/part-of: nephmesh
+        app.kubernetes.io/managed-by: nephmesh-catalog

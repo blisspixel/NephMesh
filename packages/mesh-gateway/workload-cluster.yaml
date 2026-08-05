@@ -1,0 +1,31 @@
+# Copyright 2026 The NephMesh Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Placeholder WorkloadCluster, following the Nephio pkg-example-*-bp pattern.
+# A PackageVariant/PackageVariantSet injects the real per-site WorkloadCluster
+# here (by name), giving future specializer functions the site context they
+# need. It is marked local-config so that, when rendered standalone without
+# injection, it is treated as render-time context and never applied to a
+# cluster. No specializer consumes it yet; this records the injection point
+# for Phase 5.
+apiVersion: infra.nephio.org/v1alpha1
+kind: WorkloadCluster
+metadata:
+  name: example
+  annotations:
+    config.kubernetes.io/local-config: "true"
+spec:
+  clusterName: example
+  cnis:
+    - macvlan

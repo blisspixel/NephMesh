@@ -1,0 +1,13 @@
+# The package-context ConfigMap is a kpt convention. Porch rewrites
+# data.name to the deployment package name when this blueprint is cloned by
+# a PackageVariant, and set-namespace consumes it, so each site's broker
+# lands in its own namespace without any templating. The name below is the
+# blueprint default, used when rendering the package standalone.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kptfile.kpt.dev
+  annotations:
+    config.kubernetes.io/local-config: "true"
+data:
+  name: mqtt-bridge
