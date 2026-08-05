@@ -125,7 +125,8 @@ Goal: true reconciliation instead of one-shot config jobs. The most broadly usef
 - [x] Status conditions: Reachable, ConfigInSync, RebootPending, Ready (plus NodeID, firmware, neighbor count, last-heard), managed with `metav1.Condition` and observedGeneration
 - [ ] Reconcile the remaining config surface on real hardware: modemPreset, role, owner, and channels (PSKs from Secrets), each field's export path verified against a device, with a bounded-apply guard so a wrong path degrades rather than loops. Serial and viaGateway transports (today a graceful "unsupported" that reports unreachable)
 - [x] Ship as an `operator` kpt package (`packages/meshtastic-operator`): CRD, least-privilege RBAC, ServiceAccount, and Deployment, rendering clean through the render gate (set-namespace correctly namespaces the ServiceAccount and Deployment while leaving the CRD and ClusterRole cluster-scoped and fixing the binding subject). A multi-stage Dockerfile bundles the pinned CLI the operator execs
-- [ ] Add an envtest and testcontainers (`meshtasticd --sim`) integration job, and publish the operator image to a registry with a digest so the package is deployable end to end
+- [x] Integration test against real firmware: a build-tagged test drives the real `Converge` loop through the CLI-backed device client against a live `meshtasticd --sim`, reaching convergence and reporting the real node id. Runs in a CI job (Docker sim device plus the pinned CLI) and passes locally in about 10 seconds. This is the "executed against real firmware" bar the fake cannot provide; the controller layer stays covered by fake-client unit tests
+- [ ] Publish the operator image to a registry with a digest so the package deploys end to end (release step), and reconcile the remaining config surface (presets, role, owner, channels) verified on a physical board
 
 ## Phase 5: Multi-site fan-out ($0)
 
