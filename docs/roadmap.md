@@ -156,6 +156,15 @@ Goal: the disaster-resilience story end to end, no cellular hardware. Cellular i
 - [ ] Failover demo, reported as numbers not adjectives: kill the simulated gNB (a "cell outage"); an intent promotes the Meshtastic path; measure message delivery ratio during the outage and time to failover; restore the cell and traffic bridges back (see "Resilience, defined")
 - [ ] Full reproducible demo environment: management plus edge clusters, one script
 
+## Cross-cutting: exceptional engineering (in progress)
+
+The bar is code a critical-infrastructure or mission user could trust; the full standard and honest gaps are in `docs/CODE-QUALITY-STANDARDS.md`. Landed: golangci-lint and an 80% meaningful-coverage gate in CI, native fuzzing of the untrusted-input parsers, the race detector and `govulncheck` in CI, ShellCheck on the gate scripts, a real sim-device integration test, and a fix for the production logger defaulting to dev mode. Prioritized remaining, highest leverage first:
+
+- [ ] envtest as the controller-test tier (real API server and etcd), server-side apply for status, and a two-call idempotency test
+- [ ] Assume-breach control-proving tests: no-secret-in-logs, NetworkPolicy blocks cross-namespace (with a positive control), RBAC least-privilege golden test, hostile-CR rejection at admission, no default credentials in any shipped package
+- [ ] Supply chain: SHA-pin GitHub Actions, verify the kpt download by checksum, reproducible-build flags and digest-pinned base images, trivy and hadolint and pip-audit in CI, then SBOM and signing when the image is published
+- [ ] Architecture Decision Records (`docs/adr/`), a coordinated-disclosure process, and signed release tags
+
 ## Cross-cutting: agent-native from day one (in progress)
 
 The repo should be as easy for AI agents to work on as for humans, and eventually natural language should be a front door to intent.

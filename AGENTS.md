@@ -53,6 +53,8 @@ Do not skip consult solely because documents and conversations are zero.
 
 ## Code quality bars
 
+The full standard, with the enforced-vs-gap breakdown and the assume-breach testing bar, is `docs/CODE-QUALITY-STANDARDS.md`. The essentials:
+
 - No god files: one responsibility per file; split before a file accumulates a second concern. Applies to YAML too (one workload per manifest file, as demo/phase1 already does).
 - No placeholders in commits: zero TODO markers, stub bodies, or commented-out code. If work is unfinished, it is a roadmap or plan item, not a comment.
 - No copy-paste domain logic. Tiny local duplication is acceptable only when an abstraction would cost more than it saves.

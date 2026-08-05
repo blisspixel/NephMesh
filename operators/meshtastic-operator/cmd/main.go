@@ -57,7 +57,10 @@ func main() {
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "metrics endpoint address")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "health probe address")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false, "enable leader election for HA")
-	opts := zap.Options{Development: true}
+	// Production logging by default (JSON, no stacktraces). Developers opt into
+	// development-mode logging with --zap-devel; the released binary should not
+	// default to dev mode.
+	opts := zap.Options{Development: false}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 

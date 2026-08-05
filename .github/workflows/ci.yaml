@@ -35,6 +35,8 @@ jobs:
         run: sh hack/check-manifests.sh
       - name: Transmit interlock gate
         run: sh hack/check-transmit.sh
+      - name: ShellCheck the gate scripts
+        run: shellcheck hack/*.sh
 
   packages:
     runs-on: ubuntu-latest

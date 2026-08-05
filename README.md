@@ -34,6 +34,7 @@ Pre-alpha, and further along than that sounds. The 0.1 gate shipped (a virtual M
 | [Plans](docs/plans/) | Implementation plans: Phase 1, Phase 2, the operator, CRD API design, engineering conventions, and agentic AI nodes on the mesh |
 | [Research](docs/research/) | Sourced research: Nephio mechanics and codebase conventions, Meshtastic, SDR, prior art, terminology and legality |
 | [Guides](docs/guides/) | How-to guides, for example registering the packages with Nephio Porch |
+| [Code quality standards](docs/CODE-QUALITY-STANDARDS.md) | The engineering bar (race, fuzzing, govulncheck, envtest, assume-breach tests), what is enforced, and honest gaps |
 | [Agent playbook](docs/agent-playbook.md) | Tool-agnostic commands and entry points for any coding agent or human |
 | [AGENTS.md](AGENTS.md) | Conventions for AI coding agents; the repo is agent-native from day one |
 | [DISCLAIMER](DISCLAIMER.md) | Research-project and lawful-use terms: legality is your responsibility |
