@@ -24,10 +24,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	meshv1alpha1 "github.com/blisspixel/nephmesh/api/mesh/v1alpha1"
+	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/secret"
 )
 
 func TestBuildDesiredRegionOnly(t *testing.T) {
-	d := BuildDesired(meshv1alpha1.MeshtasticNodeSpec{Region: "US"}, "")
+	d := BuildDesired(meshv1alpha1.MeshtasticNodeSpec{Region: "US"}, "", secret.Value{})
 	assert.Equal(t, map[string]any{
 		"config": map[string]any{"lora": map[string]any{"region": "US"}},
 	}, d)
@@ -38,7 +39,7 @@ func TestBuildDesiredModemPresetAndRole(t *testing.T) {
 	// role -> config.device.role.
 	d := BuildDesired(meshv1alpha1.MeshtasticNodeSpec{
 		Region: "US", ModemPreset: "MEDIUM_SLOW", Role: "ROUTER",
-	}, "")
+	}, "", secret.Value{})
 	lora := d["config"].(map[string]any)["lora"].(map[string]any)
 	device := d["config"].(map[string]any)["device"].(map[string]any)
 	assert.Equal(t, "US", lora["region"])
@@ -52,7 +53,7 @@ func TestBuildDesiredOwner(t *testing.T) {
 	// --configure.
 	d := BuildDesired(meshv1alpha1.MeshtasticNodeSpec{
 		Owner: &meshv1alpha1.OwnerSpec{LongName: "NephMesh Sim 01", ShortName: "NM01"},
-	}, "")
+	}, "", secret.Value{})
 	assert.Equal(t, "NephMesh Sim 01", d["owner"])
 	assert.Equal(t, "NM01", d["owner_short"])
 }
@@ -62,12 +63,12 @@ func TestBuildDesiredOwnerPartialAndEmpty(t *testing.T) {
 	// like drift against a device that already has its own value there.
 	longOnly := BuildDesired(meshv1alpha1.MeshtasticNodeSpec{
 		Owner: &meshv1alpha1.OwnerSpec{LongName: "Base Camp"},
-	}, "")
+	}, "", secret.Value{})
 	assert.Equal(t, "Base Camp", longOnly["owner"])
 	_, hasShort := longOnly["owner_short"]
 	assert.False(t, hasShort, "owner_short must be absent when unset")
 
-	none := BuildDesired(meshv1alpha1.MeshtasticNodeSpec{Owner: &meshv1alpha1.OwnerSpec{}}, "")
+	none := BuildDesired(meshv1alpha1.MeshtasticNodeSpec{Owner: &meshv1alpha1.OwnerSpec{}}, "", secret.Value{})
 	_, hasOwner := none["owner"]
 	assert.False(t, hasOwner, "owner must be absent when both names are empty")
 }
@@ -77,7 +78,7 @@ func TestBuildDesiredMQTTUsesResolvedAddress(t *testing.T) {
 		Region: "US",
 		MQTT:   &meshv1alpha1.MQTTSpec{Enabled: true, JSONEnabled: true},
 	}
-	d := BuildDesired(spec, "10.0.0.5")
+	d := BuildDesired(spec, "10.0.0.5", secret.Value{})
 	mqtt := d["module_config"].(map[string]any)["mqtt"].(map[string]any)
 	assert.Equal(t, true, mqtt["enabled"])
 	assert.Equal(t, "10.0.0.5", mqtt["address"], "the resolved broker address is written, not a Service name")
@@ -91,17 +92,45 @@ func TestBuildDesiredFullMQTT(t *testing.T) {
 			Enabled: true, EncryptionEnabled: true, TLSEnabled: true, Root: "msh/site1",
 		},
 	}
-	mqtt := BuildDesired(spec, "10.0.0.5")["module_config"].(map[string]any)["mqtt"].(map[string]any)
+	mqtt := BuildDesired(spec, "10.0.0.5", secret.Value{})["module_config"].(map[string]any)["mqtt"].(map[string]any)
 	assert.Equal(t, true, mqtt["encryption_enabled"])
 	assert.Equal(t, true, mqtt["tls_enabled"])
 	assert.Equal(t, "msh/site1", mqtt["root"])
+}
+
+func TestBuildDesiredMQTTUsernameAndPassword(t *testing.T) {
+	// Username is plaintext from the spec; the password is resolved from a
+	// Secret and revealed only here, at the config-write point. Both must reach
+	// the device config. Path verified against meshtasticd --sim (mqtt.username
+	// and mqtt.password round-trip through --configure).
+	spec := meshv1alpha1.MeshtasticNodeSpec{
+		Region: "US",
+		MQTT:   &meshv1alpha1.MQTTSpec{Enabled: true, Username: "meshops"},
+	}
+	mqtt := BuildDesired(spec, "10.0.0.5", secret.New("brokerpass"))["module_config"].(map[string]any)["mqtt"].(map[string]any)
+	assert.Equal(t, "meshops", mqtt["username"])
+	assert.Equal(t, "brokerpass", mqtt["password"], "the resolved password is written to the device config")
+}
+
+func TestBuildDesiredOmitsEmptyMQTTCredentials(t *testing.T) {
+	// No Secret resolved and no username means neither key is emitted, so an
+	// unset credential cannot look like drift against a device that has its own.
+	spec := meshv1alpha1.MeshtasticNodeSpec{
+		Region: "US",
+		MQTT:   &meshv1alpha1.MQTTSpec{Enabled: true},
+	}
+	mqtt := BuildDesired(spec, "10.0.0.5", secret.Value{})["module_config"].(map[string]any)["mqtt"].(map[string]any)
+	_, hasPw := mqtt["password"]
+	assert.False(t, hasPw, "no password key when no Secret is resolved")
+	_, hasUser := mqtt["username"]
+	assert.False(t, hasUser, "no username key when unset")
 }
 
 func TestBuildDesiredOmitsDisabledMQTT(t *testing.T) {
 	d := BuildDesired(meshv1alpha1.MeshtasticNodeSpec{
 		Region: "US",
 		MQTT:   &meshv1alpha1.MQTTSpec{Enabled: false},
-	}, "10.0.0.5")
+	}, "10.0.0.5", secret.Value{})
 	_, hasModule := d["module_config"]
 	assert.False(t, hasModule, "a disabled MQTT module contributes no desired config")
 }
@@ -117,7 +146,7 @@ func TestBuildDesiredNeverEmitsTransmitPowerKeys(t *testing.T) {
 		Role:        "ROUTER",
 		MQTT:        &meshv1alpha1.MQTTSpec{Enabled: true},
 	}
-	blob := fmt.Sprintf("%v", BuildDesired(spec, "10.0.0.5"))
+	blob := fmt.Sprintf("%v", BuildDesired(spec, "10.0.0.5", secret.Value{}))
 	forbidden := []string{"txPower", "tx_power", "power", "txEnabled", "tx_enabled"} // transmit-ok: asserted absent, never emitted
 	for _, key := range forbidden {
 		assert.NotContains(t, blob, key, "BuildDesired must never emit a transmit-power key")
@@ -131,7 +160,7 @@ func TestBuildDesiredRoundTripsThroughConverge(t *testing.T) {
 		Region: "US",
 		MQTT:   &meshv1alpha1.MQTTSpec{Enabled: true, JSONEnabled: true},
 	}
-	desired := BuildDesired(spec, "10.0.0.5")
+	desired := BuildDesired(spec, "10.0.0.5", secret.Value{})
 	live := map[string]any{
 		"config": map[string]any{
 			"lora":   map[string]any{"region": "US", "hopLimit": 3},

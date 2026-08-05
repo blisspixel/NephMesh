@@ -24,10 +24,13 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -37,6 +40,7 @@ import (
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/config"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/device"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/reconcile"
+	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/secret"
 )
 
 // DeviceFactory builds a device client for a node's connection. It is injected
@@ -47,6 +51,11 @@ type DeviceFactory func(ctx context.Context, node *meshv1alpha1.MeshtasticNode) 
 // MeshtasticNodeReconciler reconciles a MeshtasticNode against its device.
 type MeshtasticNodeReconciler struct {
 	client.Client
+	// Reader is an uncached reader (the manager's APIReader) used only for
+	// Secrets. Reading Secrets through the cached client would start a
+	// cluster-wide Secret informer and force a cluster-wide list/watch grant;
+	// an uncached get keeps the RBAC a namespaced get, per the threat model.
+	Reader    client.Reader
 	NewDevice DeviceFactory
 }
 
@@ -54,11 +63,12 @@ type MeshtasticNodeReconciler struct {
 // +kubebuilder:rbac:groups=mesh.nephmesh.io,resources=meshtasticnodes/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=mesh.nephmesh.io,resources=meshtasticnodes/finalizers,verbs=update
 //
-// Note: no Secret access is granted. Channel PSK and MQTT password secrets are
-// not read yet; when that path ships it will use a namespaced Role scoped to
-// the operator namespace, not a cluster-wide Secret grant. A broad unused grant
-// plus the pod's service-account token would be a cluster-wide exfiltration
-// path on compromise, so it is deliberately absent (least privilege).
+// Secret access is NOT a cluster-wide grant. The operator reads the broker
+// password (and later channel PSKs) with a namespaced get only, granted by a
+// Role in the operator namespace (packages/meshtastic-operator/rbac.yaml), not
+// by a kubebuilder marker (markers generate a ClusterRole, and a cluster-wide
+// Secret read plus the pod token would be a cluster-wide exfiltration path on
+// compromise). The read is uncached (r.Reader) so no Secret informer is opened.
 
 // Reconcile runs one bounded convergence step and records conditions.
 func (r *MeshtasticNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -96,7 +106,13 @@ func (r *MeshtasticNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	desired := config.BuildDesired(node.Spec, r.resolveBroker(ctx, &node))
+	mqttPassword, err := r.resolveMQTTPassword(ctx, &node)
+	if err != nil {
+		// The error names the secret and key, never the value.
+		return ctrl.Result{}, err
+	}
+
+	desired := config.BuildDesired(node.Spec, r.resolveBroker(ctx, &node), mqttPassword)
 	prior := reconcile.State{
 		RebootPending: meta.IsStatusConditionTrue(node.Status.Conditions, meshv1alpha1.ConditionRebootPending),
 		ApplyAttempts: node.Status.ApplyAttempts,
@@ -126,6 +142,29 @@ func (r *MeshtasticNodeReconciler) resolveBroker(_ context.Context, node *meshv1
 		return ""
 	}
 	return node.Spec.MQTT.Address
+}
+
+// resolveMQTTPassword reads the broker password from the Secret the spec
+// references, in the node's own namespace, with an uncached get. The value is
+// wrapped in a redacting secret.Value immediately, so it cannot leak through a
+// log line or error between here and the config-write path. Errors name the
+// secret and key only, never the value.
+func (r *MeshtasticNodeReconciler) resolveMQTTPassword(ctx context.Context, node *meshv1alpha1.MeshtasticNode) (secret.Value, error) {
+	if node.Spec.MQTT == nil || node.Spec.MQTT.PasswordSecretRef == nil {
+		return secret.Value{}, nil
+	}
+	ref := node.Spec.MQTT.PasswordSecretRef
+
+	var s corev1.Secret
+	key := types.NamespacedName{Namespace: node.Namespace, Name: ref.Name}
+	if err := r.Reader.Get(ctx, key, &s); err != nil {
+		return secret.Value{}, fmt.Errorf("reading mqtt password secret %q: %w", ref.Name, err)
+	}
+	data, ok := s.Data[ref.Key]
+	if !ok {
+		return secret.Value{}, fmt.Errorf("mqtt password secret %q has no key %q", ref.Name, ref.Key)
+	}
+	return secret.New(string(data)), nil
 }
 
 func applyOutcome(node *meshv1alpha1.MeshtasticNode, o reconcile.Outcome) {

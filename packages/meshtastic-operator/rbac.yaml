@@ -14,10 +14,11 @@
 
 # Least-privilege access for the operator, matching the generated role
 # (operators kubebuilder markers). It may read the MeshtasticNode resources it
-# reconciles and update their status and finalizers. Nothing more: no Secret
-# access (channel PSK and MQTT password reading is not implemented yet, and
-# will use a namespaced Role scoped to the operator namespace when it is, never
-# a cluster-wide Secret grant), no workload creation, no escalation.
+# reconciles and update their status and finalizers, cluster-scoped. Secret
+# access (the MQTT broker password, and later channel PSKs) is a separate,
+# namespaced Role granting get only, scoped to the operator namespace by
+# set-namespace, never a cluster-wide Secret grant; the operator reads Secrets
+# uncached, so it needs no list or watch. No workload creation, no escalation.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -52,6 +53,37 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: meshtastic-operator
+subjects:
+  - kind: ServiceAccount
+    name: meshtastic-operator
+    # namespace is set by set-namespace at render time.
+    namespace: meshtastic-operator
+---
+# Namespaced Secret access: get only, no list or watch (reads are uncached), and
+# scoped to the operator namespace, so a compromised operator token cannot read
+# Secrets cluster-wide. This is deliberately a Role, not a kubebuilder marker
+# (markers generate a ClusterRole).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: meshtastic-operator-secrets
+  labels:
+    app.kubernetes.io/name: meshtastic-operator
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: meshtastic-operator-secrets
+  labels:
+    app.kubernetes.io/name: meshtastic-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: meshtastic-operator-secrets
 subjects:
   - kind: ServiceAccount
     name: meshtastic-operator
