@@ -31,7 +31,7 @@ Pre-alpha, and further along than that sounds. The 0.1 gate shipped (a virtual M
 | [Roadmap](docs/roadmap.md) | Phased plan in dependency order, the version path to 1.0, and how much runs with zero hardware (most of it) |
 | [FAQ](docs/faq.md) | The north star (a self-adapting multi-transport fabric), why Meshtastic first, secure private channels, power and autonomy, PACE/DIL, legality |
 | [Architecture](docs/architecture.md) | Components, the radio-driver seam, planned CRDs, data flows, design principles |
-| [Plans](docs/plans/) | Implementation plans: Phase 1, Phase 2, the operator, CRD API design, engineering conventions |
+| [Plans](docs/plans/) | Implementation plans: Phase 1, Phase 2, the operator, CRD API design, engineering conventions, and agentic AI nodes on the mesh |
 | [Research](docs/research/) | Sourced research: Nephio mechanics and codebase conventions, Meshtastic, SDR, prior art, terminology and legality |
 | [Guides](docs/guides/) | How-to guides, for example registering the packages with Nephio Porch |
 | [Agent playbook](docs/agent-playbook.md) | Tool-agnostic commands and entry points for any coding agent or human |
