@@ -1,0 +1,91 @@
+/*
+Copyright 2026 The NephMesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+// Package config computes the minimal difference between desired and live
+// Meshtastic configuration. It is a pure, dependency-light port of the
+// convergence check validated in the Phase 1 demo applier: the device is
+// converged when every field the desired state declares is already present,
+// with an equal value, in the live exported config. Fields the device reports
+// but the desired state does not mention are ignored, so a partial desired
+// config does not fight the device's many defaults.
+package config
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
+
+// normKey compares configuration keys case- and underscore-insensitively,
+// because the Meshtastic CLI accepts snake_case on write but exports camelCase
+// (json_enabled in, jsonEnabled out). Without this, a converged node would
+// look drifted forever.
+func normKey(k string) string {
+	return strings.ReplaceAll(strings.ToLower(k), "_", "")
+}
+
+// IsConverged reports whether live already satisfies desired: every desired
+// key is present in live (compared with normKey) with an equal value,
+// recursively for nested maps. Scalars compare by trimmed, lowercased string
+// form, matching the demo applier's tolerant comparison of YAML-decoded values.
+func IsConverged(desired, live map[string]any) bool {
+	return len(Drift(desired, live)) == 0
+}
+
+// Drift returns the dotted paths of desired keys that are missing from live or
+// whose values differ. An empty result means converged. Paths are sorted so
+// callers and tests get deterministic output.
+func Drift(desired, live map[string]any) []string {
+	var paths []string
+	collectDrift("", desired, live, &paths)
+	sort.Strings(paths)
+	return paths
+}
+
+func collectDrift(prefix string, desired, live map[string]any, out *[]string) {
+	liveByNorm := make(map[string]any, len(live))
+	for k, v := range live {
+		liveByNorm[normKey(k)] = v
+	}
+	for k, dv := range desired {
+		path := k
+		if prefix != "" {
+			path = prefix + "." + k
+		}
+		lv, ok := liveByNorm[normKey(k)]
+		if !ok {
+			*out = append(*out, path)
+			continue
+		}
+		dMap, dIsMap := dv.(map[string]any)
+		lMap, lIsMap := lv.(map[string]any)
+		switch {
+		case dIsMap && lIsMap:
+			collectDrift(path, dMap, lMap, out)
+		case dIsMap != lIsMap:
+			*out = append(*out, path)
+		default:
+			if !scalarEqual(dv, lv) {
+				*out = append(*out, path)
+			}
+		}
+	}
+}
+
+func scalarEqual(a, b any) bool {
+	return strings.TrimSpace(strings.ToLower(fmt.Sprint(a))) ==
+		strings.TrimSpace(strings.ToLower(fmt.Sprint(b)))
+}

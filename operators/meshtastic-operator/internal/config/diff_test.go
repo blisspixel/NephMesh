@@ -1,0 +1,75 @@
+/*
+Copyright 2026 The NephMesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package config
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func TestConvergedWhenDesiredSubsetPresent(t *testing.T) {
+	desired := map[string]any{
+		"config": map[string]any{"lora": map[string]any{"region": "US"}},
+	}
+	live := map[string]any{
+		"config": map[string]any{
+			"lora":   map[string]any{"region": "US", "hopLimit": 3},
+			"device": map[string]any{"role": "CLIENT"},
+		},
+		"extra": "ignored",
+	}
+	assert.True(t, IsConverged(desired, live), "extra live fields must not count as drift")
+	assert.Empty(t, Drift(desired, live))
+}
+
+func TestSnakeVersusCamelKeysConverge(t *testing.T) {
+	// The device exports camelCase; desired is written snake_case.
+	desired := map[string]any{"module_config": map[string]any{"json_enabled": true}}
+	live := map[string]any{"moduleConfig": map[string]any{"jsonEnabled": true}}
+	assert.True(t, IsConverged(desired, live), "key comparison must ignore case and underscores")
+}
+
+func TestDriftReportsMissingAndChangedPaths(t *testing.T) {
+	desired := map[string]any{
+		"config": map[string]any{"lora": map[string]any{"region": "US", "modemPreset": "MEDIUM_SLOW"}},
+	}
+	live := map[string]any{
+		"config": map[string]any{"lora": map[string]any{"region": "EU_868"}},
+	}
+	drift := Drift(desired, live)
+	assert.Equal(t, []string{"config.lora.modemPreset", "config.lora.region"}, drift,
+		"missing key and changed value both reported, sorted")
+	assert.False(t, IsConverged(desired, live))
+}
+
+func TestScalarValuesCompareTolerantly(t *testing.T) {
+	// YAML decoding can yield different representations; compare tolerantly.
+	assert.True(t, IsConverged(
+		map[string]any{"enabled": true},
+		map[string]any{"enabled": "True"}))
+	assert.True(t, IsConverged(
+		map[string]any{"port": 4403},
+		map[string]any{"port": "4403"}))
+}
+
+func TestMapVersusScalarMismatchIsDrift(t *testing.T) {
+	desired := map[string]any{"mqtt": map[string]any{"enabled": true}}
+	live := map[string]any{"mqtt": "on"}
+	assert.Equal(t, []string{"mqtt"}, Drift(desired, live),
+		"a desired map against a live scalar is drift, not a panic")
+}
