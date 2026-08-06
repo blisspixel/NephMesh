@@ -42,6 +42,8 @@ jobs:
         run: sh hack/check-transmit.sh
       - name: Actions are SHA-pinned
         run: sh hack/check-actions.sh
+      - name: No default credentials in shipped manifests
+        run: sh hack/check-secrets.sh
       - name: ShellCheck the gate scripts
         run: shellcheck hack/*.sh
 

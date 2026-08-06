@@ -110,7 +110,7 @@ Honest limits unchanged by either: jamming, direction-finding, and metadata traf
 - That the manifest gate stays ahead of new exposure vectors as Kubernetes adds them (it enumerates known ones; it cannot know future APIs).
 - Imperative exposure: scripts using `kubectl expose`, `--type=NodePort`, or `port-forward` on 4403/1883 are not covered by the YAML gate (tracked follow-up: extend the gate to shell).
 - That no code path logs an exported config containing a PSK (becomes a test at Phase 4).
-- That the default PSK and default MQTT credentials never appear in any package meant for real use.
+- That the default PSK and default MQTT credentials never appear in any package meant for real use (now enforced by `hack/check-secrets.sh` in CI).
 
 ## Reporting
 
