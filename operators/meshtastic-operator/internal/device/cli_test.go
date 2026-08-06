@@ -53,6 +53,12 @@ func TestLooksUnreachableMatchesKnownCLIErrors(t *testing.T) {
 	assert.True(t, looksUnreachable("Error connecting to meshnode-sim:[Errno 110] Connection timed out"))
 	assert.True(t, looksUnreachable("Connection refused"))
 	assert.False(t, looksUnreachable("Set lora.region to US"))
+
+	// Serial reboot window: while a real board reboots after an apply it drops
+	// off the USB bus, so the port cannot be opened. That is transient
+	// unreachable (requeue), not a hard failure. Verified against a T-Deck.
+	assert.True(t, looksUnreachable("could not open port 'COM3': PermissionError(13, 'Access is denied.', None, 5)"))
+	assert.True(t, looksUnreachable("[Errno 2] could not open port /dev/ttyACM0: No such file or directory"))
 }
 
 func TestParseInfoFindsNodeID(t *testing.T) {
