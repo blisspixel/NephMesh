@@ -63,6 +63,13 @@ func TestUnknownPresetReported(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestHealthyRespectsCeilings(t *testing.T) {
+	assert.True(t, Healthy(10, 2), "well under both ceilings")
+	assert.True(t, Healthy(RecommendedChannelUtilizationPercent, RecommendedAirUtilTxPercent), "at the ceilings is still healthy")
+	assert.False(t, Healthy(40, 2), "channel utilization over ceiling")
+	assert.False(t, Healthy(10, 15), "transmit airtime over ceiling")
+}
+
 func TestDutyCyclePercent(t *testing.T) {
 	// A 1-second frame once every 10 seconds is 10% of the channel.
 	assert.InDelta(t, 10.0, DutyCyclePercent(time.Second, 10*time.Second), 1e-9)

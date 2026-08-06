@@ -134,6 +134,28 @@ func TestReconcileDeletionRemovesFinalizer(t *testing.T) {
 	assert.True(t, err != nil, "with its finalizer removed, the object is gone")
 }
 
+func TestAirtimeHealthyConditionFromTelemetry(t *testing.T) {
+	ch, tx := 12.0, 3.0
+	node := newNode()
+	applyOutcome(node, reconcile.Outcome{Reachable: true, Info: device.Info{NodeID: "!x", ChannelUtilization: &ch, AirUtilTx: &tx}})
+	c := meta.FindStatusCondition(node.Status.Conditions, meshv1alpha1.ConditionAirtimeHealthy)
+	require.NotNil(t, c)
+	assert.Equal(t, metav1.ConditionTrue, c.Status)
+	assert.Contains(t, c.Message, "channelUtilization 12.0%")
+
+	// Over the channel-utilization ceiling: unhealthy, surfaced not swallowed.
+	high := 40.0
+	applyOutcome(node, reconcile.Outcome{Reachable: true, Info: device.Info{ChannelUtilization: &high}})
+	c = meta.FindStatusCondition(node.Status.Conditions, meshv1alpha1.ConditionAirtimeHealthy)
+	require.NotNil(t, c)
+	assert.Equal(t, metav1.ConditionFalse, c.Status)
+
+	// No telemetry reported: no condition set (the metric is best-effort).
+	fresh := newNode()
+	applyOutcome(fresh, reconcile.Outcome{Reachable: true, Info: device.Info{NodeID: "!y"}})
+	assert.Nil(t, meta.FindStatusCondition(fresh.Status.Conditions, meshv1alpha1.ConditionAirtimeHealthy))
+}
+
 func TestReconcileMissingObjectIsNoOp(t *testing.T) {
 	r, _ := reconcilerFor(t, newNode(), func(context.Context, *meshv1alpha1.MeshtasticNode) (device.Client, error) {
 		return device.NewFake(desiredUS(), 0), nil

@@ -37,6 +37,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	meshv1alpha1 "github.com/blisspixel/nephmesh/api/mesh/v1alpha1"
+	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/airtime"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/config"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/device"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/reconcile"
@@ -197,7 +198,38 @@ func applyOutcome(node *meshv1alpha1.MeshtasticNode, o reconcile.Outcome) {
 		node.Status.NodeID = o.Info.NodeID
 		now := metav1.NewTime(time.Now())
 		node.Status.LastHeard = &now
+		applyAirtimeHealth(node, o.Info, gen)
 	}
+}
+
+// applyAirtimeHealth surfaces the radio's own airtime telemetry as a condition,
+// so a saturating channel (airtime is the LoRa scaling wall) is visible rather
+// than silently degrading. It is set only when the device reported the metrics.
+func applyAirtimeHealth(node *meshv1alpha1.MeshtasticNode, info device.Info, gen int64) {
+	if info.ChannelUtilization == nil && info.AirUtilTx == nil {
+		return
+	}
+	ch, tx := valueOr(info.ChannelUtilization), valueOr(info.AirUtilTx)
+	status := metav1.ConditionTrue
+	reason := meshv1alpha1.ReasonAirtimeHealthy
+	if !airtime.Healthy(ch, tx) {
+		status = metav1.ConditionFalse
+		reason = meshv1alpha1.ReasonAirtimeHigh
+	}
+	meta.SetStatusCondition(&node.Status.Conditions, metav1.Condition{
+		Type:               meshv1alpha1.ConditionAirtimeHealthy,
+		Status:             status,
+		Reason:             reason,
+		ObservedGeneration: gen,
+		Message:            fmt.Sprintf("channelUtilization %.1f%%, airUtilTx %.1f%%", ch, tx),
+	})
+}
+
+func valueOr(v *float64) float64 {
+	if v == nil {
+		return 0
+	}
+	return *v
 }
 
 func hasFinalizer(node *meshv1alpha1.MeshtasticNode) bool {
