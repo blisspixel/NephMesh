@@ -61,6 +61,10 @@ func main() {
 	serial := flag.String("serial", "", "USB serial port (e.g. COM3 or /dev/ttyACM0)")
 	exporter := flag.String("exporter", "", `argv of the config exporter (e.g. "python hack/mesh-export.py"), required for -serial`)
 	observe := flag.Bool("observe", false, "read-only: reconcile an empty intent so the device is never modified")
+	region := flag.String("region", "", "desired region (apply mode)")
+	preset := flag.String("preset", "", "desired modem preset (apply mode)")
+	owner := flag.String("owner", "", "desired owner long name (apply mode)")
+	ownerShort := flag.String("owner-short", "", "desired owner short name (apply mode)")
 	flag.Parse()
 
 	if *host == "" && *serial == "" {
@@ -97,18 +101,26 @@ func main() {
 		fmt.Printf("live config read from device: region=%v role=%v owner=%v\n\n",
 			dig(live, "config", "lora", "region"), dig(live, "config", "device", "role"), live["owner"])
 	} else {
-		// A non-default modem preset: the export omits fields left at the device
-		// default (LONG_FAST), which would read as permanent drift, so this
-		// declares a value the device actually reports back.
-		spec := meshv1alpha1.MeshtasticNodeSpec{
-			Region:      "US",
-			ModemPreset: "MEDIUM_SLOW",
-			Owner:       &meshv1alpha1.OwnerSpec{LongName: "NephMesh Field 01", ShortName: "NF01"},
+		var spec meshv1alpha1.MeshtasticNodeSpec
+		if *region == "" && *preset == "" && *owner == "" && *ownerShort == "" {
+			// Default demo intent. A non-default preset because the export omits
+			// fields left at the device default (LONG_FAST), which would read as
+			// permanent drift.
+			spec = meshv1alpha1.MeshtasticNodeSpec{
+				Region:      "US",
+				ModemPreset: "MEDIUM_SLOW",
+				Owner:       &meshv1alpha1.OwnerSpec{LongName: "NephMesh Field 01", ShortName: "NF01"},
+			}
+		} else {
+			spec.Region = *region
+			spec.ModemPreset = *preset
+			if *owner != "" || *ownerShort != "" {
+				spec.Owner = &meshv1alpha1.OwnerSpec{LongName: *owner, ShortName: *ownerShort}
+			}
 		}
 		desired = config.BuildDesired(spec, "", secret.Value{})
 		fmt.Printf("nephmesh reconcile-demo: driving Meshtastic device at %s\n", target)
-		fmt.Printf("desired intent: region=%s modemPreset=%s owner=%q\n\n",
-			spec.Region, spec.ModemPreset, spec.Owner.LongName)
+		fmt.Printf("desired intent: %v\n\n", desired)
 	}
 
 	state := reconcile.State{}

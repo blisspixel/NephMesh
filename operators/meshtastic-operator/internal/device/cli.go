@@ -69,10 +69,21 @@ func (c *CLIClient) bin() string {
 // reached, so the caller can requeue rather than treat it as a hard failure.
 func looksUnreachable(output string) bool {
 	o := strings.ToLower(output)
-	return strings.Contains(o, "timed out") ||
+	// TCP transports.
+	if strings.Contains(o, "timed out") ||
 		strings.Contains(o, "connection refused") ||
 		strings.Contains(o, "error connecting") ||
-		strings.Contains(o, "no route to host")
+		strings.Contains(o, "no route to host") {
+		return true
+	}
+	// Serial transports: while a device reboots after an apply it drops off the
+	// USB bus and the port briefly cannot be opened. That is a transient
+	// unreachable window (the loop should requeue), not a hard failure.
+	return strings.Contains(o, "could not open port") ||
+		strings.Contains(o, "permissionerror") ||
+		strings.Contains(o, "access is denied") ||
+		strings.Contains(o, "no such file or directory") ||
+		strings.Contains(o, "device disconnected")
 }
 
 // connArgs is the CLI connection flag for the configured transport: --port for
