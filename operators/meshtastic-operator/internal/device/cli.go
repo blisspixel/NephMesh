@@ -22,6 +22,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -216,11 +218,30 @@ func (c *CLIClient) Info(ctx context.Context) (Info, error) {
 // parseInfo pulls the node id token (for example "!6e000001") from --info
 // output. It is intentionally forgiving.
 func parseInfo(out string) Info {
+	var info Info
 	for _, field := range strings.Fields(out) {
 		token := strings.Trim(field, `"',:{}[]`)
 		if strings.HasPrefix(token, "!") && len(token) == 9 {
-			return Info{NodeID: token}
+			info.NodeID = token
+			break
 		}
 	}
-	return Info{}
+	// Airtime telemetry from deviceMetrics (best effort: the first reported
+	// value, which is the local node on a bench device).
+	info.AirUtilTx = parseFloatMetric(out, "airUtilTx")
+	info.ChannelUtilization = parseFloatMetric(out, "channelUtilization")
+	return info
+}
+
+// parseFloatMetric pulls a numeric JSON field value out of --info output.
+func parseFloatMetric(out, key string) *float64 {
+	m := regexp.MustCompile(`"` + key + `"\s*:\s*(-?[0-9]+(?:\.[0-9]+)?)`).FindStringSubmatch(out)
+	if m == nil {
+		return nil
+	}
+	v, err := strconv.ParseFloat(m[1], 64)
+	if err != nil {
+		return nil
+	}
+	return &v
 }
