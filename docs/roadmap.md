@@ -28,14 +28,14 @@ The phase numbers are stable identifiers (they name plan files and appear throug
 
 ## Version path
 
-Each phase's gate earns a 0.x release. Versions are earned by working demos, not by calendar, and because Phase 2 and Phase 3 are independent, their releases can land in either order (0.3's packaging is already done and its Porch gate is next; 0.2 waits on hardware).
+Each working milestone earns a 0.x release, by demonstrated capability rather than by calendar. Most of the path is hardware-free by design: the flagship operator earns its release validated against a simulated device in CI, and only the real-radio and multi-site gates wait on plugging hardware in. The version path was revised after 0.1 so the operator milestone earns its own release rather than making the flagship wait on hardware; the phase numbers (Phase 1 through 7) are stable identifiers and are not the same sequence as the version numbers.
 
-| Version | Gate |
+| Version | Milestone |
 |---|---|
-| 0.1 | Phase 1 demo: a virtual mesh node deployed, configured, and torn down declaratively (passed 2026-08-04) |
-| 0.2 | Phase 2 demo: intent drives real radios; the mesh is visible in sensed spectrum (waits on hardware) |
+| 0.1 | Phase 1 demo: a virtual mesh node deployed, configured, and torn down declaratively (shipped 2026-08-04) |
+| 0.2 | The `MeshtasticNode` operator (Phase 4 software): reconciles region, modem preset, role, MQTT (with a broker password read from a Secret), and owner against a live `meshtasticd --sim` in CI; shipped as a kpt package; hardened with an envtest controller tier and assume-breach tests (shipped 2026-08-05) |
 | 0.3 | Phase 3 demo: packages consumable by a stock Porch install (this repo registered as a catalog). Packaging and specialization resources done and render-validated; the end-to-end Porch run is the remaining gate |
-| 0.4 | Phase 4 demo: the MeshtasticNode operator reconciling drift on real hardware |
+| 0.4 | Real radios (Phases 2 and 4 on hardware): intent drives physical Meshtastic boards, the operator reconciles drift on a real device, and the mesh is visible in sensed spectrum |
 | 0.5 | Phase 5 demo: two sites managed from one Git repo with per-site specialization |
 | 0.6 | Phase 6 demo: closed loop from sensed occupancy to reconciled channel change |
 | 0.7 | Phase 7 demo: cellular outage fails over to mesh and back |

@@ -22,7 +22,7 @@ One thing to be clear about up front, because it is easy to misread: the Kuberne
 
 ## Status
 
-Pre-alpha, and further along than that sounds. The 0.1 gate shipped (a virtual Meshtastic node deployed, configured, observed on MQTT, and torn down declaratively; transcript in [demo/phase1](demo/phase1/README.md)). Since then: the `MeshtasticNode` operator is built in Go and validated against a live `meshtasticd --sim` device in CI (it reconciles region, modem preset, role, and MQTT), the kpt packages render through a gate, and the Go code holds lint, coverage, race-detector, and vulnerability-scan floors, with SHA-pinned CI actions and assume-breach control-proving tests. Demo captures land here as each roadmap gate ships.
+Pre-alpha, and further along than that sounds. **0.2.0** shipped the flagship: the `MeshtasticNode` operator, built in Go and validated against a live `meshtasticd --sim` device in CI (it reconciles region, modem preset, role, owner, and MQTT with a broker password read from a Secret), packaged as a kpt blueprint, and hardened with an envtest controller tier and assume-breach control-proving tests. 0.1.0 shipped the Phase 1 virtual mesh demo (a node deployed, configured, observed on MQTT, and torn down declaratively; transcript in [demo/phase1](demo/phase1/README.md)). The Go code holds lint, coverage, race-detector, and vulnerability-scan floors, with SHA-pinned CI actions. Everything so far is hardware-free; real-radio validation is the next hardware gate. Demo captures land here as each milestone ships.
 
 ![NephMesh's reconcile loop driving a live meshtasticd sim to convergence](docs/media/operator-reconcile.png)
 
