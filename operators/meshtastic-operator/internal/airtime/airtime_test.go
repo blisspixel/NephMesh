@@ -1,0 +1,70 @@
+/*
+Copyright 2026 The NephMesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package airtime
+
+import (
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func TestTimeOnAirMatchesSemtechFormula(t *testing.T) {
+	// A hand-computed reference point from the Semtech formula: SF7, BW125 kHz,
+	// CR 4/5, 20-byte payload, 8-symbol preamble, explicit header, CRC on.
+	// tSym = 2^7/125000 = 1.024 ms; preamble = 12.25*tSym; payload symbols = 43;
+	// total = 56.576 ms.
+	got := TimeOnAir(Params{SpreadingFactor: 7, BandwidthHz: 125000, CodingRate: 5}, 20, 8, true, true)
+	assert.InDelta(t, 56.576, float64(got)/float64(time.Millisecond), 0.05,
+		"time-on-air must match the Semtech reference calculation")
+}
+
+func TestLowDataRateOptimizationKicksInAtHighSF(t *testing.T) {
+	// SF12/BW125 has a symbol time above 16 ms, so low-data-rate optimization
+	// applies and a 40-byte frame is well over a second on air, the physical
+	// reason the longest-range presets collapse a dense channel fastest.
+	toa, ok := PresetTimeOnAir("LONG_SLOW", 40)
+	assert.True(t, ok)
+	assert.Greater(t, toa, time.Second, "SF12 narrow-band frames are seconds long")
+}
+
+func TestRangeTradesOffAgainstAirtime(t *testing.T) {
+	// Longer-range presets cost strictly more airtime for the same payload,
+	// which is the tension an airtime budget has to govern.
+	shortFast, _ := PresetTimeOnAir("SHORT_FAST", 40)
+	mediumSlow, _ := PresetTimeOnAir("MEDIUM_SLOW", 40)
+	longFast, _ := PresetTimeOnAir("LONG_FAST", 40)
+	assert.Less(t, shortFast, mediumSlow)
+	assert.Less(t, mediumSlow, longFast)
+}
+
+func TestLargerPayloadCostsMoreAirtime(t *testing.T) {
+	small, _ := PresetTimeOnAir("LONG_FAST", 16)
+	large, _ := PresetTimeOnAir("LONG_FAST", 200)
+	assert.Less(t, small, large)
+}
+
+func TestUnknownPresetReported(t *testing.T) {
+	_, ok := PresetTimeOnAir("NOT_A_PRESET", 40)
+	assert.False(t, ok)
+}
+
+func TestDutyCyclePercent(t *testing.T) {
+	// A 1-second frame once every 10 seconds is 10% of the channel.
+	assert.InDelta(t, 10.0, DutyCyclePercent(time.Second, 10*time.Second), 1e-9)
+	assert.Equal(t, 0.0, DutyCyclePercent(time.Second, 0), "a zero period is guarded")
+}

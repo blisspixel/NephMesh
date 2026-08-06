@@ -37,6 +37,7 @@ import (
 	"time"
 
 	meshv1alpha1 "github.com/blisspixel/nephmesh/api/mesh/v1alpha1"
+	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/airtime"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/config"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/device"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/reconcile"
@@ -98,8 +99,15 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Printf("nephmesh reconcile-demo (observe, read-only): device at %s\n", target)
-		fmt.Printf("live config read from device: region=%v role=%v owner=%v\n\n",
+		fmt.Printf("live config read from device: region=%v role=%v owner=%v\n",
 			dig(live, "config", "lora", "region"), dig(live, "config", "device", "role"), live["owner"])
+		if preset, ok := dig(live, "config", "lora", "modemPreset").(string); ok {
+			if toa, known := airtime.PresetTimeOnAir(preset, 40); known {
+				fmt.Printf("airtime: %s is ~%.0f ms per 40-byte frame (~%.2f%% duty at 1 frame/min)\n",
+					preset, float64(toa.Microseconds())/1000, airtime.DutyCyclePercent(toa, time.Minute))
+			}
+		}
+		fmt.Println()
 	} else {
 		var spec meshv1alpha1.MeshtasticNodeSpec
 		if *region == "" && *preset == "" && *owner == "" && *ownerShort == "" {
