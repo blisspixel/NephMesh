@@ -31,6 +31,11 @@ const (
 	ConditionReady = "Ready"
 	// ConditionDegraded is True when an apply verified-failed after retries.
 	ConditionDegraded = "Degraded"
+	// ConditionAirtimeHealthy is True when the device's measured airtime
+	// utilization is within the recommended ceilings, False when the channel is
+	// saturating. It is observability, not a gate: airtime is the LoRa scaling
+	// wall, so a saturating channel is surfaced rather than silently degrading.
+	ConditionAirtimeHealthy = "AirtimeHealthy"
 )
 
 // Condition reasons. CamelCase machine tokens, required by the conditions API.
@@ -47,6 +52,9 @@ const (
 
 	ReasonReady    = "Ready"
 	ReasonNotReady = "NotReady"
+
+	ReasonAirtimeHealthy = "AirtimeHealthy"
+	ReasonAirtimeHigh    = "AirtimeHigh"
 )
 
 // DeletionPolicy values.

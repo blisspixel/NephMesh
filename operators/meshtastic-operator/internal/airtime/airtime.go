@@ -113,3 +113,22 @@ func DutyCyclePercent(toa, period time.Duration) float64 {
 	}
 	return float64(toa) / float64(period) * 100
 }
+
+// Recommended airtime ceilings, as percentages. These are heuristics, not hard
+// limits: Meshtastic mesh delivery degrades as channel utilization climbs
+// (community guidance treats sustained use above ~25% as saturating), and a
+// node's own transmit airtime should stay under the tightest regional duty
+// cycle (the EU 10% ISM cap is the conservative default). The airtime-budget
+// plan (docs/plans/airtime-budget.md) makes these region-aware and enforceable.
+const (
+	RecommendedChannelUtilizationPercent = 25.0
+	RecommendedAirUtilTxPercent          = 10.0
+)
+
+// Healthy reports whether measured airtime utilization (the radio's own
+// channelUtilization and airUtilTx telemetry) is within the recommended
+// ceilings. It is the ground-truth check the operator surfaces as a condition.
+func Healthy(channelUtilizationPercent, airUtilTxPercent float64) bool {
+	return channelUtilizationPercent <= RecommendedChannelUtilizationPercent &&
+		airUtilTxPercent <= RecommendedAirUtilTxPercent
+}
