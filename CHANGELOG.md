@@ -4,6 +4,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-05
+
+The `MeshtasticNode` operator milestone, all hardware-free. The flagship operator reconciles a Meshtastic node's configuration (region, modem preset, role, MQTT with a broker password read from a Secret, and owner) against a live `meshtasticd --sim` in CI, ships as a kpt package, and is hardened with an envtest controller tier, assume-breach control-proving tests, a supply-chain pass, and a redacting-secret path. The version path was revised so this software milestone earns its own release rather than waiting on hardware (see `docs/roadmap.md`).
+
 ### Added
 
 - Secret handling for the operator's secure-comms surface: the MQTT broker password is now read from a Kubernetes Secret and written into the device's MQTT module config, alongside the username. The value is wrapped in a redacting type (`internal/secret`) whose every render path (fmt verbs, JSON, the logr hook) shows a placeholder, so it cannot leak through a log line or error; only an explicit reveal at the config-write point returns the bytes. A no-secret-in-logs assume-breach test drives a sentinel password through a full reconcile and proves it reaches the device but never a log or the stored status. The Secret is read uncached with a namespaced `Role` granting `get` only (never a cluster-wide grant, so a compromised token cannot read Secrets fleet-wide), enforced by the RBAC golden test. Channel PSKs will follow the same path once the `channel_url` apply is built.
