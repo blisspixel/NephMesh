@@ -26,7 +26,11 @@ Pre-alpha, and further along than that sounds. **0.2.0** shipped the flagship: t
 
 ![NephMesh's reconcile loop driving a live meshtasticd sim to convergence](docs/media/operator-reconcile.png)
 
-*NephMesh's real reconcile loop (the `Converge` state machine and CLI-backed device client the controller uses), run against a live `meshtasticd --sim` via the `cmd/reconcile-demo` tool. Step 1 detects drift, applies only the minimal config, and reboots the device; step 2 re-verifies and reports `Ready` with the device's real node id. Captured from an actual run, not a mock-up.* Contributions, questions, and skepticism are welcome.
+*NephMesh's real reconcile loop (the `Converge` state machine and CLI-backed device client the controller uses), run against a live `meshtasticd --sim` via the `cmd/reconcile-demo` tool. Step 1 detects drift, applies only the minimal config, and reboots the device; step 2 re-verifies and reports `Ready` with the device's real node id. Captured from an actual run, not a mock-up.*
+
+![The operator applying a config change to a physical Meshtastic T-Deck over USB and re-verifying to Ready](docs/media/operator-hardware-apply.png)
+
+*The same loop against a physical device: the operator read a real Meshtastic T-Deck, applied a config change over USB serial, the board rebooted, and it re-verified to `Ready` with the device's real node id (then restored the original value). The default transport is TCP/IP on port 4403 (a WiFi or Ethernet node, or `meshtasticd` on a gateway); USB serial is the added path for a directly-attached board.* Contributions, questions, and skepticism are welcome.
 
 ## Start here
 
