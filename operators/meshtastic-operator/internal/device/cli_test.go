@@ -68,6 +68,19 @@ Nodes in mesh: { "!6e000001": { "num": 1845493761 } }`
 	assert.Empty(t, parseInfo("no node id here").NodeID)
 }
 
+func TestParseInfoExtractsAirtimeMetrics(t *testing.T) {
+	// Shape from a real T-Deck --info deviceMetrics block.
+	out := `Nodes in mesh: { "!0c3a5f2c": { "deviceMetrics": { "channelUtilization": 12.5, "airUtilTx": 3.25 } } }`
+	info := parseInfo(out)
+	require.NotNil(t, info.AirUtilTx)
+	assert.InDelta(t, 3.25, *info.AirUtilTx, 1e-9)
+	require.NotNil(t, info.ChannelUtilization)
+	assert.InDelta(t, 12.5, *info.ChannelUtilization, 1e-9)
+
+	// Absent metrics stay nil, distinct from a real 0.0 on an idle node.
+	assert.Nil(t, parseInfo("no metrics here").AirUtilTx)
+}
+
 func TestCLIClientBinDefault(t *testing.T) {
 	assert.Equal(t, "meshtastic", (&CLIClient{}).bin())
 	assert.Equal(t, "custom", (&CLIClient{Bin: "custom"}).bin())

@@ -44,6 +44,14 @@ import (
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/secret"
 )
 
+// pct formats an optional percentage metric, or "n/a" when absent.
+func pct(v *float64) string {
+	if v == nil {
+		return "n/a"
+	}
+	return fmt.Sprintf("%.1f%%", *v)
+}
+
 // dig walks a nested map[string]any, returning nil if any key is missing.
 func dig(m map[string]any, keys ...string) any {
 	var cur any = m
@@ -103,9 +111,13 @@ func main() {
 			dig(live, "config", "lora", "region"), dig(live, "config", "device", "role"), live["owner"])
 		if preset, ok := dig(live, "config", "lora", "modemPreset").(string); ok {
 			if toa, known := airtime.PresetTimeOnAir(preset, 40); known {
-				fmt.Printf("airtime: %s is ~%.0f ms per 40-byte frame (~%.2f%% duty at 1 frame/min)\n",
+				fmt.Printf("airtime (predicted): %s is ~%.0f ms per 40-byte frame (~%.2f%% duty at 1 frame/min)\n",
 					preset, float64(toa.Microseconds())/1000, airtime.DutyCyclePercent(toa, time.Minute))
 			}
+		}
+		if info, ierr := dev.Info(ctx); ierr == nil && (info.AirUtilTx != nil || info.ChannelUtilization != nil) {
+			fmt.Printf("airtime (measured by the radio): airUtilTx=%s channelUtilization=%s\n",
+				pct(info.AirUtilTx), pct(info.ChannelUtilization))
 		}
 		fmt.Println()
 	} else {

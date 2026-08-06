@@ -55,4 +55,11 @@ type Client interface {
 // paths are verified against real hardware, rather than advertised as empty.
 type Info struct {
 	NodeID string
+	// AirUtilTx and ChannelUtilization are the radio's own airtime telemetry
+	// (percent), reported in --info deviceMetrics. Pointers so an absent metric
+	// is distinct from a real 0.0 on an idle node. Airtime is the LoRa scaling
+	// wall, so this is the ground-truth measurement of how loaded the channel is
+	// (see docs/plans/airtime-budget.md).
+	AirUtilTx          *float64
+	ChannelUtilization *float64
 }
