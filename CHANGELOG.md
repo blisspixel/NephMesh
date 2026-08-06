@@ -4,6 +4,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+### Added
+
+- A resilient-comms landscape synthesis (`docs/research/resilient-comms-landscape.md`) from a five-stream research sweep (disruption-tolerant comms, intent-based networking, adversarial mesh security, LoRa prior art, adjacent off-grid ecosystems), with a ranked research-informed backlog, consolidated sources, and honest myth-busts (single-digit-km real range, no LoRa anti-jam security, the satellite-market shakeout, and that a HackRF can actually decode LoRa). The two highest-confidence findings: airtime is the real scaling wall (so an enforced airtime-budget invariant is the clearest differentiator), and the multi-driver seam is validatable now via MeshCore or ChirpStack.
+
+### Changed
+
+- Framing corrections the sweep surfaced, so the docs do not overclaim: the README security paragraph now states that a shared channel key gives confidentiality but not per-sender authentication and links the threat model; the novelty claim names Reticulum as the closest philosophical neighbor (a candidate managed driver, not a competitor) rather than implying a green field; the "no Meshtastic operator exists" claim carries a last-verified date; and any ATAK interop is scoped to compressed TAKPacket on-mesh, CoT at the gateway. The threat model gains an untrusted-RF-medium boundary with two testable controls (an application-layer auth-and-freshness envelope, and the receive-only SDR as an out-of-band trust anchor), and the roadmap carries the ranked research backlog.
+
 ## [0.2.0] - 2026-08-05
 
 The `MeshtasticNode` operator milestone, all hardware-free. The flagship operator reconciles a Meshtastic node's configuration (region, modem preset, role, MQTT with a broker password read from a Secret, and owner) against a live `meshtasticd --sim` in CI, ships as a kpt package, and is hardened with an envtest controller tier, assume-breach control-proving tests, a supply-chain pass, and a redacting-secret path. The version path was revised so this software milestone earns its own release rather than waiting on hardware (see `docs/roadmap.md`).

@@ -96,6 +96,15 @@ A clarification that matters once the operator drives real radios: a Meshtastic 
 - `hack/check-actions.sh` (wired into CI): fails the build if any GitHub Action is pinned to a mutable tag instead of a commit SHA, or if a workflow omits a least-privilege top-level `permissions` block. A supply-chain gate against a moved-tag or over-privileged-token attack on CI.
 - `hack/check-style.sh`, `hack/check-headers.sh`: enforce the no-attribution writing rules and license headers.
 
+### 8. The untrusted RF medium (the layer below the cluster)
+
+An August 2026 research sweep (`docs/research/resilient-comms-landscape.md`) sharpened where the real trust decision happens: not at the Kubernetes admission boundary the assume-breach tests defend, but the moment automation believes a packet off the air. STATUS: OPEN, and the highest-leverage remaining security work. Meshtastic channels are AES-256-**CTR** with a shared PSK: confidentiality with a non-default key, but no per-sender authentication, no integrity MAC (CTR is malleable), and no replay protection, plus a run of 2025 firmware CVEs around key provenance and PKI downgrade. Two controls, both above the firmware and testable, close most of this:
+
+- **An application-layer authentication and freshness envelope on any mesh packet that drives automation** (a per-node signature plus a monotonic counter; reject unsigned, stale, or replayed at ingest). It neutralizes impersonation, replay, and the PKI-downgrade CVE cluster in one move, and holds even on unpatched or vendor-cloned firmware.
+- **The receive-only SDR as an out-of-band trust anchor.** Because it is not a mesh member, a compromised insider holding the shared PSK cannot lie to it; it can reconcile what nodes claim against what was actually transmitted (duplicate node id, impossible mobility, Sybil). The transmit interlock keeps this passive. This reframes the co-located SDR from a spectrum instrument into a control the mesh cannot spoof.
+
+Honest limits unchanged by either: jamming, direction-finding, and metadata traffic-analysis are inherent to any unlicensed sub-GHz mesh, and there is no forward secrecy today (harvest-now-decrypt-later applies to any captured PSK, until epoch-keyed channels land).
+
 ## What a hostile reviewer should check next
 
 - That the manifest gate stays ahead of new exposure vectors as Kubernetes adds them (it enumerates known ones; it cannot know future APIs).
