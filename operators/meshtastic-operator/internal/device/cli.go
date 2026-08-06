@@ -34,15 +34,26 @@ import (
 // one component. Its parsing is unit tested; the exec paths are exercised by
 // the hardware and testcontainers integration tests, not by unit tests.
 type CLIClient struct {
-	// Host is the device address passed to `meshtastic --host`.
+	// Host is the device address passed to `meshtastic --host` (TCP transport).
 	Host string
+	// Serial, when set, selects the USB serial transport (`meshtastic --port`)
+	// instead of TCP. Exactly one of Host or Serial is used.
+	Serial string
 	// Bin is the CLI binary name; defaults to "meshtastic".
 	Bin string
+	// Exporter, when set, is the argv of a config exporter run instead of the
+	// CLI's `--export-config`, which re-requests config over admin messages and
+	// hangs on some devices over serial. The connection flag (--serial/--host)
+	// is appended. The bundled hack/mesh-export.py reads the config that streams
+	// on connect. Empty means use the CLI's own --export-config (TCP default).
+	Exporter []string
 	// runFn executes the CLI and returns its combined output. It defaults to
 	// the real os/exec path; tests inject a stub so the command orchestration
 	// (argument shaping, parsing, error mapping) is unit tested without the
 	// binary. The exec path itself is covered by integration tests.
 	runFn func(ctx context.Context, args ...string) (string, error)
+	// execFn executes an arbitrary binary (the exporter), injectable for tests.
+	execFn func(ctx context.Context, name string, args ...string) (string, error)
 }
 
 const exportMarker = "# start of Meshtastic configure yaml"
@@ -64,6 +75,15 @@ func looksUnreachable(output string) bool {
 		strings.Contains(o, "no route to host")
 }
 
+// connArgs is the CLI connection flag for the configured transport: --port for
+// serial, --host for TCP.
+func (c *CLIClient) connArgs() []string {
+	if c.Serial != "" {
+		return []string{"--port", c.Serial}
+	}
+	return []string{"--host", c.Host}
+}
+
 func (c *CLIClient) run(ctx context.Context, args ...string) (string, error) {
 	if c.runFn != nil {
 		return c.runFn(ctx, args...)
@@ -72,7 +92,7 @@ func (c *CLIClient) run(ctx context.Context, args ...string) (string, error) {
 }
 
 func (c *CLIClient) execRun(ctx context.Context, args ...string) (string, error) {
-	full := append([]string{"--host", c.Host}, args...)
+	full := append(c.connArgs(), args...)
 	cmd := exec.CommandContext(ctx, c.bin(), full...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -80,6 +100,29 @@ func (c *CLIClient) execRun(ctx context.Context, args ...string) (string, error)
 			return string(out), ErrUnreachable
 		}
 		return string(out), fmt.Errorf("%s %s: %w: %s", c.bin(), strings.Join(full, " "), err, strings.TrimSpace(string(out)))
+	}
+	return string(out), nil
+}
+
+// runExporter runs the configured exporter with the transport connection flag,
+// used in place of the CLI's --export-config where that command hangs.
+func (c *CLIClient) runExporter(ctx context.Context) (string, error) {
+	conn := "--host"
+	value := c.Host
+	if c.Serial != "" {
+		conn, value = "--serial", c.Serial
+	}
+	args := append(append([]string(nil), c.Exporter[1:]...), conn, value)
+	if c.execFn != nil {
+		return c.execFn(ctx, c.Exporter[0], args...)
+	}
+	cmd := exec.CommandContext(ctx, c.Exporter[0], args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		if looksUnreachable(string(out)) {
+			return string(out), ErrUnreachable
+		}
+		return string(out), fmt.Errorf("%s: %w: %s", c.Exporter[0], err, strings.TrimSpace(string(out)))
 	}
 	return string(out), nil
 }
@@ -101,9 +144,19 @@ func parseExportConfig(out string) (map[string]any, error) {
 	return cfg, nil
 }
 
-// ExportConfig runs `meshtastic --export-config` and parses the result.
+// ExportConfig returns the device's live config as a map. It uses the
+// configured exporter when set (required for serial, where the CLI's
+// --export-config hangs), otherwise the CLI's own --export-config over TCP.
 func (c *CLIClient) ExportConfig(ctx context.Context) (map[string]any, error) {
-	out, err := c.run(ctx, "--export-config")
+	var (
+		out string
+		err error
+	)
+	if len(c.Exporter) > 0 {
+		out, err = c.runExporter(ctx)
+	} else {
+		out, err = c.run(ctx, "--export-config")
+	}
 	if err != nil {
 		return nil, err
 	}

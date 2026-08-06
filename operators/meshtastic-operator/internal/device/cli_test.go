@@ -102,6 +102,47 @@ func TestApplyMarshalsAndInvokesConfigure(t *testing.T) {
 	assert.True(t, strings.HasSuffix(args[1], ".yaml"), "apply passes a yaml file path")
 }
 
+func TestConnArgsSelectsTransport(t *testing.T) {
+	assert.Equal(t, []string{"--host", "h"}, (&CLIClient{Host: "h"}).connArgs())
+	assert.Equal(t, []string{"--port", "COM3"}, (&CLIClient{Serial: "COM3"}).connArgs(),
+		"serial transport uses meshtastic --port")
+}
+
+func TestExportConfigUsesExporterWithSerialFlag(t *testing.T) {
+	// Verified against a real T-Deck: the CLI's --export-config hangs over
+	// serial, so the client runs the exporter with --serial instead.
+	var gotName string
+	var gotArgs []string
+	c := &CLIClient{
+		Serial:   "COM3",
+		Exporter: []string{"python", "mesh-export.py"},
+		execFn: func(_ context.Context, name string, args ...string) (string, error) {
+			gotName, gotArgs = name, args
+			return exportMarker + "\nconfig:\n  lora:\n    region: US\n", nil
+		},
+	}
+	cfg, err := c.ExportConfig(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "US", cfg["config"].(map[string]any)["lora"].(map[string]any)["region"])
+	assert.Equal(t, "python", gotName)
+	assert.Equal(t, []string{"mesh-export.py", "--serial", "COM3"}, gotArgs)
+}
+
+func TestExporterUsesHostFlagOverTCP(t *testing.T) {
+	var gotArgs []string
+	c := &CLIClient{
+		Host:     "1.2.3.4",
+		Exporter: []string{"python", "mesh-export.py"},
+		execFn: func(_ context.Context, _ string, args ...string) (string, error) {
+			gotArgs = args
+			return exportMarker + "\n{}\n", nil
+		},
+	}
+	_, err := c.ExportConfig(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, []string{"mesh-export.py", "--host", "1.2.3.4"}, gotArgs)
+}
+
 func TestRebootInvokesReboot(t *testing.T) {
 	var args []string
 	c := withRunner("", nil, &args)

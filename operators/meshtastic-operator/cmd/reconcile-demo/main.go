@@ -16,13 +16,16 @@ limitations under the License.
 
 // Command reconcile-demo runs the operator's real reconcile loop, the same
 // Converge state machine and CLI-backed device client the controller uses,
-// against a live meshtasticd (sim or hardware) and prints each step's outcome.
-// It is a smoke and demonstration tool, not part of the operator image: it lets
-// you watch the export, diff, apply-only-drift, reboot, and re-verify sequence
-// converge without standing up a cluster. Point it at a device with -host (or
-// the MESH_TEST_HOST env var) and make sure the meshtastic CLI is on PATH.
+// against a live meshtasticd or a real board (TCP via -host, or USB serial via
+// -serial plus an -exporter) and prints each step's outcome. It lets you watch
+// the export, diff, apply-only-drift, reboot, and re-verify sequence converge
+// without a cluster.
 //
 //	go run ./cmd/reconcile-demo -host 127.0.0.1:14403
+//	go run ./cmd/reconcile-demo -serial COM3 -exporter "python hack/mesh-export.py" -observe
+//
+// -observe reconciles an empty intent, so it reads the device but never
+// modifies it: safe to point at a real, in-use board.
 package main
 
 import (
@@ -30,6 +33,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	meshv1alpha1 "github.com/blisspixel/nephmesh/api/mesh/v1alpha1"
@@ -39,32 +43,73 @@ import (
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/secret"
 )
 
+// dig walks a nested map[string]any, returning nil if any key is missing.
+func dig(m map[string]any, keys ...string) any {
+	var cur any = m
+	for _, k := range keys {
+		mm, ok := cur.(map[string]any)
+		if !ok {
+			return nil
+		}
+		cur = mm[k]
+	}
+	return cur
+}
+
 func main() {
-	host := flag.String("host", os.Getenv("MESH_TEST_HOST"), "device address passed to meshtastic --host")
+	host := flag.String("host", os.Getenv("MESH_TEST_HOST"), "device TCP address for meshtastic --host")
+	serial := flag.String("serial", "", "USB serial port (e.g. COM3 or /dev/ttyACM0)")
+	exporter := flag.String("exporter", "", `argv of the config exporter (e.g. "python hack/mesh-export.py"), required for -serial`)
+	observe := flag.Bool("observe", false, "read-only: reconcile an empty intent so the device is never modified")
 	flag.Parse()
-	if *host == "" {
-		fmt.Fprintln(os.Stderr, "set -host or MESH_TEST_HOST to a reachable meshtasticd")
+
+	if *host == "" && *serial == "" {
+		fmt.Fprintln(os.Stderr, "set -host (TCP) or -serial (USB) to a reachable Meshtastic device")
 		os.Exit(2)
 	}
 
-	// A real MeshtasticNode intent, built by the same config builder the
-	// controller uses (no broker password in this demo).
-	// A non-default modem preset: Meshtastic's export omits fields left at the
-	// device default (LONG_FAST), which would read as permanent drift, so this
-	// demo declares a value the device actually reports back.
-	spec := meshv1alpha1.MeshtasticNodeSpec{
-		Region:      "US",
-		ModemPreset: "MEDIUM_SLOW",
-		Owner:       &meshv1alpha1.OwnerSpec{LongName: "NephMesh Field 01", ShortName: "NF01"},
+	dev := &device.CLIClient{Host: *host, Serial: *serial}
+	if *exporter != "" {
+		dev.Exporter = strings.Fields(*exporter)
 	}
-	desired := config.BuildDesired(spec, "", secret.Value{})
+	if *serial != "" && len(dev.Exporter) == 0 {
+		fmt.Fprintln(os.Stderr, "serial mode needs -exporter: the CLI's --export-config hangs over serial")
+		os.Exit(2)
+	}
 
-	dev := &device.CLIClient{Host: *host}
+	target := *host
+	if *serial != "" {
+		target = *serial
+	}
 	ctx := context.Background()
 
-	fmt.Printf("nephmesh reconcile-demo: driving meshtasticd at %s\n", *host)
-	fmt.Printf("desired intent: region=%s modemPreset=%s owner=%q\n\n",
-		spec.Region, spec.ModemPreset, spec.Owner.LongName)
+	var desired map[string]any
+	if *observe {
+		// An empty intent converges immediately with no apply, so a real board
+		// is never modified. Export first to show its current config.
+		desired = map[string]any{}
+		live, err := dev.ExportConfig(ctx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "export failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("nephmesh reconcile-demo (observe, read-only): device at %s\n", target)
+		fmt.Printf("live config read from device: region=%v role=%v owner=%v\n\n",
+			dig(live, "config", "lora", "region"), dig(live, "config", "device", "role"), live["owner"])
+	} else {
+		// A non-default modem preset: the export omits fields left at the device
+		// default (LONG_FAST), which would read as permanent drift, so this
+		// declares a value the device actually reports back.
+		spec := meshv1alpha1.MeshtasticNodeSpec{
+			Region:      "US",
+			ModemPreset: "MEDIUM_SLOW",
+			Owner:       &meshv1alpha1.OwnerSpec{LongName: "NephMesh Field 01", ShortName: "NF01"},
+		}
+		desired = config.BuildDesired(spec, "", secret.Value{})
+		fmt.Printf("nephmesh reconcile-demo: driving Meshtastic device at %s\n", target)
+		fmt.Printf("desired intent: region=%s modemPreset=%s owner=%q\n\n",
+			spec.Region, spec.ModemPreset, spec.Owner.LongName)
+	}
 
 	state := reconcile.State{}
 	for step := 1; step <= 15; step++ {
