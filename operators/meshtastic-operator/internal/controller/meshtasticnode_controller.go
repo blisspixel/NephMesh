@@ -40,6 +40,7 @@ import (
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/airtime"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/config"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/device"
+	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/metrics"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/reconcile"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/secret"
 )
@@ -90,6 +91,7 @@ func (r *MeshtasticNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				return ctrl.Result{}, err
 			}
 		}
+		metrics.Forget(node.Namespace, node.Name)
 		return ctrl.Result{}, nil
 	}
 	if !hasFinalizer(&node) {
@@ -126,6 +128,11 @@ func (r *MeshtasticNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	applyOutcome(&node, outcome)
+	metrics.Record(metrics.Sample{
+		Namespace: node.Namespace, Name: node.Name,
+		Ready: outcome.Ready, ConfigInSync: outcome.ConfigInSync, ApplyAttempts: outcome.ApplyAttempts,
+		ChannelUtilization: outcome.Info.ChannelUtilization, AirUtilTx: outcome.Info.AirUtilTx,
+	})
 	if statusErr := r.Status().Update(ctx, &node); statusErr != nil {
 		return ctrl.Result{}, statusErr
 	}
