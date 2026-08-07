@@ -355,6 +355,68 @@ The repo should be as easy for AI agents to work on as for humans, and eventuall
 - [ ] Natural language to intent (Phase 3 onward): an agent skill that turns "give site X a mesh gateway on MediumSlow with MQTT uplink" into a proposed PackageRevision in Porch. The human approves via Porch's lifecycle: the LLM proposes, the reconciliation loop enforces, the agent is never the control loop
 - [ ] MCP server (Phase 5 onward): expose live mesh and spectrum state (nodes, neighbor counts, band occupancy) as MCP tools so any agent can observe the network and draft intent changes against real data
 
+## In consideration (the seductive frontier, named with its why)
+
+This is an exploratory, experimental project, so it names the big ideas it is
+deliberately not building yet, with the reason each is compelling and the reason each
+is held back, rather than pretending they do not exist or diving in and wrecking the
+core. Nothing here is on the core spine (see the Order of operations). Each is a real
+option kept in view. No dates: an item moves onto the spine only when its unlock
+condition is met and the core has earned the complexity. The format for each is: what
+it opens, the honest constraint, and what would unlock it.
+
+### The SDR pillar, past receive-only occupancy
+
+Today the SDR does one thing, a coarse energy sweep that reports how busy a band is.
+That is a small fraction of what a software defined radio can do, and the rest is a
+genuine frontier. Most of it is available receive-only, legal, and $0.
+
+- **Signal classification and interference ground-truth (receive-only; mostly unlocked
+  already).** What it opens: decode and classify what is actually on the band, so "the
+  channel is busy" carries a cause, my own mesh, another LoRa network, an unrelated ISM
+  device, or a jammer. Those call for opposite responses, and the closed loop and the
+  safety kernel are only as good as this ground truth. The honest constraint: CPU and
+  sample-rate cost, a decoder generally handles one preset at a time, and RF
+  classification on cheap SDR is a probabilistic corroborator, not proof. What would
+  unlock it: little, it is receive-only and $0, and can be prototyped against recorded
+  or synthetic IQ before any hardware is plugged in. Research: [spectrum
+  classification](research/spectrum-classification.md).
+- **A multi-band situational-awareness receiver (receive-only).** What it opens: one
+  containerized receiver watching more than the mesh band (ADS-B, AIS, weather, GMRS and
+  amateur and CB, other ISM) for a "what is on the air around me" picture that is
+  valuable in a disaster in its own right, separate from the mesh. The honest
+  constraint: legality of reception varies by band and country (reception is broadly
+  permissive but not universal), and each band wants its own antenna. What would unlock
+  it: receive-only and $0; SoapySDR keeps it hardware-agnostic across the HackRF and
+  cheaper receivers. Research: [situational-awareness
+  receiver](research/situational-awareness-receiver.md).
+- **SDR transmit, the real frontier.** What it opens: the single biggest expansion in
+  the project. An SDR that transmits can be the radio, a software-defined LoRa node or
+  gateway with no dedicated LoRa hardware, and beyond LoRa it can carry custom and
+  jam-resistant waveforms (frequency hopping, LR-FHSS), cross-band relays, and the full
+  cognitive-radio loop where the same device senses and acts. It is also the honest path
+  to the SDR being a first-class radio driver at the physical layer, not just a sensor.
+  The honest constraint: this is where law and hardware bite hardest. The HackRF is not
+  a certified Part 15 unlicensed transmitter; clean transmit needs filtering and
+  amplification to avoid spurious emissions; and every option is bounded by regional
+  rules (in the US, unlicensed Part 15 versus amateur Part 97, which forbids encryption
+  on the air), by power, duty cycle, and band. What would unlock it: an authorized
+  context, an amateur license operating unencrypted on amateur frequencies, a shielded
+  or attenuated bench, or a coordinated test range. Until then receive-only stays the
+  default and the only posture CI depends on, and it is a safety and trust posture as
+  much as a legal one. Research: [SDR transmit
+  considerations](research/sdr-transmit-considerations.md).
+
+### The big swings already named elsewhere, held the same way
+
+These are in-consideration for the same reason, compelling, gated, and off the core
+spine, and are described where they arise rather than duplicated here: the closed-loop
+spectrum policy (Phase 6, gated by ADR 0002's autonomy and safety work), agentic AI
+mesh nodes (`docs/plans/agent-mesh-nodes.md`), the off-world disruption-tolerant north
+star, the cellular and Starlink hybrid backhaul tier (Phase 7), direction finding for
+locating interference (KrakenSDR), and ATAK interop for the existing emergency-response
+audience. The "Later / open questions" list below is the fuller backlog.
+
 ## Later / open questions
 
 - Research-informed backlog (from the August 2026 landscape sweep, full synthesis and sources in `docs/research/resilient-comms-landscape.md`), highest leverage first: (1) an airtime/duty-cycle budget as an enforced reconciler invariant, the one idea backed by two independent research streams and the canonical scaling literature, and the clearest thing a declarative intent system can offer over hand-tuned Meshtastic (the time-on-air model foundation is landed in `internal/airtime`; the enforced admission gate is the next step); (2) a mesh-observability layer, the prerequisite for the resilience numbers already committed to (a Prometheus exporter for the KPIs the operator already reads, readiness, apply attempts, channel utilization, transmit airtime, is landed in `internal/metrics`; MeshMonitor integration, delivery-ratio and neighbor-churn metrics, and the control-plane-independence harness remain); (3) an application-layer authentication and freshness envelope on automation-triggering mesh packets (the RF medium is untrusted: Meshtastic is AES-CTR with a shared key, no per-sender auth, no replay protection; design in [message-auth-envelope](plans/message-auth-envelope.md), which recommends a compact Ed25519 authentication-and-freshness envelope on the rare automation-triggering packets, with clock-free monotonic freshness); (4) the receive-only SDR as an out-of-band "claim vs air" trust anchor (duplicate-node-id, impossible-mobility, Sybil detection), plus a receive-only LoRa decoder alongside the energy sweep; research in [sdr-trust-anchor](research/sdr-trust-anchor.md), which finds the two cheap logic detectors (duplicate-id, impossible-mobility) the right first move and is honest that commodity-SDR LoRa decode is real but overstated in the wild; (5) an anti-oscillation debouncer with unpredictable-destination selection for the Phase 6 closed loop; (6) a written Reticulum position (candidate driver, not competitor) and a crypto-mesh prior-art update; (7) epoch-keyed channels for forward secrecy and revocation at zero airtime (design in [key-rotation-and-epochs](plans/key-rotation-and-epochs.md), a make-before-break fleet rotation with the honest limit that a revoked member keeps the current epoch key until the next rotation); (8) a second radio driver to prove the seam is real (research in [second-radio-driver](research/second-radio-driver.md), which derives a minimal driver contract and recommends MeshCore first, then Reticulum, then ChirpStack as the topology stress-test)
@@ -370,6 +432,6 @@ The repo should be as easy for AI agents to work on as for humans, and eventuall
 - Disruption-tolerant and off-world north star: treat the terrestrial-disaster case and the space case as one disruption-tolerant problem differing only in latency and RF, so a later Delay/Disruption-Tolerant Networking (Bundle Protocol v7) or CCSDS-adjacent extension is credible. Honest scope in `docs/plans/agent-mesh-nodes.md`: the control-plane and store-and-forward semantics map onto space; the LoRa and SDR radio layer does not
 - Akri instead of generic-device-plugin if dynamic SDR discovery and scheduling becomes a feature rather than plumbing
 - Direction finding (KrakenSDR) for locating interference sources
-- Multi-technology expansion beyond LoRa: receive-only monitoring of CB (27 MHz), GMRS, and amateur bands is just more spectrum sensing and can land any time; *managing* additional radio services only makes sense where a digital control surface exists (ham digital modes, GMRS data), and never analog CB as a transport (see `docs/faq.md`)
+- Multi-technology expansion beyond LoRa: receive-only monitoring of CB (27 MHz), GMRS, and amateur bands is just more spectrum sensing and can land any time (the design is in [situational-awareness receiver](research/situational-awareness-receiver.md)); *managing* additional radio services only makes sense where a digital control surface exists (ham digital modes, GMRS data), and never analog CB as a transport (see `docs/faq.md`)
 - SigMF IQ capture plus IQEngine for post-hoc analysis of interesting events
 - Pin Nephio release: R6 today; watch R7's "modularization and easier onboarding for new use cases", a roadmap item aimed at projects like this one
