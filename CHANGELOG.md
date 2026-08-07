@@ -4,6 +4,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+### Added
+
+- An airtime-budget prediction (`internal/airtime.PredictedChannelUtilizationPercent`), the "predict" control from the airtime plan and the airtime-as-a-commons differentiator in action per node. When a `MeshtasticNode` declares a modem-preset change, the operator predicts what the channel utilization would become at the new preset (scaling the radio's own measured utilization by the two presets' time-on-air ratio) and surfaces an `AirtimeBudget` status condition, False with the before-and-after numbers when the change is predicted to push the channel past the recommended ceiling. It is deliberately advisory: the declared preset is still applied, because hard refusal of an over-budget change is a fleet decision for a Porch validator (which can see the whole channel), not the per-node reconcile (which cannot see the neighbors). Honest about being a prediction, the measured `AirtimeHealthy` condition stays the ground truth. Unit-tested, hardware-free.
+
 ## [0.2.1] - 2026-08-07
 
 The operator's configuration surface is complete and it is now observable. 0.2.0 shipped the operator core (region, modem preset, role, MQTT, owner); 0.2.1 adds secure channels and their pre-shared keys, the flagship's last configuration surface, reconciled through the loop and validated against `meshtasticd --sim` in CI on every commit; the radio's airtime telemetry surfaced as Prometheus metrics and an `AirtimeHealthy` condition; a no-default-credentials assume-breach gate; and a design doctrine, the first Architecture Decision Records, and a grounded research pass that frame where the project grows next, deliberately behind a rock-solid core. The phase-gated 0.3 and later milestones (Porch, real radios, multi-site) are unchanged.

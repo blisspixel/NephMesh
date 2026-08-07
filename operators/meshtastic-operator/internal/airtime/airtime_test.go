@@ -75,3 +75,34 @@ func TestDutyCyclePercent(t *testing.T) {
 	assert.InDelta(t, 10.0, DutyCyclePercent(time.Second, 10*time.Second), 1e-9)
 	assert.Equal(t, 0.0, DutyCyclePercent(time.Second, 0), "a zero period is guarded")
 }
+
+func TestPredictedChannelUtilizationScalesWithTimeOnAir(t *testing.T) {
+	// Switching from a fast preset to a slower, longer-range one multiplies
+	// per-frame time-on-air, so predicted utilization rises by the same ratio.
+	slowToa, _ := PresetTimeOnAir("LONG_SLOW", RepresentativeFramePayloadBytes)
+	fastToa, _ := PresetTimeOnAir("SHORT_FAST", RepresentativeFramePayloadBytes)
+	ratio := float64(slowToa) / float64(fastToa)
+
+	got, ok := PredictedChannelUtilizationPercent("SHORT_FAST", "LONG_SLOW", 5.0)
+	assert.True(t, ok)
+	assert.InDelta(t, 5.0*ratio, got, 1e-9, "predicted utilization scales by the time-on-air ratio")
+	assert.Greater(t, got, 5.0, "a slower, longer-range preset raises utilization")
+
+	// The reverse direction lowers it.
+	down, ok := PredictedChannelUtilizationPercent("LONG_SLOW", "SHORT_FAST", 20.0)
+	assert.True(t, ok)
+	assert.Less(t, down, 20.0, "a faster preset lowers utilization")
+}
+
+func TestPredictedChannelUtilizationUnknownPreset(t *testing.T) {
+	_, ok := PredictedChannelUtilizationPercent("NOPE", "LONG_FAST", 5.0)
+	assert.False(t, ok, "an unknown current preset yields no prediction")
+	_, ok = PredictedChannelUtilizationPercent("LONG_FAST", "NOPE", 5.0)
+	assert.False(t, ok, "an unknown desired preset yields no prediction")
+}
+
+func TestWithinChannelBudget(t *testing.T) {
+	assert.True(t, WithinChannelBudget(RecommendedChannelUtilizationPercent))
+	assert.True(t, WithinChannelBudget(10.0))
+	assert.False(t, WithinChannelBudget(RecommendedChannelUtilizationPercent+0.1))
+}

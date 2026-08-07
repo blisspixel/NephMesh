@@ -137,6 +137,7 @@ func (r *MeshtasticNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	applyOutcome(&node, outcome)
 	if outcome.Reachable {
 		applyChannelsInSync(&node, desiredChannels.Compare, outcome.LiveChannels, node.Generation)
+		applyAirtimeBudget(&node, outcome.CurrentModemPreset, outcome.Info, node.Generation)
 	}
 	metrics.Record(metrics.Sample{
 		Namespace: node.Namespace, Name: node.Name,
@@ -318,6 +319,40 @@ func valueOr(v *float64) float64 {
 		return 0
 	}
 	return *v
+}
+
+// applyAirtimeBudget predicts the airtime effect of a declared modem-preset
+// change and surfaces it as the AirtimeBudget condition. It sets the condition
+// only when a change is actually declared (the desired preset differs from the
+// device's current preset) and the radio reported its channel utilization, so the
+// prediction has real inputs; a no-change or no-telemetry reconcile carries no
+// condition. It is advisory: the operator still applies the declared preset, but
+// reports whether the change is predicted to push the channel past the
+// recommended utilization ceiling (hard refusal of an over-budget fleet change is
+// the Porch validator's job, see docs/plans/airtime-budget.md).
+func applyAirtimeBudget(node *meshv1alpha1.MeshtasticNode, currentPreset string, info device.Info, gen int64) {
+	desiredPreset := node.Spec.ModemPreset
+	if desiredPreset == "" || currentPreset == "" || desiredPreset == currentPreset || info.ChannelUtilization == nil {
+		return
+	}
+	predicted, ok := airtime.PredictedChannelUtilizationPercent(currentPreset, desiredPreset, *info.ChannelUtilization)
+	if !ok {
+		return
+	}
+	status := metav1.ConditionTrue
+	reason := meshv1alpha1.ReasonAirtimeBudgetOK
+	if !airtime.WithinChannelBudget(predicted) {
+		status = metav1.ConditionFalse
+		reason = meshv1alpha1.ReasonAirtimeBudgetExceeded
+	}
+	meta.SetStatusCondition(&node.Status.Conditions, metav1.Condition{
+		Type:               meshv1alpha1.ConditionAirtimeBudget,
+		Status:             status,
+		Reason:             reason,
+		ObservedGeneration: gen,
+		Message: fmt.Sprintf("changing modem preset %s to %s is predicted to move channel utilization from %.1f%% to ~%.1f%% (ceiling %.0f%%)",
+			currentPreset, desiredPreset, *info.ChannelUtilization, predicted, airtime.RecommendedChannelUtilizationPercent),
+	})
 }
 
 func hasFinalizer(node *meshv1alpha1.MeshtasticNode) bool {

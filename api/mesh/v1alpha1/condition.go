@@ -44,6 +44,14 @@ const (
 	// channel_url), so detecting drift is deliberately decoupled from acting on
 	// it until the apply is validated against a device.
 	ConditionChannelsInSync = "ChannelsInSync"
+	// ConditionAirtimeBudget is True when a declared modem-preset change is
+	// predicted to keep the channel within the recommended utilization ceiling,
+	// False when the change would push it over, using the airtime model against
+	// the radio's own measured utilization. It is a pre-flight prediction and
+	// advisory: the operator still applies the declared intent, but surfaces the
+	// cost, because hard refusal of an over-budget fleet change belongs at the
+	// Porch validator (docs/plans/airtime-budget.md), not the per-node reconcile.
+	ConditionAirtimeBudget = "AirtimeBudget"
 )
 
 // Condition reasons. CamelCase machine tokens, required by the conditions API.
@@ -66,6 +74,9 @@ const (
 
 	ReasonChannelsInSync  = "ChannelsInSync"
 	ReasonChannelsDrifted = "ChannelsDrifted"
+
+	ReasonAirtimeBudgetOK       = "WithinBudget"
+	ReasonAirtimeBudgetExceeded = "WouldExceedBudget"
 )
 
 // DeletionPolicy values.
