@@ -20,6 +20,8 @@ The through-line is a radio-agnostic intent model: any radio with a control surf
 
 One thing to be clear about up front, because it is easy to misread: the Kubernetes control plane is not in the field. It provisions and manages the mesh from a powered site; the deployed Meshtastic nodes run autonomously once configured and keep carrying traffic even if the cluster, and the site running it, are gone. NephMesh is a management layer, not a runtime dependency of the mesh. In PACE terms (Primary, Alternate, Contingency, Emergency), it prepares and maintains the contingency tier before you need it.
 
+The accurate framing of the value, and the honest limits, is "desired-state management for resilient radio fleets, with spectrum awareness and hybrid contingency," not "Meshtastic with Kubernetes." Physics caps the useful envelope at tens to low hundreds of nodes carrying low-bandwidth contingency traffic, and the audience is organized-operator resilience rather than a single hobbyist with five nodes. Where the project would grow if the core earns it, and why the core comes first, is written up as a design direction in the [doctrine](docs/design/doctrine.md); most of it is deliberately not built yet.
+
 ## Status
 
 Pre-alpha, and further along than that sounds. **0.2.0** shipped the flagship: the `MeshtasticNode` operator, built in Go and validated against a live `meshtasticd --sim` device in CI (it reconciles region, modem preset, role, owner, and MQTT with a broker password read from a Secret), packaged as a kpt blueprint, and hardened with an envtest controller tier and assume-breach control-proving tests. 0.1.0 shipped the Phase 1 virtual mesh demo (a node deployed, configured, observed on MQTT, and torn down declaratively; transcript in [demo/phase1](demo/phase1/README.md)). The Go code holds lint, coverage, race-detector, and vulnerability-scan floors, with SHA-pinned CI actions. Since then, the operator has also driven a physical Meshtastic T-Deck over USB: its own reconcile loop read the device, applied a config change over serial, the device rebooted, and it re-verified to `Ready`, the core of the 0.4 gate (the operator reconciling drift on real hardware). Demo captures land here as each milestone ships.
@@ -37,8 +39,11 @@ Pre-alpha, and further along than that sounds. **0.2.0** shipped the flagship: t
 | Doc | What it covers |
 |---|---|
 | [Roadmap](docs/roadmap.md) | Phased plan in dependency order, the version path to 1.0, and how much runs with zero hardware (most of it) |
+| [Design doctrine](docs/design/doctrine.md) | The design direction (mostly not built): intent as an outcome envelope, `MeshtasticNode` as a compiled artifact, airtime as a commons, and the honest boundaries. Read as a north star, not a feature list |
+| [Decision records](docs/adr/) | The significant, hard-to-reverse decisions and why, in Context/Decision/Consequences form |
 | [FAQ](docs/faq.md) | The north star (a self-adapting multi-transport fabric), why Meshtastic first, secure private channels, power and autonomy, PACE/DIL, legality |
 | [Architecture](docs/architecture.md) | Components, the radio-driver seam, planned CRDs, data flows, design principles |
+| [Regulatory matrix](docs/reference/regulatory-matrix.md) | Informal per-region band, duty-cycle, power, and encryption-legality notes; verify against primary sources |
 | [Plans](docs/plans/) | Implementation plans: Phase 1, Phase 2, the operator, CRD API design, engineering conventions, and agentic AI nodes on the mesh |
 | [Research](docs/research/) | Sourced research: Nephio mechanics and codebase conventions, Meshtastic, SDR, prior art, terminology and legality, and a [resilient-comms landscape synthesis](docs/research/resilient-comms-landscape.md) (DTN, adversarial mesh, LoRa prior art, Reticulum/MeshCore) |
 | [Guides](docs/guides/) | How-to guides, for example registering the packages with Nephio Porch |
