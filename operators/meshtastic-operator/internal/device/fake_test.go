@@ -18,12 +18,54 @@ package device
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/secret"
 )
+
+func TestFakeApplyChannelsStoresHashedAndReboots(t *testing.T) {
+	ctx := context.Background()
+	f := NewFake(map[string]any{}, 1)
+	rawKey := "\x09\x0a\x0b\x0c"
+
+	err := f.ApplyChannels(ctx, []ChannelWrite{{Index: 1, Name: "ops", Key: secret.New(rawKey), UplinkEnabled: true}})
+	require.NoError(t, err)
+	assert.Equal(t, 1, f.ChannelApplies)
+
+	// The device is unreachable through the reboot window.
+	_, err = f.ExportConfig(ctx)
+	assert.ErrorIs(t, err, ErrUnreachable, "the device reboots after a channel apply")
+
+	// After the window the export shows the channel with the key hashed, never raw.
+	cfg, err := f.ExportConfig(ctx)
+	require.NoError(t, err)
+	chans, ok := cfg["channels"].([]any)
+	require.True(t, ok)
+	require.Len(t, chans, 1)
+	ch := chans[0].(map[string]any)
+	assert.Equal(t, "ops", ch["name"])
+	assert.Equal(t, true, ch["uplinkEnabled"])
+	sum := sha256.Sum256([]byte(rawKey))
+	assert.Equal(t, hex.EncodeToString(sum[:]), ch["pskHash"], "the fake stores the key as a hash, matching the exporter")
+}
+
+func TestFakeApplyChannelsDefaultKeyHashesToShorthand(t *testing.T) {
+	ctx := context.Background()
+	f := NewFake(map[string]any{}, 0)
+	require.NoError(t, f.ApplyChannels(ctx, []ChannelWrite{{Index: 0, Name: "primary"}})) // zero key -> default
+
+	cfg, err := f.ExportConfig(ctx)
+	require.NoError(t, err)
+	ch := cfg["channels"].([]any)[0].(map[string]any)
+	sum := sha256.Sum256([]byte{0x01})
+	assert.Equal(t, hex.EncodeToString(sum[:]), ch["pskHash"], "a zero key models the device default (single 0x01 byte)")
+}
 
 func TestFakeApplyRebootsAndBecomesUnreachable(t *testing.T) {
 	ctx := context.Background()

@@ -25,6 +25,8 @@ package device
 import (
 	"context"
 	"errors"
+
+	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/secret"
 )
 
 // ErrUnreachable indicates the device API could not be reached, for example
@@ -47,6 +49,24 @@ type Client interface {
 	Reboot(ctx context.Context) error
 	// Info returns lightweight device identity and liveness for status.
 	Info(ctx context.Context) (Info, error)
+	// ApplyChannels writes the given channels to the device, which reboots as a
+	// result (like Apply). Channels apply through a path distinct from the scalar
+	// config because the device keys them by slot; the pre-shared keys are passed
+	// to the device only through a file, never a process argument or a log line,
+	// so they keep the same non-exposure the broker password gets.
+	ApplyChannels(ctx context.Context, channels []ChannelWrite) error
+}
+
+// ChannelWrite is one channel to write to the device. Key is the raw pre-shared
+// key, wrapped so it is never rendered in a log or error; a zero Key means use
+// the device's public default key. It is revealed only at the point the apply
+// file is written.
+type ChannelWrite struct {
+	Index           int32
+	Name            string
+	Key             secret.Value
+	UplinkEnabled   bool
+	DownlinkEnabled bool
 }
 
 // Info is a small snapshot of device identity used to populate status. It

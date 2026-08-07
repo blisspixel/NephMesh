@@ -18,12 +18,81 @@ package device
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/secret"
 )
+
+func TestApplyChannelsKeepsKeysInFileNotArgv(t *testing.T) {
+	rawKey := "\x09\x0a\x0b\x0c"
+	keyB64 := base64.StdEncoding.EncodeToString([]byte(rawKey))
+
+	var gotName string
+	var gotArgs []string
+	var fileContent []byte
+	c := &CLIClient{
+		Host:    "127.0.0.1:14403",
+		Applier: []string{"mesh-apply.py"},
+		execFn: func(_ context.Context, name string, args ...string) (string, error) {
+			gotName, gotArgs = name, args
+			for i, a := range args {
+				if a == "--channels-file" && i+1 < len(args) {
+					b, err := os.ReadFile(args[i+1]) // still present during the call
+					require.NoError(t, err)
+					fileContent = b
+				}
+			}
+			return "applied 2 channel(s)\n", nil
+		},
+	}
+
+	err := c.ApplyChannels(context.Background(), []ChannelWrite{
+		{Index: 0, Name: "primary"}, // zero key: default
+		{Index: 1, Name: "ops", Key: secret.New(rawKey), UplinkEnabled: true}, // explicit key
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, "mesh-apply.py", gotName)
+	joined := strings.Join(gotArgs, " ")
+	assert.Contains(t, joined, "--host 127.0.0.1:14403", "the TCP connection flag is passed")
+	assert.Contains(t, joined, "--channels-file", "the file path is passed, not the keys")
+	assert.NotContains(t, joined, keyB64, "the key never appears on the command line")
+	assert.NotContains(t, joined, rawKey, "the raw key never appears on the command line")
+
+	var docs []map[string]any
+	require.NoError(t, json.Unmarshal(fileContent, &docs))
+	require.Len(t, docs, 2)
+	assert.Equal(t, "default", docs[0]["psk"], "a zero key is the device default")
+	assert.Equal(t, "base64:"+keyB64, docs[1]["psk"], "an explicit key is base64, in the file only")
+	assert.Equal(t, true, docs[1]["uplinkEnabled"])
+}
+
+func TestApplyChannelsNoopAndMissingApplier(t *testing.T) {
+	c := &CLIClient{Host: "h"}
+	require.NoError(t, c.ApplyChannels(context.Background(), nil), "no channels is a no-op")
+	err := c.ApplyChannels(context.Background(), []ChannelWrite{{Index: 1}})
+	require.Error(t, err, "channels requested with no applier configured is an error, not a silent skip")
+	assert.NotContains(t, err.Error(), "psk")
+}
+
+func TestApplyChannelsMapsUnreachableToRequeue(t *testing.T) {
+	c := &CLIClient{
+		Serial:  "COM3",
+		Applier: []string{"mesh-apply.py"},
+		execFn: func(context.Context, string, ...string) (string, error) {
+			return "could not open port 'COM3': PermissionError", assert.AnError
+		},
+	}
+	err := c.ApplyChannels(context.Background(), []ChannelWrite{{Index: 1, Name: "ops"}})
+	assert.ErrorIs(t, err, ErrUnreachable, "a mid-reboot serial port maps to requeue, not a hard failure")
+}
 
 func TestParseExportConfigStripsChatterBeforeMarker(t *testing.T) {
 	out := `Connected to radio
