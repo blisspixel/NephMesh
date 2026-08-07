@@ -134,11 +134,11 @@ it can be made correct, and most of this is hardware-free.
    (Reachable, ConfigInSync, RebootPending, Ready) and add the mission-level ones the
    doctrine names (MissionViable, IntentionallyQuiet, MessageCustodyHealthy) using
    three-valued healthy/unhealthy/unknown reasoning, so an intentionally quiet node
-   never reads as a failure.
+   never reads as a failure. Design: [contingency semantics and silence-as-a-mode](plans/contingency-semantics-dtn.md).
 3. Day-2 operations, the part real deployments live in and thin today: coordinated
    channel and PSK rotation as declared policy (rotate at a scheduled epoch so the
    change is atomic across the fleet), a fleet firmware-upgrade path, and node
-   decommission (the Wipe deletionPolicy).
+   decommission (the Wipe deletionPolicy). Design: [coordinated key rotation and epoch-keyed channels](plans/key-rotation-and-epochs.md).
 4. Publish the operator image to a registry with a pinned digest, so the operator kpt
    package deploys end to end (a release step Phase 4 already lists).
 5. A reproducible demo path: a stranger can run the Phase 1 mesh and the operator
@@ -150,10 +150,10 @@ it can be made correct, and most of this is hardware-free.
    interference domain (operator-declared at first), refuse a fleet change that
    oversubscribes it, and hold an emergency reserve. This turns airtime from an
    observed number into a governed invariant, the one guarantee a declarative system
-   offers over hand-tuning, and the Phase 6 prerequisite.
+   offers over hand-tuning, and the Phase 6 prerequisite. Design: [airtime budget](plans/airtime-budget.md).
 7. Mission traffic classes and reserve accounting: protected shares per class, airtime
    debt when an emergency borrows the reserve, and reconfiguration-airtime accounting
-   so a remote change budgets its own admin traffic.
+   so a remote change budgets its own admin traffic. Design: [traffic classes and degraded modes](plans/contingency-semantics-dtn.md).
 8. Multi-site and the load-bearing resilience proof (Phase 5): a second cluster as a
    `WorkloadCluster`, `PackageVariantSet` fan-out with per-site specialization, then
    the control-plane-independence test, bring up both configured sites, delete the
@@ -167,7 +167,7 @@ it can be made correct, and most of this is hardware-free.
    constraints, evaluate current feasibility, emit proposed `MeshtasticNode`s and a
    `ChangePlan`, report `IntentInfeasible` honestly, and never actuate. Here
    `MeshtasticNode` formally becomes the compiled artifact and ADR 0001 moves from
-   Proposed to Accepted.
+   Proposed to Accepted. Design: [CommunicationIntent and the report-only compiler](plans/communication-intent.md).
 10. A `ChangePlan` resource and least-change actuation: field- or section-level deltas,
     a last-known-good cache, a disruption score, rate and dwell limits, and a rendezvous
     procedure for channel and preset changes (an announced switch epoch and predeclared
@@ -175,7 +175,7 @@ it can be made correct, and most of this is hardware-free.
     mesh).
 11. A signed, content-addressed Intent Capsule the edge can act on with no connectivity,
     with a degrading lease (expiry only ever narrows authority) and clock-uncertainty
-    behavior.
+    behavior. Design: [signed autonomy and the safety kernel](plans/signed-autonomy-and-safety-kernel.md), which also covers stages 12 to 14.
 12. A site steward, a small deterministic state machine, running L1 non-disruptive
     actions only (shed telemetry, aggregate reports, prioritize queues, enter a declared
     quiet mode).
@@ -185,7 +185,7 @@ it can be made correct, and most of this is hardware-free.
     autonomous channel switch.
 15. The detached-epoch and rejoin protocol (a treaty, not drift correction): epoch
     comparison, classification of local divergence, staged change plans, queue drainage
-    under budget, and a new signed epoch that revokes the old.
+    under budget, and a new signed epoch that revokes the old. Design: [rejoin as a treaty and self-stabilization](plans/rejoin-and-self-stabilization.md), which also covers stage 16.
 16. Model-check the authority and rejoin state machine (TLA+ or PlusCal); ADR 0002 moves
     to Accepted.
 17. Phase 6 closed loop: sensed occupancy proposes a channel change that the safety
@@ -357,7 +357,7 @@ The repo should be as easy for AI agents to work on as for humans, and eventuall
 
 ## Later / open questions
 
-- Research-informed backlog (from the August 2026 landscape sweep, full synthesis and sources in `docs/research/resilient-comms-landscape.md`), highest leverage first: (1) an airtime/duty-cycle budget as an enforced reconciler invariant, the one idea backed by two independent research streams and the canonical scaling literature, and the clearest thing a declarative intent system can offer over hand-tuned Meshtastic (the time-on-air model foundation is landed in `internal/airtime`; the enforced admission gate is the next step); (2) a mesh-observability layer, the prerequisite for the resilience numbers already committed to (a Prometheus exporter for the KPIs the operator already reads, readiness, apply attempts, channel utilization, transmit airtime, is landed in `internal/metrics`; MeshMonitor integration, delivery-ratio and neighbor-churn metrics, and the control-plane-independence harness remain); (3) an application-layer authentication and freshness envelope on automation-triggering mesh packets (the RF medium is untrusted: Meshtastic is AES-CTR with a shared key, no per-sender auth, no replay protection); (4) the receive-only SDR as an out-of-band "claim vs air" trust anchor (duplicate-node-id, impossible-mobility, Sybil detection), plus a receive-only LoRa decoder alongside the energy sweep; (5) an anti-oscillation debouncer with unpredictable-destination selection for the Phase 6 closed loop; (6) a written Reticulum position (candidate driver, not competitor) and a crypto-mesh prior-art update; (7) epoch-keyed channels for forward secrecy and revocation at zero airtime; (8) a second radio driver, MeshCore or ChirpStack, to prove the seam is real
+- Research-informed backlog (from the August 2026 landscape sweep, full synthesis and sources in `docs/research/resilient-comms-landscape.md`), highest leverage first: (1) an airtime/duty-cycle budget as an enforced reconciler invariant, the one idea backed by two independent research streams and the canonical scaling literature, and the clearest thing a declarative intent system can offer over hand-tuned Meshtastic (the time-on-air model foundation is landed in `internal/airtime`; the enforced admission gate is the next step); (2) a mesh-observability layer, the prerequisite for the resilience numbers already committed to (a Prometheus exporter for the KPIs the operator already reads, readiness, apply attempts, channel utilization, transmit airtime, is landed in `internal/metrics`; MeshMonitor integration, delivery-ratio and neighbor-churn metrics, and the control-plane-independence harness remain); (3) an application-layer authentication and freshness envelope on automation-triggering mesh packets (the RF medium is untrusted: Meshtastic is AES-CTR with a shared key, no per-sender auth, no replay protection; design in [message-auth-envelope](plans/message-auth-envelope.md), which recommends a compact Ed25519 authentication-and-freshness envelope on the rare automation-triggering packets, with clock-free monotonic freshness); (4) the receive-only SDR as an out-of-band "claim vs air" trust anchor (duplicate-node-id, impossible-mobility, Sybil detection), plus a receive-only LoRa decoder alongside the energy sweep; research in [sdr-trust-anchor](research/sdr-trust-anchor.md), which finds the two cheap logic detectors (duplicate-id, impossible-mobility) the right first move and is honest that commodity-SDR LoRa decode is real but overstated in the wild; (5) an anti-oscillation debouncer with unpredictable-destination selection for the Phase 6 closed loop; (6) a written Reticulum position (candidate driver, not competitor) and a crypto-mesh prior-art update; (7) epoch-keyed channels for forward secrecy and revocation at zero airtime (design in [key-rotation-and-epochs](plans/key-rotation-and-epochs.md), a make-before-break fleet rotation with the honest limit that a revoked member keeps the current epoch key until the next rotation); (8) a second radio driver to prove the seam is real (research in [second-radio-driver](research/second-radio-driver.md), which derives a minimal driver contract and recommends MeshCore first, then Reticulum, then ChirpStack as the topology stress-test)
 - Propose lessons learned (or packages) upstream; `nephio-experimental` exists for exactly this kind of PoC
 - Contribution strategy: once Phase 4 ships, the Meshtastic community is the natural first audience (a working operator plus packages), ahead of the Nephio community; treat the operator as the project's flagship deliverable
 - Scale envelope (state it plainly, it is a credibility point): a Meshtastic channel is airtime-limited to roughly tens of active nodes, not thousands. NephMesh is a resilience layer for small teams and sites, not a carrier network, and that is a respectable thing to be. The control plane can manage many sites; each mesh stays small by physics

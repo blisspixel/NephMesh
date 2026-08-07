@@ -44,7 +44,7 @@ Pre-alpha, and further along than that sounds. **0.2.0** shipped the flagship: t
 | [FAQ](docs/faq.md) | The north star (a self-adapting multi-transport fabric), why Meshtastic first, secure private channels, power and autonomy, PACE/DIL, legality |
 | [Architecture](docs/architecture.md) | Components, the radio-driver seam, planned CRDs, data flows, design principles |
 | [Regulatory matrix](docs/reference/regulatory-matrix.md) | Informal per-region band, duty-cycle, power, and encryption-legality notes; verify against primary sources |
-| [Plans](docs/plans/) | Implementation plans: Phase 1, Phase 2, the operator, CRD API design, engineering conventions, and agentic AI nodes on the mesh |
+| [Plans](docs/plans/) | Implementation and design plans: the phases and the operator, plus the intent-layer frontier (CommunicationIntent and the compiler, signed autonomy and the safety kernel, rejoin as a treaty, key rotation, message authentication, contingency semantics) |
 | [Research](docs/research/) | Sourced research: Nephio mechanics and codebase conventions, Meshtastic, SDR, prior art, terminology and legality, and a [resilient-comms landscape synthesis](docs/research/resilient-comms-landscape.md) (DTN, adversarial mesh, LoRa prior art, Reticulum/MeshCore) |
 | [Guides](docs/guides/) | How-to guides, for example registering the packages with Nephio Porch |
 | [Code quality standards](docs/CODE-QUALITY-STANDARDS.md) | The engineering bar (race, fuzzing, govulncheck, envtest, assume-breach tests), what is enforced, and honest gaps |
