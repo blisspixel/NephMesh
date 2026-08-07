@@ -24,6 +24,7 @@ import (
 	"context"
 	"flag"
 	"os"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -99,13 +100,36 @@ func main() {
 	}
 }
 
-// newCLIDevice builds a CLI-backed device client for a node's TCP connection.
-// Serial and viaGateway transports are added as their reconcile paths are built;
-// until then a node that selects them is reported as unreachable rather than
-// silently mishandled.
+// Bundled helper defaults. The image (see the Dockerfile) carries the exporter
+// and channel-apply helpers here. The exporter emits the operator's managed
+// fields including the channel set (which the CLI's own --export-config does not),
+// and the applier writes channels through a file so keys never reach argv. Both
+// are overridable by env for local runs against a checkout.
+const (
+	defaultExporter = "python3 /usr/local/lib/nephmesh/mesh-export.py"
+	defaultApplier  = "python3 /usr/local/lib/nephmesh/mesh-apply.py"
+)
+
+func helperArgv(env, fallback string) []string {
+	v := os.Getenv(env)
+	if v == "" {
+		v = fallback
+	}
+	return strings.Fields(v)
+}
+
+// newCLIDevice builds a CLI-backed device client for a node's TCP connection,
+// wired to the bundled config exporter and channel-apply helpers. Serial and
+// viaGateway transports are added as their reconcile paths are built; until then
+// a node that selects them is reported as unreachable rather than silently
+// mishandled.
 func newCLIDevice(_ context.Context, node *meshv1alpha1.MeshtasticNode) (device.Client, error) {
 	if node.Spec.Connection.TCP != nil {
-		return &device.CLIClient{Host: node.Spec.Connection.TCP.Host}, nil
+		return &device.CLIClient{
+			Host:     node.Spec.Connection.TCP.Host,
+			Exporter: helperArgv("NEPHMESH_EXPORTER", defaultExporter),
+			Applier:  helperArgv("NEPHMESH_APPLIER", defaultApplier),
+		}, nil
 	}
 	return &device.Unsupported{Transport: transportName(node)}, nil
 }

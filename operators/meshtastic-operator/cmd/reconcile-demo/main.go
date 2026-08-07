@@ -145,7 +145,7 @@ func main() {
 
 	state := reconcile.State{}
 	for step := 1; step <= 15; step++ {
-		out, err := reconcile.Converge(ctx, dev, desired, state)
+		out, err := reconcile.Converge(ctx, dev, desired, reconcile.DesiredChannels{}, state)
 		if err != nil {
 			fmt.Printf("  step %-2d error: %v\n", step, err)
 			os.Exit(1)

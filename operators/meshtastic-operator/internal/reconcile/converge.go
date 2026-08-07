@@ -80,6 +80,16 @@ type State struct {
 	ApplyAttempts int32
 }
 
+// DesiredChannels is what Converge needs to reconcile channels: the comparable
+// state to detect drift (Compare) and the write payload to apply it (Write). The
+// controller builds both together from the spec and the resolved Secrets, so
+// Converge stays free of Kubernetes and Secret handling. An empty value means the
+// node declares no channels, and channel reconciliation is a no-op.
+type DesiredChannels struct {
+	Compare []config.ChannelState
+	Write   []device.ChannelWrite
+}
+
 // Converge performs one non-blocking step toward making the device match
 // desired. The prior State carries the RebootPending condition (so a device
 // unreachable right after an apply is reported as still rebooting, not as a
@@ -87,7 +97,7 @@ type State struct {
 // bounded). It returns an error only for genuinely unexpected failures (which
 // the controller should retry with backoff); an unreachable device is a normal
 // requeue, not an error.
-func Converge(ctx context.Context, dev device.Client, desired map[string]any, prior State) (Outcome, error) {
+func Converge(ctx context.Context, dev device.Client, desired map[string]any, chans DesiredChannels, prior State) (Outcome, error) {
 	live, err := dev.ExportConfig(ctx)
 	if errors.Is(err, device.ErrUnreachable) {
 		reason := meshv1alpha1.ReasonConnectFailed
@@ -101,8 +111,10 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, pr
 	}
 
 	liveChannels := config.LiveChannels(live)
+	scalarConverged := config.IsConverged(desired, live)
+	channelsConverged := config.ChannelsConverged(chans.Compare, liveChannels)
 
-	if config.IsConverged(desired, live) {
+	if scalarConverged && channelsConverged {
 		info, _ := dev.Info(ctx) // best effort; identity is not load-bearing here
 		return Outcome{
 			Reachable: true, ConfigInSync: true, Ready: true,
@@ -112,34 +124,45 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, pr
 		}, nil
 	}
 
-	// Drift remains. If we have already applied MaxApplyAttempts times without
-	// converging, stop: the desired state is very likely something the device
-	// will not echo back, so rebooting again would loop forever. Surface it.
+	// Drift remains (scalar config, channels, or both). If we have already applied
+	// MaxApplyAttempts times without converging, stop: the desired state is very
+	// likely something the device will not echo back, so rebooting again would
+	// loop forever. Surface it.
 	if prior.ApplyAttempts >= MaxApplyAttempts {
 		return Outcome{
-			Reachable: true, ConfigInSync: false, Degraded: true,
+			Reachable: true, ConfigInSync: scalarConverged, Degraded: true,
 			Reason: meshv1alpha1.ReasonApplyFailed, ApplyAttempts: prior.ApplyAttempts,
 			Requeue:      DriftCheckInterval,
 			LiveChannels: liveChannels,
 		}, nil
 	}
 
-	if err := dev.Apply(ctx, desired); err != nil {
-		if errors.Is(err, device.ErrUnreachable) {
+	// Apply the surface that drifted. Scalar config goes first: it carries the
+	// module config whose reboot also settles the device, and only when the scalar
+	// config already matches do we apply channels (their own distinct, key-bearing
+	// path). Either apply reboots the device.
+	var applyErr error
+	if !scalarConverged {
+		applyErr = dev.Apply(ctx, desired)
+	} else {
+		applyErr = dev.ApplyChannels(ctx, chans.Write)
+	}
+	if applyErr != nil {
+		if errors.Is(applyErr, device.ErrUnreachable) {
 			return Outcome{Reachable: false, RebootPending: prior.RebootPending, ApplyAttempts: prior.ApplyAttempts, Reason: meshv1alpha1.ReasonConfigApplied, Requeue: ReconnectBackoff}, nil
 		}
-		return Outcome{ApplyAttempts: prior.ApplyAttempts}, err
+		return Outcome{ApplyAttempts: prior.ApplyAttempts}, applyErr
 	}
-	// The MQTT module thread starts only at boot, so reboot explicitly after an
-	// apply to make its activation deterministic. The device may already be
-	// rebooting from the apply itself, in which case the reboot is refused as
-	// unreachable; only a genuinely unexpected reboot error is surfaced.
+	// The MQTT module thread starts only at boot, and a channel write reboots the
+	// device on its own, so reboot explicitly to make activation deterministic. The
+	// device may already be rebooting from the apply, in which case the reboot is
+	// refused as unreachable; only a genuinely unexpected reboot error surfaces.
 	if rebootErr := dev.Reboot(ctx); rebootErr != nil && !errors.Is(rebootErr, device.ErrUnreachable) {
 		return Outcome{ApplyAttempts: prior.ApplyAttempts + 1}, rebootErr
 	}
 
 	return Outcome{
-		Reachable: true, ConfigInSync: false, RebootPending: true,
+		Reachable: true, ConfigInSync: scalarConverged, RebootPending: true,
 		Reason: meshv1alpha1.ReasonConfigApplied, Requeue: RebootWait,
 		ApplyAttempts: prior.ApplyAttempts + 1,
 		LiveChannels:  liveChannels,

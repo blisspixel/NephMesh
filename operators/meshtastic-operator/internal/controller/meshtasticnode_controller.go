@@ -116,12 +116,11 @@ func (r *MeshtasticNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	channelHashes, err := r.resolveChannelPSKHashes(ctx, &node)
+	desiredChannels, err := r.buildDesiredChannels(ctx, &node)
 	if err != nil {
 		// The error names the secret and key, never the key material.
 		return ctrl.Result{}, err
 	}
-	desiredChannels := config.DesiredChannels(node.Spec, channelHashes)
 
 	desired := config.BuildDesired(node.Spec, r.resolveBroker(ctx, &node), mqttPassword)
 	prior := reconcile.State{
@@ -129,7 +128,7 @@ func (r *MeshtasticNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		ApplyAttempts: node.Status.ApplyAttempts,
 	}
 
-	outcome, err := reconcile.Converge(ctx, dev, desired, prior)
+	outcome, err := reconcile.Converge(ctx, dev, desired, desiredChannels, prior)
 	if err != nil {
 		log.Error(err, "convergence step failed")
 		return ctrl.Result{}, err // rate-limited retry for unexpected failures
@@ -137,7 +136,7 @@ func (r *MeshtasticNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	applyOutcome(&node, outcome)
 	if outcome.Reachable {
-		applyChannelsInSync(&node, desiredChannels, outcome.LiveChannels, node.Generation)
+		applyChannelsInSync(&node, desiredChannels.Compare, outcome.LiveChannels, node.Generation)
 	}
 	metrics.Record(metrics.Sample{
 		Namespace: node.Namespace, Name: node.Name,
@@ -186,34 +185,48 @@ func (r *MeshtasticNodeReconciler) resolveMQTTPassword(ctx context.Context, node
 	return secret.New(string(data)), nil
 }
 
-// resolveChannelPSKHashes reads each declared channel's pre-shared key from the
+// buildDesiredChannels reads each declared channel's pre-shared key from the
 // Secret it references, in the node's own namespace with an uncached get (the
-// same namespaced, get-only path the broker password uses), and returns the key
-// hashes by channel index. The raw key is hashed immediately and never returned
-// or stored, so it cannot leak; only the hash, which is what drift detection
-// needs, leaves this function. A channel without a pskSecretRef contributes no
-// entry (no declared key). Errors name the secret and key, never the material.
-func (r *MeshtasticNodeReconciler) resolveChannelPSKHashes(ctx context.Context, node *meshv1alpha1.MeshtasticNode) (map[int32]string, error) {
-	if len(node.Spec.Channels) == 0 {
-		return nil, nil
-	}
-	hashes := make(map[int32]string, len(node.Spec.Channels))
+// same namespaced, get-only path the broker password uses), and returns both what
+// the reconciler needs: the comparable state (the key as a hash, for drift
+// detection and the status condition) and the write payload (the key wrapped in
+// the redacting type, revealed only when the apply file is written). A channel
+// without a pskSecretRef uses the device's public default key, whose hash is the
+// SHA-256 of the single 0x01 byte the device stores. Errors name the secret and
+// key, never the material.
+func (r *MeshtasticNodeReconciler) buildDesiredChannels(ctx context.Context, node *meshv1alpha1.MeshtasticNode) (reconcile.DesiredChannels, error) {
+	var out reconcile.DesiredChannels
 	for _, ch := range node.Spec.Channels {
-		if ch.PSKSecretRef == nil {
-			continue
+		var key secret.Value
+		if ch.PSKSecretRef != nil {
+			var s corev1.Secret
+			name := types.NamespacedName{Namespace: node.Namespace, Name: ch.PSKSecretRef.Name}
+			if err := r.Reader.Get(ctx, name, &s); err != nil {
+				return reconcile.DesiredChannels{}, fmt.Errorf("reading channel %d psk secret %q: %w", ch.Index, ch.PSKSecretRef.Name, err)
+			}
+			data, ok := s.Data[ch.PSKSecretRef.Key]
+			if !ok {
+				return reconcile.DesiredChannels{}, fmt.Errorf("channel %d psk secret %q has no key %q", ch.Index, ch.PSKSecretRef.Name, ch.PSKSecretRef.Key)
+			}
+			key = secret.New(string(data))
 		}
-		var s corev1.Secret
-		key := types.NamespacedName{Namespace: node.Namespace, Name: ch.PSKSecretRef.Name}
-		if err := r.Reader.Get(ctx, key, &s); err != nil {
-			return nil, fmt.Errorf("reading channel %d psk secret %q: %w", ch.Index, ch.PSKSecretRef.Name, err)
+		// The compare hash: an explicit key hashes its raw bytes, a default (no
+		// ref) hashes the 0x01 shorthand the device stores, so a default channel
+		// does not read as permanent drift.
+		raw := []byte{0x01}
+		if !key.IsZero() {
+			raw = []byte(key.Reveal())
 		}
-		data, ok := s.Data[ch.PSKSecretRef.Key]
-		if !ok {
-			return nil, fmt.Errorf("channel %d psk secret %q has no key %q", ch.Index, ch.PSKSecretRef.Name, ch.PSKSecretRef.Key)
-		}
-		hashes[ch.Index] = config.PSKHash(data)
+		out.Compare = append(out.Compare, config.ChannelState{
+			Index: ch.Index, Name: ch.Name, PSKHash: config.PSKHash(raw),
+			UplinkEnabled: ch.UplinkEnabled, DownlinkEnabled: ch.DownlinkEnabled,
+		})
+		out.Write = append(out.Write, device.ChannelWrite{
+			Index: ch.Index, Name: ch.Name, Key: key,
+			UplinkEnabled: ch.UplinkEnabled, DownlinkEnabled: ch.DownlinkEnabled,
+		})
 	}
-	return hashes, nil
+	return out, nil
 }
 
 // applyChannelsInSync records whether the declared channels match the device.

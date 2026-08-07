@@ -50,7 +50,13 @@ def main() -> int:
     else:
         from meshtastic.tcp_interface import TCPInterface
 
-        iface = TCPInterface(args.host)
+        # The operator passes the TCP transport as host:port; the library takes
+        # them separately, so split when a port is present.
+        hostname, sep, port = args.host.partition(":")
+        if sep and port:
+            iface = TCPInterface(hostname, portNumber=int(port))
+        else:
+            iface = TCPInterface(hostname)
 
     try:
         lc = iface.localNode.localConfig

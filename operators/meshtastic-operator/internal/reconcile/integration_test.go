@@ -72,7 +72,7 @@ func TestIntegrationConvergeAgainstSimDevice(t *testing.T) {
 	var out Outcome
 	for time.Now().Before(deadline) {
 		var err error
-		out, err = Converge(ctx, cli, desired, state)
+		out, err = Converge(ctx, cli, desired, DesiredChannels{}, state)
 		require.NoError(t, err, "convergence step should not hard-error against the sim")
 		state = State{RebootPending: out.RebootPending, ApplyAttempts: out.ApplyAttempts}
 		if out.Ready {
