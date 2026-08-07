@@ -51,20 +51,20 @@ func (s stubClient) ApplyChannels(context.Context, []device.ChannelWrite) error 
 
 func TestExportUnexpectedErrorPropagates(t *testing.T) {
 	boom := errors.New("boom")
-	_, err := Converge(context.Background(), stubClient{exportErr: boom}, desiredUS(), State{})
+	_, err := Converge(context.Background(), stubClient{exportErr: boom}, desiredUS(), DesiredChannels{}, State{})
 	assert.ErrorIs(t, err, boom, "a non-unreachable export error is returned for rate-limited retry")
 }
 
 func TestApplyUnexpectedErrorPropagates(t *testing.T) {
 	boom := errors.New("apply failed")
 	dev := stubClient{live: map[string]any{}, applyErr: boom} // drifted, apply errors
-	_, err := Converge(context.Background(), dev, desiredUS(), State{})
+	_, err := Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, State{})
 	assert.ErrorIs(t, err, boom)
 }
 
 func TestApplyUnreachableIsRequeueNotError(t *testing.T) {
 	dev := stubClient{live: map[string]any{}, applyErr: device.ErrUnreachable} // drifted, apply hits reboot
-	out, err := Converge(context.Background(), dev, desiredUS(), State{})
+	out, err := Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, State{})
 	require.NoError(t, err)
 	assert.False(t, out.Reachable)
 	assert.Equal(t, ReconnectBackoff, out.Requeue)
@@ -73,6 +73,6 @@ func TestApplyUnreachableIsRequeueNotError(t *testing.T) {
 func TestRebootUnexpectedErrorPropagates(t *testing.T) {
 	boom := errors.New("reboot failed")
 	dev := stubClient{live: map[string]any{}, rebootErr: boom} // drifted, apply ok, reboot errors
-	_, err := Converge(context.Background(), dev, desiredUS(), State{})
+	_, err := Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, State{})
 	assert.ErrorIs(t, err, boom, "an unexpected reboot error is surfaced, not swallowed")
 }

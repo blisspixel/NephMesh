@@ -23,7 +23,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/config"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/device"
+	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/secret"
 )
 
 func desiredUS() map[string]any {
@@ -37,7 +39,7 @@ func TestConvergeSurfacesLiveChannels(t *testing.T) {
 	}
 	dev := device.NewFake(live, 0)
 
-	out, err := Converge(context.Background(), dev, desiredUS(), State{})
+	out, err := Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, State{})
 	require.NoError(t, err)
 	require.Len(t, out.LiveChannels, 1, "the device's channels are surfaced for the controller to diff")
 	assert.Equal(t, int32(0), out.LiveChannels[0].Index)
@@ -46,9 +48,44 @@ func TestConvergeSurfacesLiveChannels(t *testing.T) {
 	assert.True(t, out.LiveChannels[0].UplinkEnabled)
 }
 
+func TestConvergesChannelsThroughApplyAndReboot(t *testing.T) {
+	// The device starts with the scalar config already converged (region US) and
+	// only the default primary channel; the desired state adds a secondary.
+	dev := device.NewFake(desiredUS(), 1) // reboot window 1
+	rawKey := "\x09\x0a\x0b\x0c"
+	chans := DesiredChannels{
+		Compare: []config.ChannelState{{Index: 1, Name: "ops", PSKHash: config.PSKHash([]byte(rawKey)), UplinkEnabled: true}},
+		Write:   []device.ChannelWrite{{Index: 1, Name: "ops", Key: secret.New(rawKey), UplinkEnabled: true}},
+	}
+
+	// Step 1: scalar config already matches, so only channels apply, then reboot.
+	out, err := Converge(context.Background(), dev, desiredUS(), chans, State{})
+	require.NoError(t, err)
+	assert.True(t, out.RebootPending)
+	assert.False(t, out.Ready)
+	assert.Equal(t, 1, dev.ChannelApplies, "channels applied once")
+	assert.Equal(t, 0, dev.Applies, "the scalar config was already converged, so it is not reapplied")
+
+	// Step 2..n: the device reboots (unreachable), then converges with channels in sync.
+	state := State{RebootPending: out.RebootPending, ApplyAttempts: out.ApplyAttempts}
+	var final Outcome
+	for i := 0; i < 5; i++ {
+		out, err = Converge(context.Background(), dev, desiredUS(), chans, state)
+		require.NoError(t, err)
+		state = State{RebootPending: out.RebootPending, ApplyAttempts: out.ApplyAttempts}
+		if out.Ready {
+			final = out
+			break
+		}
+	}
+	require.True(t, final.Ready, "the device converges once channels are written and it reboots")
+	assert.True(t, final.ConfigInSync)
+	assert.Equal(t, 1, dev.ChannelApplies, "channels are written exactly once, not on every pass")
+}
+
 func TestAlreadyConvergedIsReadyWithoutApply(t *testing.T) {
 	dev := device.NewFake(desiredUS(), 0)
-	out, err := Converge(context.Background(), dev, desiredUS(), State{})
+	out, err := Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, State{})
 	require.NoError(t, err)
 	assert.True(t, out.Ready)
 	assert.True(t, out.ConfigInSync)
@@ -59,7 +96,7 @@ func TestAlreadyConvergedIsReadyWithoutApply(t *testing.T) {
 
 func TestConvergedResetsApplyAttempts(t *testing.T) {
 	dev := device.NewFake(desiredUS(), 0)
-	out, err := Converge(context.Background(), dev, desiredUS(), State{ApplyAttempts: 3})
+	out, err := Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, State{ApplyAttempts: 3})
 	require.NoError(t, err)
 	assert.Equal(t, int32(0), out.ApplyAttempts, "convergence clears the attempt counter")
 }
@@ -70,7 +107,7 @@ func TestDriftedDeviceAppliesOnceThenConvergesAcrossReboot(t *testing.T) {
 	dev := device.NewFake(map[string]any{}, 2)
 
 	// Step 1: drift detected, config applied, reboot pending.
-	out, err := Converge(context.Background(), dev, desiredUS(), State{})
+	out, err := Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, State{})
 	require.NoError(t, err)
 	assert.True(t, out.RebootPending)
 	assert.False(t, out.Ready)
@@ -84,7 +121,7 @@ func TestDriftedDeviceAppliesOnceThenConvergesAcrossReboot(t *testing.T) {
 	sawUnreachable := false
 	var final Outcome
 	for i := 0; i < 6; i++ {
-		out, err = Converge(context.Background(), dev, desiredUS(), state)
+		out, err = Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, state)
 		require.NoError(t, err)
 		state = State{RebootPending: out.RebootPending, ApplyAttempts: out.ApplyAttempts}
 		if !out.Reachable {
@@ -112,7 +149,7 @@ func TestApplyLoopIsBoundedThenDegraded(t *testing.T) {
 	var out Outcome
 	var err error
 	for i := 0; i < MaxApplyAttempts+2; i++ {
-		out, err = Converge(context.Background(), dev, desiredUS(), state)
+		out, err = Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, state)
 		require.NoError(t, err)
 		state = State{RebootPending: out.RebootPending, ApplyAttempts: out.ApplyAttempts}
 	}
@@ -125,7 +162,7 @@ func TestUnreachableFromStartRequeuesWithoutError(t *testing.T) {
 	dev := device.NewFake(map[string]any{}, 3)
 	_ = dev.Reboot(context.Background()) // now unreachable for 3 calls
 
-	out, err := Converge(context.Background(), dev, desiredUS(), State{})
+	out, err := Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, State{})
 	require.NoError(t, err, "an unreachable device is a requeue, not an error")
 	assert.False(t, out.Reachable)
 	assert.Equal(t, ReconnectBackoff, out.Requeue)

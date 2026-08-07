@@ -33,4 +33,8 @@ ENV HOME=/home/app \
     PATH=/home/app/.local/bin:/usr/local/bin:/usr/bin:/bin
 RUN pip install --no-cache-dir --user "meshtastic[cli]==${MESHTASTIC_VERSION}"
 COPY --from=build /out/meshtastic-operator /usr/local/bin/meshtastic-operator
+# The operator execs these helpers: the exporter emits the managed config
+# including the channel set (which the CLI's --export-config does not), and the
+# applier writes channels through a file so keys never reach the command line.
+COPY operators/meshtastic-operator/hack/mesh-export.py operators/meshtastic-operator/hack/mesh-apply.py /usr/local/lib/nephmesh/
 ENTRYPOINT ["meshtastic-operator"]
