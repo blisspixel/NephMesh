@@ -38,6 +38,23 @@ import (
 // to know whether the key matches, not what it is, and hashing keeps the key out
 // of the diff, the logs, and the status, matching the redacting-secret posture
 // the rest of the operator holds.
+//
+// The converging apply mechanism is validated against meshtasticd --sim, and it
+// is simpler than the channel_url encoding first feared: channels do not need the
+// single base64 channel_url round-tripped byte-for-byte. Each channel applies
+// independently with the CLI's per-channel setters, in one invocation and so one
+// reboot, and reads back exactly:
+//
+//	meshtastic --ch-index 1 --ch-set name ops --ch-set psk base64:AQIDBA==
+//	-> Index 1: SECONDARY psk=secret { "psk": "AQIDBA==", "name": "ops" }
+//
+// The key representation the device stores, and therefore the representation the
+// declared key must normalize to before hashing, is: the default key is the
+// single byte 0x01 (exported psk "AQ=="; set with `--ch-set psk default`), no key
+// is the empty byte string (set with `--ch-set psk none`), and an explicit key is
+// its raw bytes (set with `--ch-set psk base64:<raw-key-base64>`). Because the
+// apply is per-channel and the compare is by hash, the whole surface avoids the
+// attempt-and-record fragility of a canonical URL encoding.
 
 // ChannelState is one channel's comparable configuration, keyed by the slot
 // index the device uses. PSKHash is the hex SHA-256 of the raw key, or "" when
