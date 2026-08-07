@@ -20,7 +20,7 @@ limitations under the License.
 // preset link-budget work both show a channel collapses from airtime and
 // collisions, and the longest-range presets have the longest airtime and
 // collapse a dense channel fastest. Governing airtime as declared, enforced
-// budget is the one guarantee a declarative intent system can offer over
+// budget is the clearest thing a declarative intent system can offer over
 // hand-tuned per-device configuration; this package is that model's foundation.
 //
 // The calculation is the standard Semtech LoRa time-on-air formula (SX1276
@@ -131,4 +131,34 @@ const (
 func Healthy(channelUtilizationPercent, airUtilTxPercent float64) bool {
 	return channelUtilizationPercent <= RecommendedChannelUtilizationPercent &&
 		airUtilTxPercent <= RecommendedAirUtilTxPercent
+}
+
+// RepresentativeFramePayloadBytes is a typical Meshtastic application payload,
+// used to compare presets by time-on-air. The ratio of two presets' time-on-air
+// is only weakly payload-dependent, so a representative size is enough to predict
+// the relative effect of a preset change.
+const RepresentativeFramePayloadBytes = 40
+
+// PredictedChannelUtilizationPercent estimates what a node's channel utilization
+// would become if its modem preset changed from current to desired, given the
+// utilization the radio measures today at the current preset. Channel time is
+// spent in proportion to per-frame time-on-air for the same offered traffic, so
+// the estimate scales the measured value by the ratio of the two presets'
+// time-on-air. It is a prediction, not a measurement: it assumes the offered
+// traffic is unchanged and cannot see a neighbor's mesh, which is exactly why the
+// measured AirtimeHealthy condition remains the ground-truth check. ok is false
+// if either preset is unknown or the current time-on-air is zero.
+func PredictedChannelUtilizationPercent(currentPreset, desiredPreset string, measuredUtilizationPercent float64) (predicted float64, ok bool) {
+	cur, ok1 := PresetTimeOnAir(currentPreset, RepresentativeFramePayloadBytes)
+	des, ok2 := PresetTimeOnAir(desiredPreset, RepresentativeFramePayloadBytes)
+	if !ok1 || !ok2 || cur <= 0 {
+		return 0, false
+	}
+	return measuredUtilizationPercent * float64(des) / float64(cur), true
+}
+
+// WithinChannelBudget reports whether a (measured or predicted) channel
+// utilization is within the recommended ceiling.
+func WithinChannelBudget(utilizationPercent float64) bool {
+	return utilizationPercent <= RecommendedChannelUtilizationPercent
 }

@@ -238,6 +238,40 @@ func TestReconcileMissingChannelSecretIsSurfaced(t *testing.T) {
 	assert.Contains(t, err.Error(), "absent")
 }
 
+func TestAirtimeBudgetCondition(t *testing.T) {
+	busy := 12.0 // measured channel utilization at the current (fast) preset
+
+	// A slower, longer-range preset on an already-busy channel is predicted to
+	// exceed the ceiling: condition False, with the numbers.
+	node := newNode()
+	node.Spec.ModemPreset = "LONG_SLOW"
+	applyAirtimeBudget(node, "SHORT_FAST", device.Info{ChannelUtilization: &busy}, 1)
+	c := meta.FindStatusCondition(node.Status.Conditions, meshv1alpha1.ConditionAirtimeBudget)
+	require.NotNil(t, c)
+	assert.Equal(t, metav1.ConditionFalse, c.Status)
+	assert.Equal(t, meshv1alpha1.ReasonAirtimeBudgetExceeded, c.Reason)
+	assert.Contains(t, c.Message, "SHORT_FAST to LONG_SLOW")
+
+	// A faster preset lowers utilization: within budget.
+	ok := newNode()
+	ok.Spec.ModemPreset = "SHORT_FAST"
+	applyAirtimeBudget(ok, "LONG_SLOW", device.Info{ChannelUtilization: &busy}, 1)
+	c = meta.FindStatusCondition(ok.Status.Conditions, meshv1alpha1.ConditionAirtimeBudget)
+	require.NotNil(t, c)
+	assert.Equal(t, metav1.ConditionTrue, c.Status)
+
+	// No change declared, or no telemetry: no condition at all.
+	noChange := newNode()
+	noChange.Spec.ModemPreset = "LONG_FAST"
+	applyAirtimeBudget(noChange, "LONG_FAST", device.Info{ChannelUtilization: &busy}, 1)
+	assert.Nil(t, meta.FindStatusCondition(noChange.Status.Conditions, meshv1alpha1.ConditionAirtimeBudget))
+
+	noTelemetry := newNode()
+	noTelemetry.Spec.ModemPreset = "LONG_SLOW"
+	applyAirtimeBudget(noTelemetry, "SHORT_FAST", device.Info{}, 1)
+	assert.Nil(t, meta.FindStatusCondition(noTelemetry.Status.Conditions, meshv1alpha1.ConditionAirtimeBudget))
+}
+
 func TestReconcileMissingObjectIsNoOp(t *testing.T) {
 	r, _ := reconcilerFor(t, newNode(), func(context.Context, *meshv1alpha1.MeshtasticNode) (device.Client, error) {
 		return device.NewFake(desiredUS(), 0), nil

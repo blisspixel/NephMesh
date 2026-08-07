@@ -71,6 +71,11 @@ type Outcome struct {
 	// converging config diff (they apply through a distinct path), so this is
 	// observability, not a gate.
 	LiveChannels []config.ChannelState
+	// CurrentModemPreset is the modem preset the device reports in this step's
+	// export (empty when unreachable or not preset-based). It is surfaced so the
+	// controller can predict the airtime effect of a declared preset change
+	// against the radio's own measured utilization.
+	CurrentModemPreset string
 }
 
 // State is the reconcile memory Converge needs from the previous step: whether a
@@ -111,6 +116,7 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 	}
 
 	liveChannels := config.LiveChannels(live)
+	currentPreset := liveModemPreset(live)
 	scalarConverged := config.IsConverged(desired, live)
 	channelsConverged := config.ChannelsConverged(chans.Compare, liveChannels)
 
@@ -119,8 +125,9 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 		return Outcome{
 			Reachable: true, ConfigInSync: true, Ready: true,
 			Reason: meshv1alpha1.ReasonInSync, Info: info, Requeue: DriftCheckInterval,
-			ApplyAttempts: 0, // converged: reset the counter
-			LiveChannels:  liveChannels,
+			ApplyAttempts:      0, // converged: reset the counter
+			LiveChannels:       liveChannels,
+			CurrentModemPreset: currentPreset,
 		}, nil
 	}
 
@@ -132,8 +139,9 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 		return Outcome{
 			Reachable: true, ConfigInSync: scalarConverged, Degraded: true,
 			Reason: meshv1alpha1.ReasonApplyFailed, ApplyAttempts: prior.ApplyAttempts,
-			Requeue:      DriftCheckInterval,
-			LiveChannels: liveChannels,
+			Requeue:            DriftCheckInterval,
+			LiveChannels:       liveChannels,
+			CurrentModemPreset: currentPreset,
 		}, nil
 	}
 
@@ -164,7 +172,22 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 	return Outcome{
 		Reachable: true, ConfigInSync: scalarConverged, RebootPending: true,
 		Reason: meshv1alpha1.ReasonConfigApplied, Requeue: RebootWait,
-		ApplyAttempts: prior.ApplyAttempts + 1,
-		LiveChannels:  liveChannels,
+		ApplyAttempts:      prior.ApplyAttempts + 1,
+		LiveChannels:       liveChannels,
+		CurrentModemPreset: currentPreset,
 	}, nil
+}
+
+// liveModemPreset reads the modem preset from a device export, or "" when absent.
+func liveModemPreset(live map[string]any) string {
+	cfg, ok := live["config"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	lora, ok := cfg["lora"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	preset, _ := lora["modemPreset"].(string)
+	return preset
 }
