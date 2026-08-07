@@ -103,7 +103,130 @@ autonomy, rejoin before broad autonomy:
 10. Learning last, in shadow mode, unable to define hard constraints or invent actions.
 
 The Phase 6 closed loop in this roadmap is step 7-and-beyond of that sequence, not a
-standalone next step; ADR 0002 makes the prerequisite explicit.
+standalone next step; ADR 0002 makes the prerequisite explicit. The full build queue,
+core first, is the Order of operations directly below.
+
+## Order of operations
+
+One dependency-ordered build queue, from where the project is now (0.2.0 plus the
+observability, airtime-model, and doctrine work just landed) to the research frontier.
+No dates and no effort estimates: an item is ready when the items it depends on are
+done, and done when its check passes. The spine below is ordered; the parallel tracks
+at the end have no dependency on the spine and can be built whenever there is attention
+for them.
+
+The one priority rule, from the doctrine: the core (stages 1 through 8) must be
+rock-solid before the intent-layer frontier (stage 9 onward) earns its complexity.
+That is a sequencing rule, not a throttle. The hardware-free work can move as fast as
+it can be made correct, and most of this is hardware-free.
+
+### Core spine (in order)
+
+1. Channels and PSKs on real hardware, which finishes Phase 4. Decode the device's
+   channel set (the Meshtastic library exposes it per index over USB and TCP), compare
+   by PSK hash so raw keys never move through stdout, apply drift through a distinct
+   channel path (the export encodes channels as a single `channel_url`, not discrete
+   fields), resolve PSKs from Secrets through the existing redacting path, and
+   round-trip every channel field against `meshtasticd --sim` and the T-Deck. This is
+   the flagship's last configuration surface and the concrete secure-private-channels
+   feature.
+2. Richer, mission-aware status conditions. Keep today's device-management signals
+   (Reachable, ConfigInSync, RebootPending, Ready) and add the mission-level ones the
+   doctrine names (MissionViable, IntentionallyQuiet, MessageCustodyHealthy) using
+   three-valued healthy/unhealthy/unknown reasoning, so an intentionally quiet node
+   never reads as a failure.
+3. Day-2 operations, the part real deployments live in and thin today: coordinated
+   channel and PSK rotation as declared policy (rotate at a scheduled epoch so the
+   change is atomic across the fleet), a fleet firmware-upgrade path, and node
+   decommission (the Wipe deletionPolicy).
+4. Publish the operator image to a registry with a pinned digest, so the operator kpt
+   package deploys end to end (a release step Phase 4 already lists).
+5. A reproducible demo path: a stranger can run the Phase 1 mesh and the operator
+   reconcile (sim, and hardware where present) from the repo alone on a clean machine,
+   scripted. A 1.0 gate, and the thing that makes the operational win visible rather
+   than asserted.
+6. A `ChannelBudget` resource with an enforced admission gate: predict a change's
+   airtime cost with the existing time-on-air model, scope the budget to an
+   interference domain (operator-declared at first), refuse a fleet change that
+   oversubscribes it, and hold an emergency reserve. This turns airtime from an
+   observed number into a governed invariant, the one guarantee a declarative system
+   offers over hand-tuning, and the Phase 6 prerequisite.
+7. Mission traffic classes and reserve accounting: protected shares per class, airtime
+   debt when an emergency borrows the reserve, and reconfiguration-airtime accounting
+   so a remote change budgets its own admin traffic.
+8. Multi-site and the load-bearing resilience proof (Phase 5): a second cluster as a
+   `WorkloadCluster`, `PackageVariantSet` fan-out with per-site specialization, then
+   the control-plane-independence test, bring up both configured sites, delete the
+   entire management cluster, and show message delivery ratio is unchanged. Until that
+   passes, "the control plane is not a runtime dependency" is unproven, and it is the
+   crudest, most important form of management-plane dissolution.
+
+### Intent-layer frontier (only after the core spine is solid)
+
+9. A `CommunicationIntent` CRD and a compiler in report-only mode: parse objectives and
+   constraints, evaluate current feasibility, emit proposed `MeshtasticNode`s and a
+   `ChangePlan`, report `IntentInfeasible` honestly, and never actuate. Here
+   `MeshtasticNode` formally becomes the compiled artifact and ADR 0001 moves from
+   Proposed to Accepted.
+10. A `ChangePlan` resource and least-change actuation: field- or section-level deltas,
+    a last-known-good cache, a disruption score, rate and dwell limits, and a rendezvous
+    procedure for channel and preset changes (an announced switch epoch and predeclared
+    fallback, because a radio channel change can isolate an ordinary canary from the
+    mesh).
+11. A signed, content-addressed Intent Capsule the edge can act on with no connectivity,
+    with a degrading lease (expiry only ever narrows authority) and clock-uncertainty
+    behavior.
+12. A site steward, a small deterministic state machine, running L1 non-disruptive
+    actions only (shed telemetry, aggregate reports, prioritize queues, enter a declared
+    quiet mode).
+13. An independent, Simplex-style safety kernel that can veto any proposed action
+    against the signed constraints.
+14. The first L2 autonomous action: rollback-to-last-known-good, proven before any
+    autonomous channel switch.
+15. The detached-epoch and rejoin protocol (a treaty, not drift correction): epoch
+    comparison, classification of local divergence, staged change plans, queue drainage
+    under budget, and a new signed epoch that revokes the old.
+16. Model-check the authority and rejoin state machine (TLA+ or PlusCal); ADR 0002 moves
+    to Accepted.
+17. Phase 6 closed loop: sensed occupancy proposes a channel change that the safety
+    kernel authorizes and Porch approves, with anti-herding from the start (randomized
+    candidate selection, site-specific tie-breaking, dwell, cooldown, and treating
+    "every candidate is congested" as evidence of jamming). The first actuating L2
+    channel switch lives here.
+18. Phase 7 hybrid backhaul: a cellular outage fails over to the mesh and back, reported
+    as message delivery ratio and time-to-failover, with UERANSIM standing in for the
+    RAN.
+19. Learning last, in shadow mode only, unable to define a hard constraint or invent an
+    action.
+
+### Parallel tracks (no dependency on the spine)
+
+- Nephio packaging gate (Phase 3, the 0.3 milestone): register the repo with Porch and
+  run propose/approve/pull/apply. Hardware-free; needs WSL2. Independent of the spine.
+- Hardware enablement (Phase 2, and the RF-real half of 0.4): the USB device plugin on
+  k3s, the HackRF receive-only sweep exporter, and the real-RF demo. Gated only on
+  plugging boards and the SDR in, not on the software spine.
+- The coherence-metrics vector: grow the current readiness and airtime gauges into the
+  mission, commons-protection, control-stability, epistemic, and human-coherence
+  measures the doctrine lists, demoting readiness from the definition of success to one
+  input among many.
+- Continuous hardening: server-side apply for status, the NetworkPolicy cross-namespace
+  proof, reproducible-build flags and digest-pinned base images, trivy/hadolint/pip-audit,
+  then SBOM and signing at image publish; the deliberate k8s v0.36 and
+  controller-runtime v0.24 upgrade; agent-native skills and an MCP server; and the
+  regulatory matrix kept as a living reference.
+
+### Is everything captured?
+
+Close, and now closer. The phases, the version path, the doctrine's ten-step frontier,
+and the research backlog were all already present; this section threads them into one
+order and pulls a few doctrine-derived items that were only implicit into explicit
+lines: the mission-aware status conditions (stage 2), day-2 rotation and decommission
+elevated into the near-term core (stage 3), the enforced `ChannelBudget` (stage 6), the
+MessageIntent and degraded-mode semantics (folded into stages 2 and 7), and the
+coherence-metrics vector (a parallel track). The deliberately-open entries in "Later /
+open questions" below are real research forks, not omissions: they are things to revisit
+when the phases that touch them produce data.
 
 ## Resilience, defined (so "survives" is measurable, not a slogan)
 
