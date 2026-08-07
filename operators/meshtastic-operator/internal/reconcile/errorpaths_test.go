@@ -45,6 +45,9 @@ func (s stubClient) ExportConfig(context.Context) (map[string]any, error) {
 func (s stubClient) Apply(context.Context, map[string]any) error { return s.applyErr }
 func (s stubClient) Reboot(context.Context) error                { return s.rebootErr }
 func (s stubClient) Info(context.Context) (device.Info, error)   { return device.Info{}, nil }
+func (s stubClient) ApplyChannels(context.Context, []device.ChannelWrite) error {
+	return s.applyErr
+}
 
 func TestExportUnexpectedErrorPropagates(t *testing.T) {
 	boom := errors.New("boom")

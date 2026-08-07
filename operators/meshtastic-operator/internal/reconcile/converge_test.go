@@ -142,3 +142,6 @@ func (n *neverConverges) ExportConfig(context.Context) (map[string]any, error) {
 func (n *neverConverges) Apply(context.Context, map[string]any) error { n.applies++; return nil }
 func (n *neverConverges) Reboot(context.Context) error                { return nil }
 func (n *neverConverges) Info(context.Context) (device.Info, error)   { return device.Info{}, nil }
+func (n *neverConverges) ApplyChannels(context.Context, []device.ChannelWrite) error {
+	return nil
+}

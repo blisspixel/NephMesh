@@ -18,6 +18,8 @@ package device
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -27,6 +29,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/secret"
 )
 
 // CLIClient drives a device over TCP by shelling out to the Meshtastic CLI,
@@ -49,6 +53,12 @@ type CLIClient struct {
 	// is appended. The bundled hack/mesh-export.py reads the config that streams
 	// on connect. Empty means use the CLI's own --export-config (TCP default).
 	Exporter []string
+	// Applier, when set, is the argv of the channel-apply helper (the bundled
+	// hack/mesh-apply.py), which writes channels through a file so keys never
+	// reach the command line. The connection flag and `--channels-file <path>`
+	// are appended. Empty means channel apply is unavailable, and ApplyChannels
+	// reports that rather than leaking a key onto the command line.
+	Applier []string
 	// runFn executes the CLI and returns its combined output. It defaults to
 	// the real os/exec path; tests inject a stub so the command orchestration
 	// (argument shaping, parsing, error mapping) is unit tested without the
@@ -197,6 +207,99 @@ func (c *CLIClient) Apply(ctx context.Context, desired map[string]any) error {
 	}
 	_, err = c.run(ctx, "--configure", filepath.Clean(f.Name()))
 	return err
+}
+
+// ApplyChannels writes the channels to the device through the apply helper. The
+// keys are marshaled into a temporary 0600 file and the helper is given the
+// file path, so a key never appears in a process argument or a log line (the
+// same posture the scalar Apply gets by writing `--configure` to a file). The
+// device reboots as a result.
+func (c *CLIClient) ApplyChannels(ctx context.Context, channels []ChannelWrite) error {
+	if len(channels) == 0 {
+		return nil
+	}
+	if len(c.Applier) == 0 {
+		return fmt.Errorf("channel apply requested but no applier is configured")
+	}
+
+	type chanDoc struct {
+		Index           int32  `json:"index"`
+		Name            string `json:"name"`
+		PSK             string `json:"psk"`
+		UplinkEnabled   bool   `json:"uplinkEnabled"`
+		DownlinkEnabled bool   `json:"downlinkEnabled"`
+	}
+	docs := make([]chanDoc, 0, len(channels))
+	for _, ch := range channels {
+		// The key is revealed only here, into the file, never onto argv or into
+		// an error. A zero key is the device default.
+		docs = append(docs, chanDoc{
+			Index: ch.Index, Name: ch.Name, PSK: pskDirective(ch.Key),
+			UplinkEnabled: ch.UplinkEnabled, DownlinkEnabled: ch.DownlinkEnabled,
+		})
+	}
+	data, err := json.Marshal(docs)
+	if err != nil {
+		return fmt.Errorf("marshaling channels: %w", err)
+	}
+
+	f, err := os.CreateTemp("", "nephmesh-channels-*.json")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(f.Name()) }()
+	if err := os.Chmod(f.Name(), 0o600); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return c.runApplier(ctx, f.Name())
+}
+
+// pskDirective renders a channel key as the directive the apply helper reads: a
+// zero key is the public default, an explicit key is its raw bytes base64-encoded.
+// The raw key is revealed only here.
+func pskDirective(key secret.Value) string {
+	if key.IsZero() {
+		return "default"
+	}
+	return "base64:" + base64.StdEncoding.EncodeToString([]byte(key.Reveal()))
+}
+
+// runApplier runs the channel-apply helper with the connection flag and the
+// channels file path. Any error reports the helper and its output, which by
+// contract never contains key material, and the file path, never its contents.
+func (c *CLIClient) runApplier(ctx context.Context, channelsFile string) error {
+	conn := "--host"
+	value := c.Host
+	if c.Serial != "" {
+		conn, value = "--serial", c.Serial
+	}
+	args := append(append([]string(nil), c.Applier[1:]...), conn, value, "--channels-file", channelsFile)
+	var (
+		out string
+		err error
+	)
+	if c.execFn != nil {
+		out, err = c.execFn(ctx, c.Applier[0], args...)
+	} else {
+		cmd := exec.CommandContext(ctx, c.Applier[0], args...)
+		b, e := cmd.CombinedOutput()
+		out, err = string(b), e
+	}
+	if err != nil {
+		if looksUnreachable(out) {
+			return ErrUnreachable
+		}
+		return fmt.Errorf("%s: applying channels: %w: %s", c.Applier[0], err, strings.TrimSpace(out))
+	}
+	return nil
 }
 
 // Reboot runs `meshtastic --reboot`.

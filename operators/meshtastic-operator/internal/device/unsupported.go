@@ -38,3 +38,4 @@ func (u *Unsupported) ExportConfig(context.Context) (map[string]any, error) { re
 func (u *Unsupported) Apply(context.Context, map[string]any) error          { return u.err() }
 func (u *Unsupported) Reboot(context.Context) error                         { return u.err() }
 func (u *Unsupported) Info(context.Context) (Info, error)                   { return Info{}, u.err() }
+func (u *Unsupported) ApplyChannels(context.Context, []ChannelWrite) error  { return u.err() }

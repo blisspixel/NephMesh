@@ -16,7 +16,14 @@ limitations under the License.
 
 package device
 
-import "context"
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"sort"
+
+	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/secret"
+)
 
 // Fake is an in-memory Client for tests. It models the real device's two
 // awkward behaviors deterministically: a config Apply reboots the device,
@@ -35,9 +42,10 @@ type Fake struct {
 	rebootWindow int
 	info         Info
 
-	Applies  int
-	Reboots  int
-	Exports  int
+	Applies        int
+	Reboots        int
+	Exports        int
+	ChannelApplies int
 }
 
 // NewFake returns a Fake seeded with the given live config and reboot window.
@@ -82,6 +90,83 @@ func (f *Fake) Apply(_ context.Context, desired map[string]any) error {
 	f.Applies++
 	f.unreachableFor = f.rebootWindow
 	return nil
+}
+
+// ApplyChannels models the device storing the given channels: it merges them
+// into the exported config under "channels" the way the real exporter emits them
+// (keyed by index, the key hashed, never stored raw), then reboots. This lets the
+// convergence loop be tested end to end: apply channels, reboot, then an export
+// shows them converged.
+func (f *Fake) ApplyChannels(_ context.Context, channels []ChannelWrite) error {
+	if !f.tick() {
+		return ErrUnreachable
+	}
+	if len(channels) == 0 {
+		return nil
+	}
+	byIndex := map[int32]map[string]any{}
+	if raw, ok := f.config["channels"].([]any); ok {
+		for _, item := range raw {
+			if m, ok := item.(map[string]any); ok {
+				byIndex[fakeInt32(m["index"])] = m
+			}
+		}
+	}
+	for _, ch := range channels {
+		byIndex[ch.Index] = map[string]any{
+			"index":           int(ch.Index),
+			"name":            ch.Name,
+			"pskHash":         fakeChannelPSKHash(ch.Key),
+			"uplinkEnabled":   ch.UplinkEnabled,
+			"downlinkEnabled": ch.DownlinkEnabled,
+		}
+	}
+	indexes := make([]int32, 0, len(byIndex))
+	for i := range byIndex {
+		indexes = append(indexes, i)
+	}
+	sort.Slice(indexes, func(a, b int) bool { return indexes[a] < indexes[b] })
+	list := make([]any, 0, len(indexes))
+	for _, i := range indexes {
+		list = append(list, byIndex[i])
+	}
+	f.config["channels"] = list
+	f.ChannelApplies++
+	f.unreachableFor = f.rebootWindow
+	return nil
+}
+
+// fakeChannelPSKHash mirrors the device: a zero key is the default (the single
+// byte 0x01), an explicit key is its raw bytes, hashed the same way the exporter
+// and internal/config do, so the modeled export compares equal to a matching
+// declared channel.
+func fakeChannelPSKHash(key secret.Value) string {
+	var raw []byte
+	if key.IsZero() {
+		raw = []byte{0x01}
+	} else {
+		raw = []byte(key.Reveal())
+	}
+	if len(raw) == 0 {
+		return ""
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
+func fakeInt32(v any) int32 {
+	switch n := v.(type) {
+	case int:
+		return int32(n)
+	case int32:
+		return n
+	case int64:
+		return int32(n)
+	case float64:
+		return int32(n)
+	default:
+		return 0
+	}
 }
 
 // Reboot restarts the device, opening a fresh unreachable window.
