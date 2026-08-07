@@ -153,8 +153,8 @@ it can be made correct, and most of this is hardware-free.
    airtime cost with the existing time-on-air model, scope the budget to an
    interference domain (operator-declared at first), refuse a fleet change that
    oversubscribes it, and hold an emergency reserve. This turns airtime from an
-   observed number into a governed invariant, the one guarantee a declarative system
-   offers over hand-tuning, and the Phase 6 prerequisite. Design: [airtime budget](plans/airtime-budget.md).
+   observed number into a governed invariant, the clearest thing a declarative
+   system would offer over hand-tuning, and the Phase 6 prerequisite. Design: [airtime budget](plans/airtime-budget.md).
 7. Mission traffic classes and reserve accounting: protected shares per class, airtime
    debt when an emergency borrows the reserve, and reconfiguration-airtime accounting
    so a remote change budgets its own admin traffic. Design: [traffic classes and degraded modes](plans/contingency-semantics-dtn.md).

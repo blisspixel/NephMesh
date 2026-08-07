@@ -16,7 +16,7 @@ legality where you are is your responsibility: read the repository
 
 Why write it down at all: the project's stated stance is to name the seductive
 frontier ideas openly, with their why and their gate, rather than pretend they do not
-exist. SDR transmit is the clearest example. It is genuinely powerful for a resilient
+exist. SDR transmit is the clearest example. It would open a lot for a resilient
 comms project, and it is exactly the capability most likely to cause legal, safety, or
 trust harm if it is added casually. Both facts belong in the same document.
 
