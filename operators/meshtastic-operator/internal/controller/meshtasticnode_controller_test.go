@@ -179,6 +179,12 @@ func TestChannelsInSyncCondition(t *testing.T) {
 	fresh := newNode()
 	applyChannelsInSync(fresh, nil, nil, 1)
 	assert.Nil(t, meta.FindStatusCondition(fresh.Status.Conditions, meshv1alpha1.ConditionChannelsInSync))
+
+	// Removing channels from a node that had the condition clears it, rather than
+	// leaving a stale drift report.
+	applyChannelsInSync(node, nil, nil, 1)
+	assert.Nil(t, meta.FindStatusCondition(node.Status.Conditions, meshv1alpha1.ConditionChannelsInSync),
+		"un-declaring channels drops the condition")
 }
 
 func TestReconcileResolvesChannelPSKAndReportsInSync(t *testing.T) {
@@ -251,6 +257,12 @@ func TestAirtimeBudgetCondition(t *testing.T) {
 	assert.Equal(t, metav1.ConditionFalse, c.Status)
 	assert.Equal(t, meshv1alpha1.ReasonAirtimeBudgetExceeded, c.Reason)
 	assert.Contains(t, c.Message, "SHORT_FAST to LONG_SLOW")
+
+	// Once that change converges (current == desired), the stale False is cleared,
+	// not left lingering.
+	applyAirtimeBudget(node, "LONG_SLOW", device.Info{ChannelUtilization: &busy}, 1)
+	assert.Nil(t, meta.FindStatusCondition(node.Status.Conditions, meshv1alpha1.ConditionAirtimeBudget),
+		"the AirtimeBudget condition is dropped once no preset change is pending")
 
 	// A faster preset lowers utilization: within budget.
 	ok := newNode()

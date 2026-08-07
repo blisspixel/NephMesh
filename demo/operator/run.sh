@@ -59,7 +59,7 @@ MESH_BIN="$CLI" go run ./cmd/reconcile-demo \
   -host "$HOST" \
   -region US -preset MEDIUM_SLOW -owner "NephMesh Field 01" -owner-short NF01 \
   -exporter "$EXPORTER" -applier "$APPLIER" \
-  -channel-name relief -channel-key "demo-relief-key" -channel-index 1
+  -channel-name relief -channel-key "demo-relief-key!" -channel-index 1
 
 echo
 echo "== run it again: the device is already in the declared state, so nothing is written =="
@@ -67,7 +67,7 @@ MESH_BIN="$CLI" go run ./cmd/reconcile-demo \
   -host "$HOST" \
   -region US -preset MEDIUM_SLOW -owner "NephMesh Field 01" -owner-short NF01 \
   -exporter "$EXPORTER" -applier "$APPLIER" \
-  -channel-name relief -channel-key "demo-relief-key" -channel-index 1
+  -channel-name relief -channel-key "demo-relief-key!" -channel-index 1
 
 echo
 echo "== done. The operator declared intent, converged the radio (including a secure channel), and was idempotent on re-run. =="

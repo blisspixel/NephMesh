@@ -83,6 +83,22 @@ func TestConvergesChannelsThroughApplyAndReboot(t *testing.T) {
 	assert.Equal(t, 1, dev.ChannelApplies, "channels are written exactly once, not on every pass")
 }
 
+func TestConvergeSurfacesTelemetryWhileDrifted(t *testing.T) {
+	// The airtime prediction needs the radio's measured utilization at the moment
+	// a preset change is still pending, which is when the config is NOT converged.
+	// So telemetry must be surfaced on the drifted (apply-pending) path, not only
+	// once converged.
+	dev := device.NewFake(map[string]any{}, 0) // drifted from desired US
+	util := 15.0
+	dev.SetInfo(device.Info{NodeID: "!x", ChannelUtilization: &util})
+
+	out, err := Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, State{})
+	require.NoError(t, err)
+	assert.False(t, out.Ready, "the device is drifted and applying")
+	require.NotNil(t, out.Info.ChannelUtilization, "telemetry is surfaced while drifted, so the airtime prediction has inputs")
+	assert.Equal(t, 15.0, *out.Info.ChannelUtilization)
+}
+
 func TestAlreadyConvergedIsReadyWithoutApply(t *testing.T) {
 	dev := device.NewFake(desiredUS(), 0)
 	out, err := Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, State{})

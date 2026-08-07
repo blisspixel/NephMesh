@@ -115,13 +115,18 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 		return Outcome{ApplyAttempts: prior.ApplyAttempts}, err
 	}
 
+	// Read telemetry once, up front and best-effort. It carries the node id for
+	// status and the radio's measured channel utilization, which the airtime
+	// prediction needs even when the config is drifted, since a pending preset
+	// change is exactly when the prediction matters. The device is reachable here:
+	// the export just succeeded.
+	info, _ := dev.Info(ctx)
 	liveChannels := config.LiveChannels(live)
 	currentPreset := liveModemPreset(live)
 	scalarConverged := config.IsConverged(desired, live)
 	channelsConverged := config.ChannelsConverged(chans.Compare, liveChannels)
 
 	if scalarConverged && channelsConverged {
-		info, _ := dev.Info(ctx) // best effort; identity is not load-bearing here
 		return Outcome{
 			Reachable: true, ConfigInSync: true, Ready: true,
 			Reason: meshv1alpha1.ReasonInSync, Info: info, Requeue: DriftCheckInterval,
@@ -140,6 +145,7 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 			Reachable: true, ConfigInSync: scalarConverged, Degraded: true,
 			Reason: meshv1alpha1.ReasonApplyFailed, ApplyAttempts: prior.ApplyAttempts,
 			Requeue:            DriftCheckInterval,
+			Info:               info,
 			LiveChannels:       liveChannels,
 			CurrentModemPreset: currentPreset,
 		}, nil
@@ -173,6 +179,7 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 		Reachable: true, ConfigInSync: scalarConverged, RebootPending: true,
 		Reason: meshv1alpha1.ReasonConfigApplied, Requeue: RebootWait,
 		ApplyAttempts:      prior.ApplyAttempts + 1,
+		Info:               info,
 		LiveChannels:       liveChannels,
 		CurrentModemPreset: currentPreset,
 	}, nil
