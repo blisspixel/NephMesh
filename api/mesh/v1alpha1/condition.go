@@ -36,6 +36,14 @@ const (
 	// saturating. It is observability, not a gate: airtime is the LoRa scaling
 	// wall, so a saturating channel is surfaced rather than silently degrading.
 	ConditionAirtimeHealthy = "AirtimeHealthy"
+	// ConditionChannelsInSync is True when every channel the spec declares
+	// matches the device (name, uplink, downlink, and key compared by hash),
+	// False when any declared channel drifts. It is observability today: the
+	// operator reports channel drift but does not yet apply it, because the
+	// channel apply is a distinct path (the export encodes channels as a single
+	// channel_url), so detecting drift is deliberately decoupled from acting on
+	// it until the apply is validated against a device.
+	ConditionChannelsInSync = "ChannelsInSync"
 )
 
 // Condition reasons. CamelCase machine tokens, required by the conditions API.
@@ -55,6 +63,9 @@ const (
 
 	ReasonAirtimeHealthy = "AirtimeHealthy"
 	ReasonAirtimeHigh    = "AirtimeHigh"
+
+	ReasonChannelsInSync  = "ChannelsInSync"
+	ReasonChannelsDrifted = "ChannelsDrifted"
 )
 
 // DeletionPolicy values.

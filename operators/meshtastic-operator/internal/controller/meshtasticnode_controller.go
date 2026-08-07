@@ -25,6 +25,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -115,6 +116,13 @@ func (r *MeshtasticNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
+	channelHashes, err := r.resolveChannelPSKHashes(ctx, &node)
+	if err != nil {
+		// The error names the secret and key, never the key material.
+		return ctrl.Result{}, err
+	}
+	desiredChannels := config.DesiredChannels(node.Spec, channelHashes)
+
 	desired := config.BuildDesired(node.Spec, r.resolveBroker(ctx, &node), mqttPassword)
 	prior := reconcile.State{
 		RebootPending: meta.IsStatusConditionTrue(node.Status.Conditions, meshv1alpha1.ConditionRebootPending),
@@ -128,6 +136,9 @@ func (r *MeshtasticNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	applyOutcome(&node, outcome)
+	if outcome.Reachable {
+		applyChannelsInSync(&node, desiredChannels, outcome.LiveChannels, node.Generation)
+	}
 	metrics.Record(metrics.Sample{
 		Namespace: node.Namespace, Name: node.Name,
 		Ready: outcome.Ready, ConfigInSync: outcome.ConfigInSync, ApplyAttempts: outcome.ApplyAttempts,
@@ -173,6 +184,63 @@ func (r *MeshtasticNodeReconciler) resolveMQTTPassword(ctx context.Context, node
 		return secret.Value{}, fmt.Errorf("mqtt password secret %q has no key %q", ref.Name, ref.Key)
 	}
 	return secret.New(string(data)), nil
+}
+
+// resolveChannelPSKHashes reads each declared channel's pre-shared key from the
+// Secret it references, in the node's own namespace with an uncached get (the
+// same namespaced, get-only path the broker password uses), and returns the key
+// hashes by channel index. The raw key is hashed immediately and never returned
+// or stored, so it cannot leak; only the hash, which is what drift detection
+// needs, leaves this function. A channel without a pskSecretRef contributes no
+// entry (no declared key). Errors name the secret and key, never the material.
+func (r *MeshtasticNodeReconciler) resolveChannelPSKHashes(ctx context.Context, node *meshv1alpha1.MeshtasticNode) (map[int32]string, error) {
+	if len(node.Spec.Channels) == 0 {
+		return nil, nil
+	}
+	hashes := make(map[int32]string, len(node.Spec.Channels))
+	for _, ch := range node.Spec.Channels {
+		if ch.PSKSecretRef == nil {
+			continue
+		}
+		var s corev1.Secret
+		key := types.NamespacedName{Namespace: node.Namespace, Name: ch.PSKSecretRef.Name}
+		if err := r.Reader.Get(ctx, key, &s); err != nil {
+			return nil, fmt.Errorf("reading channel %d psk secret %q: %w", ch.Index, ch.PSKSecretRef.Name, err)
+		}
+		data, ok := s.Data[ch.PSKSecretRef.Key]
+		if !ok {
+			return nil, fmt.Errorf("channel %d psk secret %q has no key %q", ch.Index, ch.PSKSecretRef.Name, ch.PSKSecretRef.Key)
+		}
+		hashes[ch.Index] = config.PSKHash(data)
+	}
+	return hashes, nil
+}
+
+// applyChannelsInSync records whether the declared channels match the device.
+// It is observability, not a gate: channels apply through a separate path, so
+// the operator surfaces drift here without acting on it. A node that declares no
+// channels gets no condition at all, so channel management stays invisible until
+// it is used.
+func applyChannelsInSync(node *meshv1alpha1.MeshtasticNode, desired, live []config.ChannelState, gen int64) {
+	if len(desired) == 0 {
+		return
+	}
+	drift := config.ChannelDrift(desired, live)
+	status := metav1.ConditionTrue
+	reason := meshv1alpha1.ReasonChannelsInSync
+	message := "declared channels match the device"
+	if len(drift) > 0 {
+		status = metav1.ConditionFalse
+		reason = meshv1alpha1.ReasonChannelsDrifted
+		message = "channel drift: " + strings.Join(drift, ", ")
+	}
+	meta.SetStatusCondition(&node.Status.Conditions, metav1.Condition{
+		Type:               meshv1alpha1.ConditionChannelsInSync,
+		Status:             status,
+		Reason:             reason,
+		ObservedGeneration: gen,
+		Message:            message,
+	})
 }
 
 func applyOutcome(node *meshv1alpha1.MeshtasticNode, o reconcile.Outcome) {

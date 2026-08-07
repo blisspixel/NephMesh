@@ -30,6 +30,22 @@ func desiredUS() map[string]any {
 	return map[string]any{"config": map[string]any{"lora": map[string]any{"region": "US"}}}
 }
 
+func TestConvergeSurfacesLiveChannels(t *testing.T) {
+	live := desiredUS()
+	live["channels"] = []any{
+		map[string]any{"index": 0, "name": "primary", "pskHash": "abc", "uplinkEnabled": true},
+	}
+	dev := device.NewFake(live, 0)
+
+	out, err := Converge(context.Background(), dev, desiredUS(), State{})
+	require.NoError(t, err)
+	require.Len(t, out.LiveChannels, 1, "the device's channels are surfaced for the controller to diff")
+	assert.Equal(t, int32(0), out.LiveChannels[0].Index)
+	assert.Equal(t, "primary", out.LiveChannels[0].Name)
+	assert.Equal(t, "abc", out.LiveChannels[0].PSKHash)
+	assert.True(t, out.LiveChannels[0].UplinkEnabled)
+}
+
 func TestAlreadyConvergedIsReadyWithoutApply(t *testing.T) {
 	dev := device.NewFake(desiredUS(), 0)
 	out, err := Converge(context.Background(), dev, desiredUS(), State{})

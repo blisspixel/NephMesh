@@ -64,6 +64,13 @@ type Outcome struct {
 	ApplyAttempts int32
 	// Info is populated when the device was reachable this step.
 	Info device.Info
+	// LiveChannels is the device's channel set as observed in this step's export
+	// (empty when the device was unreachable). It is surfaced so the controller,
+	// which owns Secret resolution, can compare it against the declared channels
+	// and report drift, without a second export. Channels are not part of the
+	// converging config diff (they apply through a distinct path), so this is
+	// observability, not a gate.
+	LiveChannels []config.ChannelState
 }
 
 // State is the reconcile memory Converge needs from the previous step: whether a
@@ -93,12 +100,15 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, pr
 		return Outcome{ApplyAttempts: prior.ApplyAttempts}, err
 	}
 
+	liveChannels := config.LiveChannels(live)
+
 	if config.IsConverged(desired, live) {
 		info, _ := dev.Info(ctx) // best effort; identity is not load-bearing here
 		return Outcome{
 			Reachable: true, ConfigInSync: true, Ready: true,
 			Reason: meshv1alpha1.ReasonInSync, Info: info, Requeue: DriftCheckInterval,
 			ApplyAttempts: 0, // converged: reset the counter
+			LiveChannels:  liveChannels,
 		}, nil
 	}
 
@@ -109,7 +119,8 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, pr
 		return Outcome{
 			Reachable: true, ConfigInSync: false, Degraded: true,
 			Reason: meshv1alpha1.ReasonApplyFailed, ApplyAttempts: prior.ApplyAttempts,
-			Requeue: DriftCheckInterval,
+			Requeue:      DriftCheckInterval,
+			LiveChannels: liveChannels,
 		}, nil
 	}
 
@@ -131,5 +142,6 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, pr
 		Reachable: true, ConfigInSync: false, RebootPending: true,
 		Reason: meshv1alpha1.ReasonConfigApplied, Requeue: RebootWait,
 		ApplyAttempts: prior.ApplyAttempts + 1,
+		LiveChannels:  liveChannels,
 	}, nil
 }

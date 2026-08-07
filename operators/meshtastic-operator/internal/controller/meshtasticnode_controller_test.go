@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	meshv1alpha1 "github.com/blisspixel/nephmesh/api/mesh/v1alpha1"
+	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/config"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/device"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/reconcile"
 )
@@ -154,6 +155,87 @@ func TestAirtimeHealthyConditionFromTelemetry(t *testing.T) {
 	fresh := newNode()
 	applyOutcome(fresh, reconcile.Outcome{Reachable: true, Info: device.Info{NodeID: "!y"}})
 	assert.Nil(t, meta.FindStatusCondition(fresh.Status.Conditions, meshv1alpha1.ConditionAirtimeHealthy))
+}
+
+func TestChannelsInSyncCondition(t *testing.T) {
+	node := newNode()
+	desired := []config.ChannelState{{Index: 0, Name: "ops", PSKHash: "h1"}}
+
+	// Device matches the declared channel: in sync.
+	applyChannelsInSync(node, desired, []config.ChannelState{{Index: 0, Name: "ops", PSKHash: "h1"}}, 1)
+	c := meta.FindStatusCondition(node.Status.Conditions, meshv1alpha1.ConditionChannelsInSync)
+	require.NotNil(t, c)
+	assert.Equal(t, metav1.ConditionTrue, c.Status)
+
+	// Device key differs: drift surfaced with the field path, not the key.
+	applyChannelsInSync(node, desired, []config.ChannelState{{Index: 0, Name: "ops", PSKHash: "other"}}, 1)
+	c = meta.FindStatusCondition(node.Status.Conditions, meshv1alpha1.ConditionChannelsInSync)
+	require.NotNil(t, c)
+	assert.Equal(t, metav1.ConditionFalse, c.Status)
+	assert.Contains(t, c.Message, "channel[0].psk")
+	assert.NotContains(t, c.Message, "h1", "the message reports the field, never the key material")
+
+	// No declared channels: no condition, channel management stays invisible.
+	fresh := newNode()
+	applyChannelsInSync(fresh, nil, nil, 1)
+	assert.Nil(t, meta.FindStatusCondition(fresh.Status.Conditions, meshv1alpha1.ConditionChannelsInSync))
+}
+
+func TestReconcileResolvesChannelPSKAndReportsInSync(t *testing.T) {
+	node := newNode()
+	node.Finalizers = []string{meshv1alpha1.Finalizer}
+	node.Spec.Channels = []meshv1alpha1.ChannelSpec{{
+		Index: 0, Name: "ops",
+		PSKSecretRef: &corev1.SecretKeySelector{
+			LocalObjectReference: corev1.LocalObjectReference{Name: "ch0"}, Key: "psk",
+		},
+	}}
+	psk := []byte{0x2a, 0x2b, 0x2c}
+	sec := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "ch0", Namespace: "default"},
+		Data:       map[string][]byte{"psk": psk},
+	}
+	// The device exports channel 0 with the matching name and key hash, so the
+	// resolved-from-Secret desired channel is in sync.
+	live := desiredUS()
+	live["channels"] = []any{map[string]any{
+		"index": 0, "name": "ops", "pskHash": config.PSKHash(psk),
+	}}
+
+	c := fake.NewClientBuilder().
+		WithScheme(testScheme(t)).
+		WithObjects(node, sec).
+		WithStatusSubresource(&meshv1alpha1.MeshtasticNode{}).
+		Build()
+	r := &MeshtasticNodeReconciler{Client: c, Reader: c, NewDevice: func(context.Context, *meshv1alpha1.MeshtasticNode) (device.Client, error) {
+		return device.NewFake(live, 0), nil
+	}}
+
+	_, err := r.Reconcile(context.Background(), request())
+	require.NoError(t, err)
+
+	var got meshv1alpha1.MeshtasticNode
+	require.NoError(t, c.Get(context.Background(), request().NamespacedName, &got))
+	cond := meta.FindStatusCondition(got.Status.Conditions, meshv1alpha1.ConditionChannelsInSync)
+	require.NotNil(t, cond, "a node declaring a channel gets the ChannelsInSync condition")
+	assert.Equal(t, metav1.ConditionTrue, cond.Status)
+}
+
+func TestReconcileMissingChannelSecretIsSurfaced(t *testing.T) {
+	node := newNode()
+	node.Finalizers = []string{meshv1alpha1.Finalizer}
+	node.Spec.Channels = []meshv1alpha1.ChannelSpec{{
+		Index: 1, Name: "ops",
+		PSKSecretRef: &corev1.SecretKeySelector{
+			LocalObjectReference: corev1.LocalObjectReference{Name: "absent"}, Key: "psk",
+		},
+	}}
+	r, _ := reconcilerFor(t, node, func(context.Context, *meshv1alpha1.MeshtasticNode) (device.Client, error) {
+		return device.NewFake(desiredUS(), 0), nil
+	})
+	_, err := r.Reconcile(context.Background(), request())
+	require.Error(t, err, "a declared channel whose PSK Secret is missing is surfaced, not silently ignored")
+	assert.Contains(t, err.Error(), "absent")
 }
 
 func TestReconcileMissingObjectIsNoOp(t *testing.T) {
