@@ -60,6 +60,10 @@ func NewFake(initial map[string]any, rebootWindow int) *Fake {
 	}
 }
 
+// SetInfo overrides the identity and telemetry the fake reports, for tests that
+// need the device to report airtime (channel utilization, transmit airtime).
+func (f *Fake) SetInfo(i Info) { f.info = i }
+
 func (f *Fake) tick() bool {
 	if f.unreachableFor > 0 {
 		f.unreachableFor--

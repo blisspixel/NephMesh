@@ -193,8 +193,9 @@ func (r *MeshtasticNodeReconciler) resolveMQTTPassword(ctx context.Context, node
 // detection and the status condition) and the write payload (the key wrapped in
 // the redacting type, revealed only when the apply file is written). A channel
 // without a pskSecretRef uses the device's public default key, whose hash is the
-// SHA-256 of the single 0x01 byte the device stores. Errors name the secret and
-// key, never the material.
+// SHA-256 of the single 0x01 byte the device stores. The Secret value is the raw
+// key bytes (Kubernetes already decodes Secret data), a 16- or 32-byte Meshtastic
+// key, not a base64 string. Errors name the secret and key, never the material.
 func (r *MeshtasticNodeReconciler) buildDesiredChannels(ctx context.Context, node *meshv1alpha1.MeshtasticNode) (reconcile.DesiredChannels, error) {
 	var out reconcile.DesiredChannels
 	for _, ch := range node.Spec.Channels {
@@ -237,6 +238,9 @@ func (r *MeshtasticNodeReconciler) buildDesiredChannels(ctx context.Context, nod
 // it is used.
 func applyChannelsInSync(node *meshv1alpha1.MeshtasticNode, desired, live []config.ChannelState, gen int64) {
 	if len(desired) == 0 {
+		// The node declares no channels; drop any prior condition so it does not
+		// linger after channels are removed from the spec.
+		meta.RemoveStatusCondition(&node.Status.Conditions, meshv1alpha1.ConditionChannelsInSync)
 		return
 	}
 	drift := config.ChannelDrift(desired, live)
@@ -332,11 +336,16 @@ func valueOr(v *float64) float64 {
 // the Porch validator's job, see docs/plans/airtime-budget.md).
 func applyAirtimeBudget(node *meshv1alpha1.MeshtasticNode, currentPreset string, info device.Info, gen int64) {
 	desiredPreset := node.Spec.ModemPreset
-	if desiredPreset == "" || currentPreset == "" || desiredPreset == currentPreset || info.ChannelUtilization == nil {
-		return
+	var predicted float64
+	var ok bool
+	if desiredPreset != "" && currentPreset != "" && desiredPreset != currentPreset && info.ChannelUtilization != nil {
+		predicted, ok = airtime.PredictedChannelUtilizationPercent(currentPreset, desiredPreset, *info.ChannelUtilization)
 	}
-	predicted, ok := airtime.PredictedChannelUtilizationPercent(currentPreset, desiredPreset, *info.ChannelUtilization)
 	if !ok {
+		// No predictable pending preset change (none declared, already applied, or
+		// no telemetry): any prior AirtimeBudget condition is stale, so drop it
+		// rather than leave a misleading False after the change has converged.
+		meta.RemoveStatusCondition(&node.Status.Conditions, meshv1alpha1.ConditionAirtimeBudget)
 		return
 	}
 	status := metav1.ConditionTrue
