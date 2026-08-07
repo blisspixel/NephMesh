@@ -44,6 +44,14 @@ import (
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/secret"
 )
 
+// keyNote describes a channel key for display without printing it.
+func keyNote(key string) string {
+	if key == "" {
+		return "device default"
+	}
+	return "set (from -channel-key, not shown)"
+}
+
 // pct formats an optional percentage metric, or "n/a" when absent.
 func pct(v *float64) string {
 	if v == nil {
@@ -68,12 +76,17 @@ func dig(m map[string]any, keys ...string) any {
 func main() {
 	host := flag.String("host", os.Getenv("MESH_TEST_HOST"), "device TCP address for meshtastic --host")
 	serial := flag.String("serial", "", "USB serial port (e.g. COM3 or /dev/ttyACM0)")
+	bin := flag.String("bin", os.Getenv("MESH_BIN"), "meshtastic CLI binary (default: meshtastic on PATH)")
 	exporter := flag.String("exporter", "", `argv of the config exporter (e.g. "python hack/mesh-export.py"), required for -serial`)
 	observe := flag.Bool("observe", false, "read-only: reconcile an empty intent so the device is never modified")
 	region := flag.String("region", "", "desired region (apply mode)")
 	preset := flag.String("preset", "", "desired modem preset (apply mode)")
 	owner := flag.String("owner", "", "desired owner long name (apply mode)")
 	ownerShort := flag.String("owner-short", "", "desired owner short name (apply mode)")
+	applier := flag.String("applier", "", `argv of the channel-apply helper (e.g. "python hack/mesh-apply.py"), required to reconcile a channel`)
+	channelName := flag.String("channel-name", "", "reconcile a secondary channel with this name (apply mode)")
+	channelKey := flag.String("channel-key", "", "raw pre-shared key for -channel-name (empty uses the device default key)")
+	channelIndex := flag.Int("channel-index", 1, "channel slot index for -channel-name")
 	flag.Parse()
 
 	if *host == "" && *serial == "" {
@@ -81,7 +94,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	dev := &device.CLIClient{Host: *host, Serial: *serial}
+	dev := &device.CLIClient{Host: *host, Serial: *serial, Bin: *bin}
 	if *exporter != "" {
 		dev.Exporter = strings.Fields(*exporter)
 	}
@@ -97,6 +110,7 @@ func main() {
 	ctx := context.Background()
 
 	var desired map[string]any
+	var chans reconcile.DesiredChannels
 	if *observe {
 		// An empty intent converges immediately with no apply, so a real board
 		// is never modified. Export first to show its current config.
@@ -140,12 +154,32 @@ func main() {
 		}
 		desired = config.BuildDesired(spec, "", secret.Value{})
 		fmt.Printf("nephmesh reconcile-demo: driving Meshtastic device at %s\n", target)
-		fmt.Printf("desired intent: %v\n\n", desired)
+		fmt.Printf("desired intent: %v\n", desired)
+
+		if *channelName != "" {
+			if *applier == "" {
+				fmt.Fprintln(os.Stderr, "reconciling a channel needs -applier: keys are written through a file, not the command line")
+				os.Exit(2)
+			}
+			dev.Applier = strings.Fields(*applier)
+			var key secret.Value
+			raw := []byte{0x01} // the device default key
+			if *channelKey != "" {
+				key = secret.New(*channelKey)
+				raw = []byte(*channelKey)
+			}
+			chans = reconcile.DesiredChannels{
+				Compare: []config.ChannelState{{Index: int32(*channelIndex), Name: *channelName, PSKHash: config.PSKHash(raw)}},
+				Write:   []device.ChannelWrite{{Index: int32(*channelIndex), Name: *channelName, Key: key}},
+			}
+			fmt.Printf("desired channel: index=%d name=%q key=%s\n", *channelIndex, *channelName, keyNote(*channelKey))
+		}
+		fmt.Println()
 	}
 
 	state := reconcile.State{}
 	for step := 1; step <= 15; step++ {
-		out, err := reconcile.Converge(ctx, dev, desired, reconcile.DesiredChannels{}, state)
+		out, err := reconcile.Converge(ctx, dev, desired, chans, state)
 		if err != nil {
 			fmt.Printf("  step %-2d error: %v\n", step, err)
 			os.Exit(1)
@@ -166,6 +200,13 @@ func main() {
 		state = reconcile.State{RebootPending: out.RebootPending, ApplyAttempts: out.ApplyAttempts}
 		if out.Ready {
 			fmt.Printf("\nconverged: node %s, config in sync, Ready=true\n", out.Info.NodeID)
+			for _, ch := range chans.Compare {
+				for _, live := range out.LiveChannels {
+					if live.Index == ch.Index && live.Name == ch.Name && live.PSKHash == ch.PSKHash {
+						fmt.Printf("secure channel provisioned: index=%d name=%q, key hash matches the device\n", ch.Index, ch.Name)
+					}
+				}
+			}
 			return
 		}
 		time.Sleep(3 * time.Second)

@@ -148,7 +148,9 @@ it can be made correct, and most of this is hardware-free.
 5. A reproducible demo path: a stranger can run the Phase 1 mesh and the operator
    reconcile (sim, and hardware where present) from the repo alone on a clean machine,
    scripted. A 1.0 gate, and the thing that makes the operational win visible rather
-   than asserted.
+   than asserted. The operator half is landed as `demo/operator/`: a scripted,
+   hardware-free run that declares intent, converges a simulated radio including a
+   secure channel, and proves idempotence, with the real transcript in its README.
 6. A `ChannelBudget` resource with an enforced admission gate: predict a change's
    airtime cost with the existing time-on-air model, scope the budget to an
    interference domain (operator-declared at first), refuse a fleet change that
