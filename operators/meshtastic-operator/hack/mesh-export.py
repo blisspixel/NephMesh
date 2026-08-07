@@ -29,6 +29,7 @@ needs, in the marker-prefixed YAML the operator already parses.
 """
 
 import argparse
+import hashlib
 import sys
 
 import yaml
@@ -89,6 +90,33 @@ def main() -> int:
                 if user.get("shortName"):
                     doc["owner_short"] = user["shortName"]
         except Exception:  # noqa: BLE001 - owner is best-effort
+            pass
+
+        # Channels, keyed by slot index. The pre-shared key is emitted only as a
+        # SHA-256 hash so the raw key never leaves the device: the operator
+        # compares this against the hash of the declared key (resolved from a
+        # Secret) to detect drift without ever handling the key here. Disabled
+        # slots (role 0) are skipped. Wrapped so a device that does not stream
+        # channels does not break the export.
+        try:
+            channels = []
+            for ch in iface.localNode.channels or []:
+                if ch.role == 0:  # DISABLED
+                    continue
+                s = ch.settings
+                psk_hash = hashlib.sha256(bytes(s.psk)).hexdigest() if len(s.psk) else ""
+                channels.append(
+                    {
+                        "index": int(ch.index),
+                        "name": s.name,
+                        "pskHash": psk_hash,
+                        "uplinkEnabled": bool(s.uplink_enabled),
+                        "downlinkEnabled": bool(s.downlink_enabled),
+                    }
+                )
+            if channels:
+                doc["channels"] = channels
+        except Exception:  # noqa: BLE001 - channels are best-effort
             pass
     finally:
         iface.close()
