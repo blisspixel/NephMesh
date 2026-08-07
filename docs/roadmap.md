@@ -51,6 +51,60 @@ Each working milestone earns a 0.x release, by demonstrated capability rather th
 
 Phases 6 and 7 are not 1.0 gates: the closed loop and the cellular leg are research features and can mature after 1.0.
 
+## Design direction: intent as an outcome envelope (research frontier, gated behind the core)
+
+There is a larger shape this project could grow into, written up in full in the
+[design doctrine](design/doctrine.md) and recorded as decisions in
+[docs/adr/](adr/). It is a direction, not a plan with dates, and almost none of it is
+built. It is here so that later work does not quietly collapse the idea back into
+automatic knob-turning, and so the ordering stays honest.
+
+The reframe, in one sentence: NephMesh should reconcile a communications fabric
+toward a bounded set of viable mission outcomes, not merely reconcile individual
+radios to a fixed configuration. In RFC 9315 terms, "configure this radio as
+LONG_FAST in US915" is configuration; "preserve delivery of life-safety traffic while
+holding an emergency airtime reserve" is intent. The operator that exists today is the
+configuration layer. The direction is to add an intent layer above it, so that
+`MeshtasticNode` becomes the compiled output of a higher-level `CommunicationIntent`
+rather than the source of truth (ADR 0001), and to define signed-autonomy and rejoin
+semantics before the Phase 6 closed loop rather than after (ADR 0002).
+
+This changes nothing about what comes next. It sharpens why the core comes first. The
+rock-solid core, the thing that has to be exceptional before any of the frontier earns
+its complexity, is a tight list: complete channel and PSK support on real hardware
+(the last flagship config surface, Phase 4), multi-site packaging and fan-out
+(Phase 5), day-2 key and channel rotation, and reproducible sim-plus-physical demos
+that make the operational win visible. Ship that before expanding surface area. The
+honest boundaries are stated plainly in the doctrine: physics caps the useful envelope
+at tens to low hundreds of nodes for contingency traffic, the audience is
+organized-operator resilience rather than hobby use, and over-scoping is the main way
+this fails.
+
+When the core is solid, the frontier arrives in this disciplined order (each step
+elaborated in the doctrine), report-only before anything actuates, safety before
+autonomy, rejoin before broad autonomy:
+
+1. Write down the doctrine and invariants (this section, the doctrine, the ADRs; done).
+2. A `CommunicationIntent` API in report-only mode: parse objectives, evaluate
+   feasibility, emit proposed `MeshtasticNode`s and a `ChangePlan`, explain, never
+   actuate.
+3. Make disruption explicit: field-level planned deltas, last-known-good storage,
+   estimated reboot and airtime cost, rollback, rate and dwell limits.
+4. Mission traffic classes and a `ChannelBudget` scoped by interference domain, so the
+   existing channel behaves better before any frequency is changed. This is the same
+   airtime-invariant work already listed first in the backlog below, now with a
+   commons framing.
+5. A site steward (a small deterministic state machine, not an agent) with L1
+   non-disruptive actions only.
+6. An independent, Simplex-style runtime safety kernel that can veto any action.
+7. One L2 action: rollback-to-last-known-good, before any autonomous channel switch.
+8. The detached-epoch and rejoin protocol, before broad autonomy.
+9. Model-check the authority and rejoin state machine (TLA+ or PlusCal).
+10. Learning last, in shadow mode, unable to define hard constraints or invent actions.
+
+The Phase 6 closed loop in this roadmap is step 7-and-beyond of that sequence, not a
+standalone next step; ADR 0002 makes the prerequisite explicit.
+
 ## Resilience, defined (so "survives" is measurable, not a slogan)
 
 "Secure communication survives when there is no carrier" is only meaningful if it is measurable, so the project commits to concrete metrics rather than an adjective:
@@ -166,7 +220,8 @@ The bar is code a critical-infrastructure or mission user could trust; the full 
 - [ ] Server-side apply for status (the envtest controller tier and a two-call idempotency test are done)
 - [ ] Remaining assume-breach control-proving tests: no-secret-in-logs, NetworkPolicy blocks cross-namespace (with a positive control), no default credentials in any shipped package (the RBAC least-privilege golden test and hostile-CR rejection at admission are done)
 - [ ] Remaining supply chain: reproducible-build flags and digest-pinned base images, trivy and hadolint and pip-audit in CI, then SBOM and signing when the image is published (SHA-pinned Actions, least-privilege workflow tokens, and the checksum-verified kpt download are done)
-- [ ] Architecture Decision Records (`docs/adr/`), a coordinated-disclosure process, and signed release tags
+- [x] Architecture Decision Records (`docs/adr/`): the record format and index, plus ADR 0001 (intent as an outcome envelope, `MeshtasticNode` as a compiled artifact) and ADR 0002 (signed autonomy and rejoin before the Phase 6 closed loop), both Proposed pending their first implementing slice
+- [ ] A coordinated-disclosure process and signed release tags
 
 ## Cross-cutting: agent-native from day one (in progress)
 
