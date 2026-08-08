@@ -49,6 +49,7 @@ Pre-alpha, and further along than that sounds. **0.2.0** shipped the flagship: t
 | [Nephio compatibility](docs/reference/nephio-compatibility.md) | Where the code stays Nephio-consumable and where it diverges on purpose, with a dated check of upstream API-group and library versions |
 | [Plans](docs/plans/) | Implementation and design plans: the phases and the operator, plus the intent-layer frontier (CommunicationIntent and the compiler, signed autonomy and the safety kernel, rejoin as a treaty, key rotation, message authentication, contingency semantics) |
 | [Research](docs/research/) | Sourced research: Nephio mechanics and codebase conventions, Meshtastic, SDR, prior art, terminology and legality, and a [resilient-comms landscape synthesis](docs/research/resilient-comms-landscape.md) (DTN, adversarial mesh, LoRa prior art, Reticulum/MeshCore) |
+| [Operations runbook](docs/guides/operations.md) | Install, declare a node, observe (conditions, events, metrics), troubleshoot, and day-2 (key rotation, decommission, upgrade) |
 | [Guides](docs/guides/) | How-to guides, for example registering the packages with Nephio Porch |
 | [Examples](examples/) | Starting-point `MeshtasticNode` resources: a basic node and a secure-private-channel node with its Secret |
 | [Code quality standards](docs/CODE-QUALITY-STANDARDS.md) | The engineering bar (race, fuzzing, govulncheck, envtest, assume-breach tests), what is enforced, and honest gaps |

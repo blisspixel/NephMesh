@@ -47,7 +47,7 @@ Each working milestone earns a 0.x release, by demonstrated capability rather th
 - The `MeshtasticNode` CRD API is stable (no breaking changes planned) and versioned accordingly
 - Packages install against a stock Nephio release without patches, and the pinned release is documented
 - CI runs the simulated-radio test suite green on every commit
-- Docs cover install, upgrade, and teardown, not just the happy path
+- Docs cover install, upgrade, and teardown, not just the happy path (the operations runbook, `docs/guides/operations.md`, covers declaring a node, observing it through conditions/events/metrics, troubleshooting, and day-2 key rotation, decommission, and upgrade; the one gap it names honestly is that the operator image is not yet published to a registry, so install still builds it)
 
 Phases 6 and 7 are not 1.0 gates: the closed loop and the cellular leg are research features and can mature after 1.0.
 
