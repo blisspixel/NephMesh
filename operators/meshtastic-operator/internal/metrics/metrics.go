@@ -36,6 +36,16 @@ var (
 		Help: "1 when the node is reachable and its config is in sync, else 0.",
 	}, []string{"namespace", "name"})
 
+	reachable = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "nephmesh", Subsystem: subsystem, Name: "reachable",
+		Help: "1 when the device answered this reconcile, else 0. Separates an offline device from a reachable-but-drifted one, which both read ready=0.",
+	}, []string{"namespace", "name"})
+
+	degraded = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "nephmesh", Subsystem: subsystem, Name: "degraded",
+		Help: "1 when the node stopped converging after the apply bound (a stuck config the device will not accept), else 0. Directly alertable.",
+	}, []string{"namespace", "name"})
+
 	configInSync = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "nephmesh", Subsystem: subsystem, Name: "config_in_sync",
 		Help: "1 when the device config matches the declared intent, else 0.",
@@ -58,7 +68,7 @@ var (
 )
 
 func init() {
-	ctrlmetrics.Registry.MustRegister(ready, configInSync, applyAttempts, channelUtilization, airUtilTx)
+	ctrlmetrics.Registry.MustRegister(ready, reachable, degraded, configInSync, applyAttempts, channelUtilization, airUtilTx)
 }
 
 // Sample is one node's observed health, recorded after a reconcile.
@@ -66,6 +76,8 @@ type Sample struct {
 	Namespace          string
 	Name               string
 	Ready              bool
+	Reachable          bool
+	Degraded           bool
 	ConfigInSync       bool
 	ApplyAttempts      int32
 	ChannelUtilization *float64 // percent; nil when the device did not report it
@@ -77,6 +89,8 @@ type Sample struct {
 func Record(s Sample) {
 	l := prometheus.Labels{"namespace": s.Namespace, "name": s.Name}
 	ready.With(l).Set(boolToFloat(s.Ready))
+	reachable.With(l).Set(boolToFloat(s.Reachable))
+	degraded.With(l).Set(boolToFloat(s.Degraded))
 	configInSync.With(l).Set(boolToFloat(s.ConfigInSync))
 	applyAttempts.With(l).Set(float64(s.ApplyAttempts))
 	// When a value is unknown (the device did not report it), delete the series
@@ -98,6 +112,8 @@ func Record(s Sample) {
 func Forget(namespace, name string) {
 	l := prometheus.Labels{"namespace": namespace, "name": name}
 	ready.Delete(l)
+	reachable.Delete(l)
+	degraded.Delete(l)
 	configInSync.Delete(l)
 	applyAttempts.Delete(l)
 	channelUtilization.Delete(l)

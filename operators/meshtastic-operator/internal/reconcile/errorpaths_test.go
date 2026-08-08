@@ -34,6 +34,7 @@ type stubClient struct {
 	live      map[string]any
 	applyErr  error
 	rebootErr error
+	infoErr   error
 }
 
 func (s stubClient) ExportConfig(context.Context) (map[string]any, error) {
@@ -44,7 +45,7 @@ func (s stubClient) ExportConfig(context.Context) (map[string]any, error) {
 }
 func (s stubClient) Apply(context.Context, map[string]any) error { return s.applyErr }
 func (s stubClient) Reboot(context.Context) error                { return s.rebootErr }
-func (s stubClient) Info(context.Context) (device.Info, error)   { return device.Info{}, nil }
+func (s stubClient) Info(context.Context) (device.Info, error)   { return device.Info{}, s.infoErr }
 func (s stubClient) ApplyChannels(context.Context, []device.ChannelWrite) error {
 	return s.applyErr
 }
@@ -53,6 +54,16 @@ func TestExportUnexpectedErrorPropagates(t *testing.T) {
 	boom := errors.New("boom")
 	_, err := Converge(context.Background(), stubClient{exportErr: boom}, desiredUS(), DesiredChannels{}, State{})
 	assert.ErrorIs(t, err, boom, "a non-unreachable export error is returned for rate-limited retry")
+}
+
+func TestInfoUnexpectedErrorPropagates(t *testing.T) {
+	boom := errors.New("info parse failed")
+	// Export succeeds (device reachable) but --info fails with a non-unreachable
+	// error. It must be surfaced, not swallowed into a converged Ready with an
+	// empty node id and no telemetry.
+	dev := stubClient{live: desiredUS(), infoErr: boom}
+	_, err := Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, State{})
+	assert.ErrorIs(t, err, boom, "an unexpected --info error is surfaced, not swallowed")
 }
 
 func TestApplyUnexpectedErrorPropagates(t *testing.T) {

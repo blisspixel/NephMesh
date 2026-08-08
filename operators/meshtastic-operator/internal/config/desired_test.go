@@ -126,13 +126,38 @@ func TestBuildDesiredOmitsEmptyMQTTCredentials(t *testing.T) {
 	assert.False(t, hasUser, "no username key when unset")
 }
 
-func TestBuildDesiredOmitsDisabledMQTT(t *testing.T) {
+func TestBuildDesiredManagedMQTTDisabledReconcilesOff(t *testing.T) {
+	// A non-nil but disabled MQTT is managed-off: the operator emits enabled:false
+	// so it can reconcile the module off, rather than omitting it (which would let a
+	// stale enabled:true on the device persist while the node reports converged).
 	d := BuildDesired(meshv1alpha1.MeshtasticNodeSpec{
 		Region: "US",
 		MQTT:   &meshv1alpha1.MQTTSpec{Enabled: false},
 	}, "10.0.0.5", secret.Value{})
+	mqtt := d["module_config"].(map[string]any)["mqtt"].(map[string]any)
+	assert.Equal(t, false, mqtt["enabled"], "a disabled MQTT is reconciled off, not omitted")
+	_, hasAddr := mqtt["address"]
+	assert.False(t, hasAddr, "no sub-fields are emitted when disabled")
+}
+
+func TestBuildDesiredNilMQTTIsUnmanaged(t *testing.T) {
+	// A nil MQTT spec means the operator does not manage the module at all.
+	d := BuildDesired(meshv1alpha1.MeshtasticNodeSpec{Region: "US"}, "10.0.0.5", secret.Value{})
 	_, hasModule := d["module_config"]
-	assert.False(t, hasModule, "a disabled MQTT module contributes no desired config")
+	assert.False(t, hasModule, "a nil MQTT spec leaves the module untouched")
+}
+
+func TestBuildDesiredEmitsOwnedBooleansExplicitly(t *testing.T) {
+	// Owned booleans are emitted even when false, so the operator can reconcile a
+	// stale true (e.g. encryption left on) back to false.
+	d := BuildDesired(meshv1alpha1.MeshtasticNodeSpec{
+		Region: "US",
+		MQTT:   &meshv1alpha1.MQTTSpec{Enabled: true, JSONEnabled: true, EncryptionEnabled: false},
+	}, "10.0.0.5", secret.Value{})
+	mqtt := d["module_config"].(map[string]any)["mqtt"].(map[string]any)
+	assert.Equal(t, true, mqtt["json_enabled"])
+	assert.Equal(t, false, mqtt["encryption_enabled"], "false is emitted so it can be reconciled")
+	assert.Equal(t, false, mqtt["tls_enabled"])
 }
 
 func TestBuildDesiredNeverEmitsTransmitPowerKeys(t *testing.T) {
@@ -167,7 +192,7 @@ func TestBuildDesiredRoundTripsThroughConverge(t *testing.T) {
 			"device": map[string]any{"role": "CLIENT"},
 		},
 		"moduleConfig": map[string]any{
-			"mqtt": map[string]any{"enabled": true, "address": "10.0.0.5", "jsonEnabled": true, "tlsEnabled": false},
+			"mqtt": map[string]any{"enabled": true, "address": "10.0.0.5", "jsonEnabled": true, "encryptionEnabled": false, "tlsEnabled": false},
 		},
 	}
 	require.True(t, IsConverged(desired, live),
