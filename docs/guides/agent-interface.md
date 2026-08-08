@@ -89,7 +89,7 @@ Or in an MCP client configuration:
 
 It advertises one tool:
 
-- `plan_intent` — input `{ "intent": "<CommunicationIntent as YAML or JSON>" }`
+- `plan_intent`: input `{ "intent": "<CommunicationIntent as YAML or JSON>" }`
   (a full object or a bare spec; a string or an inlined object both work). The
   result is the plan JSON above, returned as tool text.
 
