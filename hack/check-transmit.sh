@@ -34,10 +34,14 @@
 
 set -eu
 
-# Narrow on purpose: over-broad patterns train reviewers to rubber-stamp.
-patterns='hackrf_transfer[^|]*-t |SOAPY_SDR_TX|writeStream|--set-ham|txPower|tx_power'
+# Narrow on purpose: over-broad patterns train reviewers to rubber-stamp. Both
+# hackrf_transfer TX modes are covered: -t (transmit from file) and -c (signal
+# source / continuous-wave), which also keys the transmitter.
+patterns='hackrf_transfer[^|]*-[tc]|SOAPY_SDR_TX|writeStream|--set-ham|--transmit|txPower|tx_power'
 
-files=$(git ls-files -- '*.go' '*.sh' '*.py' '*.yaml' '*.yml' 2>/dev/null || true)
+# Scan compiled-language sources and build files too, so a TX call in a Dockerfile
+# RUN, a Makefile, or C/C++/Rust is not invisible to the gate.
+files=$(git ls-files -- '*.go' '*.sh' '*.py' '*.yaml' '*.yml' '*.c' '*.cc' '*.cpp' '*.cxx' '*.h' '*.rs' '*Dockerfile*' '*Makefile*' 2>/dev/null || true)
 [ -z "$files" ] && { echo "check-transmit: no source yet, OK"; exit 0; }
 
 fail=0

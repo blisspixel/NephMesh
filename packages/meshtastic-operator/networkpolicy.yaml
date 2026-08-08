@@ -44,8 +44,15 @@ spec:
         - namespaceSelector: {}
       ports:
         - {protocol: TCP, port: 4403}
-    # Kubernetes API server. 443 covers the common in-cluster kubernetes
-    # Service; adjust for a control plane reached on another port or address.
-    - ports:
+    # Kubernetes API server. Restricted to private (RFC1918) ranges: an egress
+    # rule with no `to` matches all destinations (0.0.0.0/0), which would let a
+    # compromised operator exfiltrate the Secrets it reads to any public endpoint
+    # on 443. The in-cluster API server is at a private address; a control plane on
+    # a public address needs its explicit CIDR added here.
+    - to:
+        - {ipBlock: {cidr: 10.0.0.0/8}}
+        - {ipBlock: {cidr: 172.16.0.0/12}}
+        - {ipBlock: {cidr: 192.168.0.0/16}}
+      ports:
         - {protocol: TCP, port: 443}
         - {protocol: TCP, port: 6443}
