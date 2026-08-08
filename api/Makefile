@@ -15,15 +15,17 @@
 # api types module. controller-gen is pinned so generation is reproducible.
 CONTROLLER_GEN_VERSION ?= v0.19.0
 CONTROLLER_GEN ?= go run sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_VERSION)
-PKG := ./mesh/v1alpha1
+# Each API group is a distinct package. controller-gen is given each explicitly
+# because paths=./... fails on this module's root (it holds no Go files).
+PKG := paths=./mesh/v1alpha1 paths=./intent/v1alpha1
 
 .PHONY: generate manifests build vet lint test coverage verify help
 
 generate: ## Regenerate deepcopy code
-	$(CONTROLLER_GEN) object:headerFile=../hack/boilerplate.go.txt paths=$(PKG)
+	$(CONTROLLER_GEN) object:headerFile=../hack/boilerplate.go.txt $(PKG)
 
 manifests: ## Regenerate CRD manifests
-	$(CONTROLLER_GEN) crd output:crd:artifacts:config=config/crd/bases paths=$(PKG)
+	$(CONTROLLER_GEN) crd output:crd:artifacts:config=config/crd/bases $(PKG)
 
 build: ## Compile
 	go build ./...
@@ -41,7 +43,7 @@ coverage: ## Enforce the meaningful-coverage floor (generated excluded)
 	sh ../hack/check-coverage.sh 80
 
 verify: generate manifests ## Fail if generated code or manifests are stale
-	@git diff --exit-code -- mesh config >/dev/null 2>&1 || \
+	@git diff --exit-code -- mesh intent config >/dev/null 2>&1 || \
 		{ echo "generated code or CRDs are stale; run make -C api generate manifests"; exit 1; }
 	@echo "verify: generated artifacts up to date"
 

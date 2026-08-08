@@ -1,0 +1,53 @@
+# A CommunicationIntent: the outcome-level input to the intent layer. It states
+# what a region needs (a role, an approved set of modem presets the strategic
+# layer will tolerate, the channels, and the target nodes) and lets the operator
+# compile the concrete per-device MeshtasticNode specs that satisfy it.
+#
+# This is REPORT-ONLY today (ADR 0001). Applying it does NOT create any
+# MeshtasticNode and never touches a radio. The operator records its verdict on
+# status: whether the intent is feasible, which preset it selected from the
+# approved set, and the proposed MeshtasticNode specs it would render. You read
+# the plan, you apply the nodes yourself. Actuation is a later, deliberately
+# gated step (ADR 0002, signed autonomy and the safety kernel).
+#
+#     kubectl apply -f examples/regional-intent.yaml
+#     kubectl get communicationintent regional-relief
+#     kubectl get communicationintent regional-relief -o jsonpath='{.status.proposedNodes}'
+#
+# approvedModemPresets is an ordered set: the compiler selects the first entry it
+# recognizes as a real Meshtastic preset, so you express a preference order and a
+# tolerance band at once. An empty set, no target nodes, or a set with no known
+# preset is reported as infeasible (a verdict on status, not an error).
+---
+apiVersion: intent.nephmesh.io/v1alpha1
+kind: CommunicationIntent
+metadata:
+  name: regional-relief
+spec:
+  region: US
+  role: CLIENT
+  # Ordered preference: MEDIUM_SLOW first, LONG_FAST as the tolerated fallback.
+  approvedModemPresets:
+    - MEDIUM_SLOW
+    - LONG_FAST
+  channels:
+    - index: 1
+      name: relief
+      uplinkEnabled: false
+  nodes:
+    - name: relief-01
+      connection:
+        tcp:
+          host: 10.0.0.51
+          port: 4403
+      owner:
+        longName: Relief Net 01
+        shortName: RN01
+    - name: relief-02
+      connection:
+        tcp:
+          host: 10.0.0.52
+          port: 4403
+      owner:
+        longName: Relief Net 02
+        shortName: RN02

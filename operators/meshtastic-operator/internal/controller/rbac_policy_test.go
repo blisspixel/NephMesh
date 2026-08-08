@@ -91,12 +91,17 @@ func TestShippedRBACMatchesLeastPrivilegeAllowlist(t *testing.T) {
 		t.Fatalf("expected exactly one ClusterRole in the shipped package, got %d", len(roles))
 	}
 
-	// The complete allowlist: read the MeshtasticNode resources it
-	// reconciles and update their status and finalizers. Nothing else.
+	// The complete allowlist: read the MeshtasticNode resources it reconciles
+	// and update their status and finalizers; read CommunicationIntents and
+	// update their status. Notably absent: any grant to create or write a
+	// MeshtasticNode from an intent, so the report-only boundary (ADR 0001) is
+	// enforced here, not merely intended. Nothing else.
 	want := []rbacv1.PolicyRule{
 		{APIGroups: []string{"mesh.nephmesh.io"}, Resources: []string{"meshtasticnodes"}, Verbs: []string{"get", "list", "watch", "update", "patch"}},
 		{APIGroups: []string{"mesh.nephmesh.io"}, Resources: []string{"meshtasticnodes/status"}, Verbs: []string{"get", "update", "patch"}},
 		{APIGroups: []string{"mesh.nephmesh.io"}, Resources: []string{"meshtasticnodes/finalizers"}, Verbs: []string{"update"}},
+		{APIGroups: []string{"intent.nephmesh.io"}, Resources: []string{"communicationintents"}, Verbs: []string{"get", "list", "watch"}},
+		{APIGroups: []string{"intent.nephmesh.io"}, Resources: []string{"communicationintents/status"}, Verbs: []string{"get", "update", "patch"}},
 	}
 
 	gotKeys := map[string]bool{}

@@ -42,6 +42,16 @@ rules:
   - apiGroups: [mesh.nephmesh.io]
     resources: [meshtasticnodes/finalizers]
     verbs: [update]
+  # The report-only intent compiler reads CommunicationIntents and records the
+  # feasibility verdict and proposed rendering on their status. It has no grant
+  # to create or write MeshtasticNodes: report-only is enforced by RBAC, not
+  # trusted to the code (ADR 0001).
+  - apiGroups: [intent.nephmesh.io]
+    resources: [communicationintents]
+    verbs: [get, list, watch]
+  - apiGroups: [intent.nephmesh.io]
+    resources: [communicationintents/status]
+    verbs: [get, update, patch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

@@ -36,6 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
+	intentv1alpha1 "github.com/blisspixel/nephmesh/api/intent/v1alpha1"
 	meshv1alpha1 "github.com/blisspixel/nephmesh/api/mesh/v1alpha1"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/controller"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/device"
@@ -46,6 +47,7 @@ var scheme = runtime.NewScheme()
 func init() {
 	utilRuntimeMust(clientgoscheme.AddToScheme(scheme))
 	utilRuntimeMust(meshv1alpha1.AddToScheme(scheme))
+	utilRuntimeMust(intentv1alpha1.AddToScheme(scheme))
 }
 
 func utilRuntimeMust(err error) {
@@ -90,6 +92,14 @@ func main() {
 	}
 	if err := reconciler.SetupWithManager(mgr); err != nil {
 		log.Error(err, "unable to set up controller")
+		os.Exit(1)
+	}
+
+	// The report-only intent compiler: it renders a CommunicationIntent to
+	// proposed MeshtasticNode specs on status and never actuates (ADR 0001).
+	intentReconciler := &controller.CommunicationIntentReconciler{Client: mgr.GetClient()}
+	if err := intentReconciler.SetupWithManager(mgr); err != nil {
+		log.Error(err, "unable to set up intent controller")
 		os.Exit(1)
 	}
 
