@@ -91,10 +91,11 @@ func TestReconcileNeverLogsOrStoresSecretMaterial(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// The password did reach the device (redaction must not break function).
-	live, err := fakeDev.ExportConfig(ctx)
-	require.NoError(t, err)
-	mqtt := live["module_config"].(map[string]any)["mqtt"].(map[string]any)
+	// The password did reach the device (redaction must not break function). Read
+	// the raw applied config, not ExportConfig: the fake models the real device,
+	// which never echoes the password back.
+	applied := fakeDev.Applied()
+	mqtt := applied["module_config"].(map[string]any)["mqtt"].(map[string]any)
 	assert.Equal(t, sentinel, mqtt["password"], "the password must reach the device config")
 
 	// But it must never appear in a log line or anywhere in the stored object.

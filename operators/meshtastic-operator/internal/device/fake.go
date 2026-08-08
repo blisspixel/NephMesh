@@ -80,7 +80,31 @@ func (f *Fake) ExportConfig(_ context.Context) (map[string]any, error) {
 		return nil, ErrUnreachable
 	}
 	// Return a copy so callers cannot mutate the device's state.
-	return deepCopyMap(f.config), nil
+	out := deepCopyMap(f.config)
+	// Model the real device faithfully: a secret it accepts on write is never
+	// echoed back in its export. Without this the fake would be MORE forgiving
+	// than reality (it merges and re-emits everything applied), which is exactly
+	// how a write-only-field bug, an MQTT password read as permanent drift, hid in
+	// unit tests while breaking against a real device.
+	stripWriteOnly(out)
+	return out, nil
+}
+
+// Applied returns the fake's raw stored config, including the write-only fields
+// ExportConfig strips, so a test can verify what was actually written to the
+// device (distinct from what the device would echo back).
+func (f *Fake) Applied() map[string]any { return deepCopyMap(f.config) }
+
+// stripWriteOnly removes the fields the real device accepts but never returns
+// (the MQTT password), so the fake's export matches a real export.
+func stripWriteOnly(m map[string]any) {
+	mc, ok := m["module_config"].(map[string]any)
+	if !ok {
+		return
+	}
+	if mqtt, ok := mc["mqtt"].(map[string]any); ok {
+		delete(mqtt, "password")
+	}
 }
 
 // Apply merges desired into the live config and reboots, so the device is
