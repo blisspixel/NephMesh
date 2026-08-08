@@ -46,6 +46,13 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
+// Diagnostic writes go to injected writers (for testability), whose errors are
+// unactionable in a CLI; these helpers make that explicit and keep errcheck
+// satisfied without scattering blank assignments.
+func fprintf(w io.Writer, format string, a ...any) { _, _ = fmt.Fprintf(w, format, a...) }
+func fprintln(w io.Writer, a ...any)               { _, _ = fmt.Fprintln(w, a...) }
+func fprint(w io.Writer, a ...any)                 { _, _ = fmt.Fprint(w, a...) }
+
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		usage(stderr)
@@ -58,7 +65,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		usage(stdout)
 		return exitOK
 	default:
-		fmt.Fprintf(stderr, "unknown command %q\n", args[0])
+		fprintf(stderr, "unknown command %q\n", args[0])
 		usage(stderr)
 		return exitUsage
 	}
@@ -70,38 +77,38 @@ func runPlan(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	file := fs.String("f", "-", "CommunicationIntent file to read (YAML or JSON); - is stdin")
 	format := fs.String("o", "json", "output format: json or text")
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: nephmeshctl plan [-f file] [-o json|text]")
-		fmt.Fprintln(stderr, "  Dry-run a CommunicationIntent through the report-only compiler.")
+		fprintln(stderr, "usage: nephmeshctl plan [-f file] [-o json|text]")
+		fprintln(stderr, "  Dry-run a CommunicationIntent through the report-only compiler.")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
 	if *format != "json" && *format != "text" {
-		fmt.Fprintf(stderr, "invalid -o %q: want json or text\n", *format)
+		fprintf(stderr, "invalid -o %q: want json or text\n", *format)
 		return exitUsage
 	}
 
 	data, err := readInput(*file, stdin)
 	if err != nil {
-		fmt.Fprintf(stderr, "read intent: %v\n", err)
+		fprintf(stderr, "read intent: %v\n", err)
 		return exitUsage
 	}
 
 	out, err := plan.Run(data)
 	if err != nil {
-		fmt.Fprintf(stderr, "plan: %v\n", err)
+		fprintf(stderr, "plan: %v\n", err)
 		return exitUsage
 	}
 
 	if *format == "text" {
-		fmt.Fprint(stdout, out.Text())
+		fprint(stdout, out.Text())
 		return exitOK
 	}
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(out); err != nil {
-		fmt.Fprintf(stderr, "encode: %v\n", err)
+		fprintf(stderr, "encode: %v\n", err)
 		return exitUsage
 	}
 	return exitOK
@@ -116,12 +123,12 @@ func readInput(path string, stdin io.Reader) ([]byte, error) {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprintln(w, "nephmeshctl: the NephMesh command-line interface")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "usage:")
-	fmt.Fprintln(w, "  nephmeshctl plan [-f file] [-o json|text]   dry-run a CommunicationIntent")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "plan reads a CommunicationIntent (the same document you would apply to a")
-	fmt.Fprintln(w, "cluster) and reports feasibility, the selected preset, fleet airtime, and the")
-	fmt.Fprintln(w, "proposed MeshtasticNode specs. It needs no cluster and no hardware.")
+	fprintln(w, "nephmeshctl: the NephMesh command-line interface")
+	fprintln(w, "")
+	fprintln(w, "usage:")
+	fprintln(w, "  nephmeshctl plan [-f file] [-o json|text]   dry-run a CommunicationIntent")
+	fprintln(w, "")
+	fprintln(w, "plan reads a CommunicationIntent (the same document you would apply to a")
+	fprintln(w, "cluster) and reports feasibility, the selected preset, fleet airtime, and the")
+	fprintln(w, "proposed MeshtasticNode specs. It needs no cluster and no hardware.")
 }
