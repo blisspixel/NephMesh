@@ -48,12 +48,19 @@ type CommunicationIntentSpec struct {
 	Role string `json:"role,omitempty"`
 
 	// channels are the channels every rendered node carries (PSKs referenced from
-	// Secrets, never inlined), the same shape a MeshtasticNode declares.
+	// Secrets, never inlined), the same shape a MeshtasticNode declares. Keyed by
+	// index so a duplicate channel index is rejected at admission.
 	// +optional
+	// +listType=map
+	// +listMapKey=index
 	Channels []meshv1alpha1.ChannelSpec `json:"channels,omitempty"`
 
-	// nodes are the target devices this intent renders to.
+	// nodes are the target devices this intent renders to. Keyed by name so two
+	// targets cannot share a name (they would render two colliding MeshtasticNode
+	// specs); the collision is rejected at admission rather than surfaced later.
 	// +kubebuilder:validation:MinItems=1
+	// +listType=map
+	// +listMapKey=name
 	Nodes []NodeTarget `json:"nodes"`
 }
 

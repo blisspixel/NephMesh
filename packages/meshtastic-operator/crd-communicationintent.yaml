@@ -76,7 +76,8 @@ spec:
               channels:
                 description: |-
                   channels are the channels every rendered node carries (PSKs referenced from
-                  Secrets, never inlined), the same shape a MeshtasticNode declares.
+                  Secrets, never inlined), the same shape a MeshtasticNode declares. Keyed by
+                  index so a duplicate channel index is rejected at admission.
                 items:
                   description: ChannelSpec is one Meshtastic channel.
                   properties:
@@ -133,8 +134,14 @@ spec:
                   - index
                   type: object
                 type: array
+                x-kubernetes-list-map-keys:
+                - index
+                x-kubernetes-list-type: map
               nodes:
-                description: nodes are the target devices this intent renders to.
+                description: |-
+                  nodes are the target devices this intent renders to. Keyed by name so two
+                  targets cannot share a name (they would render two colliding MeshtasticNode
+                  specs); the collision is rejected at admission rather than surfaced later.
                 items:
                   description: NodeTarget names one device the intent applies to and
                     how to reach it.
@@ -242,6 +249,9 @@ spec:
                   type: object
                 minItems: 1
                 type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
               region:
                 description: |-
                   region is the regulatory region every rendered node must use. It is a hard
