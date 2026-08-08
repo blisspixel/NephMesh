@@ -6,7 +6,7 @@ The layering, from most to least portable:
 
 - **`AGENTS.md`** is the source of conventions. It is the emerging cross-tool standard that Codex, Cursor, Copilot, and others read, and `CLAUDE.md` simply points to it. Read it first.
 - **This playbook** is the command surface: the exact, deterministic commands for common tasks, so any agent knows the real entry points instead of guessing.
-- **An MCP server** (roadmapped, Phase 5) is the richer future layer: it would expose live mesh and spectrum state (nodes, neighbor counts, band occupancy) and repo actions as tools any MCP-capable agent can call. MCP is chosen over an assistant-specific skill format precisely because it is portable across agents.
+- **Agent-facing tools for operating the mesh** exist as an offline first slice: `nephmeshctl plan` (a shell command) and `nephmesh-mcp` (a Model Context Protocol stdio server) both dry-run a `CommunicationIntent` through the report-only compiler and return a feasibility, preset, and fleet-airtime verdict, with no cluster and no hardware. See `docs/guides/agent-interface.md`. The richer MCP layer that exposes live mesh and spectrum state (neighbor counts, band occupancy) and applies intents to a cluster remains roadmapped (Phase 5); MCP is chosen over an assistant-specific skill format precisely because it is portable across agents.
 
 ## Environment notes
 
@@ -35,6 +35,7 @@ This runs the repo gates (license headers, writing style, manifest control-surfa
 | Regenerate CRD and deepcopy | `cd api && make generate manifests` (pins controller-gen) |
 | Render and validate kpt packages | `sh hack/check-packages.sh` |
 | Run the Phase 1 virtual mesh demo | `sh demo/phase1/scripts/demo.sh` then `sh demo/phase1/scripts/teardown.sh` (needs a cluster) |
+| Dry-run a CommunicationIntent (no cluster) | `cd operators/meshtastic-operator && go run ./cmd/nephmeshctl plan -f ../../examples/regional-intent.yaml` (see `docs/guides/agent-interface.md`) |
 | Operator integration test vs sim device | see the header of `operators/meshtastic-operator/internal/reconcile/integration_test.go` |
 
 ## Rules that are enforced, not just requested
