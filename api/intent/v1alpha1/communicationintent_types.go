@@ -39,6 +39,7 @@ type CommunicationIntentSpec struct {
 	// set is infeasible. This is the "approved operating set" from the doctrine:
 	// the strategic layer owns the allowed set, a lower layer the selection.
 	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=16
 	ApprovedModemPresets []string `json:"approvedModemPresets"`
 
 	// role is the device role every rendered node runs.
@@ -49,16 +50,22 @@ type CommunicationIntentSpec struct {
 
 	// channels are the channels every rendered node carries (PSKs referenced from
 	// Secrets, never inlined), the same shape a MeshtasticNode declares. Keyed by
-	// index so a duplicate channel index is rejected at admission.
+	// index so a duplicate channel index is rejected at admission. Meshtastic
+	// supports up to 8 channels.
 	// +optional
 	// +listType=map
 	// +listMapKey=index
+	// +kubebuilder:validation:MaxItems=8
 	Channels []meshv1alpha1.ChannelSpec `json:"channels,omitempty"`
 
 	// nodes are the target devices this intent renders to. Keyed by name so two
 	// targets cannot share a name (they would render two colliding MeshtasticNode
 	// specs); the collision is rejected at admission rather than surfaced later.
+	// The bound keeps one intent to a reviewable fleet and, because each target
+	// carries a Connection with a CEL rule, keeps the CRD within the apiserver's
+	// validation cost budget; address a larger region with several intents.
 	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=64
 	// +listType=map
 	// +listMapKey=name
 	Nodes []NodeTarget `json:"nodes"`
@@ -97,8 +104,13 @@ type CommunicationIntentStatus struct {
 	// +optional
 	NodeCount int `json:"nodeCount,omitempty"`
 	// proposedNodes is the rendered MeshtasticNode specs the intent compiles to.
-	// Report-only: these are what the operator would create, not created.
+	// Report-only: these are what the operator would create, not created. Bounded
+	// to match spec.nodes (each rendered spec carries a Connection with a CEL
+	// rule, so the bound also keeps the CRD within the validation cost budget).
 	// +optional
+	// +listType=map
+	// +listMapKey=name
+	// +kubebuilder:validation:MaxItems=64
 	ProposedNodes []ProposedNode `json:"proposedNodes,omitempty"`
 }
 

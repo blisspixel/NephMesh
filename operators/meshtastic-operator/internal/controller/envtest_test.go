@@ -47,6 +47,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
+	intentv1alpha1 "github.com/blisspixel/nephmesh/api/intent/v1alpha1"
 	meshv1alpha1 "github.com/blisspixel/nephmesh/api/mesh/v1alpha1"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/device"
 )
@@ -62,6 +63,9 @@ func TestMain(m *testing.M) {
 
 	scheme := runtime.NewScheme()
 	if err := meshv1alpha1.AddToScheme(scheme); err != nil {
+		panic(err)
+	}
+	if err := intentv1alpha1.AddToScheme(scheme); err != nil {
 		panic(err)
 	}
 
@@ -143,6 +147,77 @@ func TestAdmissionAcceptsValidResource(t *testing.T) {
 	n.Spec.Owner = &meshv1alpha1.OwnerSpec{ShortName: "NM01", LongName: "NephMesh Node"}
 	require.NoError(t, envtestClient.Create(ctx, n), "a well-formed resource must be accepted")
 	require.NoError(t, envtestClient.Delete(ctx, n))
+}
+
+// validIntent is the smallest accepted CommunicationIntent; each hostile case
+// below is a single mutation away from it, so a rejection pins exactly one
+// validation. The accept path also proves the intent CRD installs at all, which
+// guards the CEL cost budget: the Connection rule inside the bounded nodes list
+// must stay under the apiserver's per-schema limit.
+func validIntent() *intentv1alpha1.CommunicationIntent {
+	return &intentv1alpha1.CommunicationIntent{
+		ObjectMeta: metav1.ObjectMeta{GenerateName: "intent-", Namespace: "default"},
+		Spec: intentv1alpha1.CommunicationIntentSpec{
+			Region:               "US",
+			ApprovedModemPresets: []string{"MEDIUM_SLOW"},
+			Nodes: []intentv1alpha1.NodeTarget{
+				{Name: "field-01", Connection: meshv1alpha1.ConnectionSpec{TCP: &meshv1alpha1.TCPConnection{Host: "device.local", Port: 4403}}},
+			},
+		},
+	}
+}
+
+func TestIntentAdmissionRejectsHostileResources(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		name   string
+		mutate func(*intentv1alpha1.CommunicationIntent)
+	}{
+		{"empty approved preset set", func(ci *intentv1alpha1.CommunicationIntent) {
+			ci.Spec.ApprovedModemPresets = []string{}
+		}},
+		{"no target nodes", func(ci *intentv1alpha1.CommunicationIntent) {
+			ci.Spec.Nodes = nil
+		}},
+		{"duplicate node name", func(ci *intentv1alpha1.CommunicationIntent) {
+			ci.Spec.Nodes = append(ci.Spec.Nodes, intentv1alpha1.NodeTarget{
+				Name: "field-01", Connection: meshv1alpha1.ConnectionSpec{TCP: &meshv1alpha1.TCPConnection{Host: "other.local"}},
+			})
+		}},
+		{"node with no transport", func(ci *intentv1alpha1.CommunicationIntent) {
+			ci.Spec.Nodes[0].Connection = meshv1alpha1.ConnectionSpec{}
+		}},
+		{"node host with a leading dash (flag/SSRF shape)", func(ci *intentv1alpha1.CommunicationIntent) {
+			ci.Spec.Nodes[0].Connection.TCP.Host = "-evil.example.com"
+		}},
+		{"region with illegal characters", func(ci *intentv1alpha1.CommunicationIntent) {
+			ci.Spec.Region = "us-west"
+		}},
+		{"node name not a DNS label", func(ci *intentv1alpha1.CommunicationIntent) {
+			ci.Spec.Nodes[0].Name = "Field_01"
+		}},
+		{"duplicate channel index", func(ci *intentv1alpha1.CommunicationIntent) {
+			ci.Spec.Channels = []meshv1alpha1.ChannelSpec{{Index: 1, Name: "a"}, {Index: 1, Name: "b"}}
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ci := validIntent()
+			tc.mutate(ci)
+			err := envtestClient.Create(ctx, ci)
+			require.Error(t, err, "the API server must refuse a hostile intent at admission")
+			assert.True(t, apierrors.IsInvalid(err), "rejection should be an Invalid error, got %v", err)
+		})
+	}
+}
+
+func TestIntentAdmissionAcceptsValidResource(t *testing.T) {
+	ctx := context.Background()
+	ci := validIntent()
+	ci.Spec.Role = "CLIENT"
+	ci.Spec.Channels = []meshv1alpha1.ChannelSpec{{Index: 1, Name: "relief"}}
+	require.NoError(t, envtestClient.Create(ctx, ci), "a well-formed intent must be accepted")
+	require.NoError(t, envtestClient.Delete(ctx, ci))
 }
 
 func TestFinalizerLifecycleAndIdempotency(t *testing.T) {

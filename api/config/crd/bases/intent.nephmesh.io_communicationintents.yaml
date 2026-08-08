@@ -71,13 +71,15 @@ spec:
                   the strategic layer owns the allowed set, a lower layer the selection.
                 items:
                   type: string
+                maxItems: 16
                 minItems: 1
                 type: array
               channels:
                 description: |-
                   channels are the channels every rendered node carries (PSKs referenced from
                   Secrets, never inlined), the same shape a MeshtasticNode declares. Keyed by
-                  index so a duplicate channel index is rejected at admission.
+                  index so a duplicate channel index is rejected at admission. Meshtastic
+                  supports up to 8 channels.
                 items:
                   description: ChannelSpec is one Meshtastic channel.
                   properties:
@@ -133,6 +135,7 @@ spec:
                   required:
                   - index
                   type: object
+                maxItems: 8
                 type: array
                 x-kubernetes-list-map-keys:
                 - index
@@ -142,6 +145,9 @@ spec:
                   nodes are the target devices this intent renders to. Keyed by name so two
                   targets cannot share a name (they would render two colliding MeshtasticNode
                   specs); the collision is rejected at admission rather than surfaced later.
+                  The bound keeps one intent to a reviewable fleet and, because each target
+                  carries a Connection with a CEL rule, keeps the CRD within the apiserver's
+                  validation cost budget; address a larger region with several intents.
                 items:
                   description: NodeTarget names one device the intent applies to and
                     how to reach it.
@@ -247,6 +253,7 @@ spec:
                   - connection
                   - name
                   type: object
+                maxItems: 64
                 minItems: 1
                 type: array
                 x-kubernetes-list-map-keys:
@@ -347,7 +354,9 @@ spec:
               proposedNodes:
                 description: |-
                   proposedNodes is the rendered MeshtasticNode specs the intent compiles to.
-                  Report-only: these are what the operator would create, not created.
+                  Report-only: these are what the operator would create, not created. Bounded
+                  to match spec.nodes (each rendered spec carries a Connection with a CEL
+                  rule, so the bound also keeps the CRD within the validation cost budget).
                 items:
                   description: |-
                     ProposedNode is one rendered MeshtasticNode the compiler would create. The Spec
@@ -614,7 +623,11 @@ spec:
                   - name
                   - spec
                   type: object
+                maxItems: 64
                 type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
               selectedModemPreset:
                 description: selectedModemPreset is the preset the compiler chose
                   from the approved set.
