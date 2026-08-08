@@ -81,6 +81,43 @@ func TestUnknownCommand(t *testing.T) {
 	assert.Contains(t, errBuf.String(), "unknown command")
 }
 
+const sweepCSV = "2026-08-08, 12:00:00, 911000000, 920000000, 1000000, 20, -95.1, -94.0, -95.4, -93.8, -55.2, -48.6, -94.3, -95.5, -96.0\n"
+
+func TestSpectrumJSONFromStdin(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	code := run([]string{"spectrum"}, strings.NewReader(sweepCSV), &out, &errBuf)
+	require.Equal(t, exitOK, code, "stderr: %s", errBuf.String())
+
+	var stats []map[string]any
+	require.NoError(t, json.Unmarshal(out.Bytes(), &stats))
+	require.NotEmpty(t, stats)
+	// The 915 US band should show some occupancy from the two strong bins.
+	var found bool
+	for _, s := range stats {
+		band := s["band"].(map[string]any)
+		if band["name"] == "ism-915-us" {
+			found = true
+			assert.Positive(t, s["occupancyPercent"].(float64))
+		}
+	}
+	assert.True(t, found, "the default bands include ism-915-us")
+}
+
+func TestSpectrumTextFromStdin(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	code := run([]string{"spectrum", "-o", "text"}, strings.NewReader(sweepCSV), &out, &errBuf)
+	require.Equal(t, exitOK, code)
+	assert.Contains(t, out.String(), "ism-915-us")
+	assert.Contains(t, out.String(), "occupancy")
+}
+
+func TestSpectrumMalformedInputIsUsageError(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	code := run([]string{"spectrum"}, strings.NewReader("not a sweep\nat all\n"), &out, &errBuf)
+	assert.Equal(t, exitUsage, code)
+	assert.Contains(t, errBuf.String(), "spectrum:")
+}
+
 func TestHelp(t *testing.T) {
 	var out, errBuf bytes.Buffer
 	code := run([]string{"help"}, strings.NewReader(""), &out, &errBuf)

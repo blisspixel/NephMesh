@@ -57,6 +57,16 @@ Exit code is 0 for any successful evaluation (the verdict, feasible or not, is i
 the output) and 2 for a usage or parse error, so a script branches on the JSON
 payload rather than the exit code.
 
+`nephmeshctl` also has a `spectrum` subcommand: it reduces a receive-only SDR
+sweep (rtl_power/hackrf_sweep CSV) to per-band occupancy, noise floor, and peak
+power, as JSON or text. It is pure like `plan` (it reads a CSV a radio produced,
+it touches no hardware), so an agent can analyze a capture offline. See the
+[spectrum validation runbook](spectrum-validation.md).
+
+```sh
+./nephmeshctl spectrum -f sweep.csv -o text
+```
+
 ## nephmesh-mcp (Model Context Protocol)
 
 Build it:
