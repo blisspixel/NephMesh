@@ -76,6 +76,11 @@ type Outcome struct {
 	// controller can predict the airtime effect of a declared preset change
 	// against the radio's own measured utilization.
 	CurrentModemPreset string
+	// Drift is the list of declared fields still not matching the device this
+	// step (dotted config paths and channel[i].field entries), so the controller
+	// can name what has not converged in a condition message and a log line rather
+	// than reporting a bare "not in sync".
+	Drift []string
 }
 
 // State is the reconcile memory Converge needs from the previous step: whether a
@@ -129,10 +134,19 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 		}
 		return Outcome{Reachable: false, RebootPending: prior.RebootPending, ApplyAttempts: prior.ApplyAttempts, Reason: reason, Requeue: ReconnectBackoff}, nil
 	}
+	if err != nil {
+		// An unexpected --info failure (not a mid-reboot drop): surface it for a
+		// rate-limited retry rather than proceeding with empty identity/telemetry
+		// and possibly reporting a converged, Ready state built on nothing.
+		return Outcome{ApplyAttempts: prior.ApplyAttempts}, err
+	}
 	liveChannels := config.LiveChannels(live)
 	currentPreset := liveModemPreset(live)
-	scalarConverged := config.IsConverged(config.ForComparison(desired), live)
-	channelsConverged := config.ChannelsConverged(chans.Compare, liveChannels)
+	scalarDrift := config.Drift(config.ForComparison(desired), live)
+	channelDrift := config.ChannelDrift(chans.Compare, liveChannels)
+	scalarConverged := len(scalarDrift) == 0
+	channelsConverged := len(channelDrift) == 0
+	allDrift := append(append([]string{}, scalarDrift...), channelDrift...)
 
 	if scalarConverged && channelsConverged {
 		return Outcome{
@@ -156,6 +170,7 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 			Info:               info,
 			LiveChannels:       liveChannels,
 			CurrentModemPreset: currentPreset,
+			Drift:              allDrift,
 		}, nil
 	}
 
@@ -190,6 +205,7 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 		Info:               info,
 		LiveChannels:       liveChannels,
 		CurrentModemPreset: currentPreset,
+		Drift:              allDrift,
 	}, nil
 }
 

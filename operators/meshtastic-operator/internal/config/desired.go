@@ -62,28 +62,31 @@ func BuildDesired(spec meshv1alpha1.MeshtasticNodeSpec, mqttAddress string, mqtt
 		}
 	}
 
-	if spec.MQTT != nil && spec.MQTT.Enabled {
-		mqtt := map[string]any{"enabled": true}
-		if mqttAddress != "" {
-			mqtt["address"] = mqttAddress
-		}
-		if spec.MQTT.JSONEnabled {
-			mqtt["json_enabled"] = true
-		}
-		if spec.MQTT.EncryptionEnabled {
-			mqtt["encryption_enabled"] = true
-		}
-		if spec.MQTT.TLSEnabled {
-			mqtt["tls_enabled"] = true
-		}
-		if spec.MQTT.Root != "" {
-			mqtt["root"] = spec.MQTT.Root
-		}
-		if spec.MQTT.Username != "" {
-			mqtt["username"] = spec.MQTT.Username
-		}
-		if !mqttPassword.IsZero() {
-			mqtt["password"] = mqttPassword.Reveal()
+	// A non-nil MQTT spec means the operator manages the MQTT module (a nil spec
+	// leaves it untouched). Emit `enabled` always, including false, so the operator
+	// can also turn MQTT off; and when enabled, emit the owned booleans explicitly
+	// rather than only when true, so a stale `encryption_enabled: true` on the
+	// device is detected and reconciled back to false. The device echoes each of
+	// these, so an unemitted key would let an old value persist unseen while the
+	// node still reports converged.
+	if spec.MQTT != nil {
+		mqtt := map[string]any{"enabled": spec.MQTT.Enabled}
+		if spec.MQTT.Enabled {
+			if mqttAddress != "" {
+				mqtt["address"] = mqttAddress
+			}
+			mqtt["json_enabled"] = spec.MQTT.JSONEnabled
+			mqtt["encryption_enabled"] = spec.MQTT.EncryptionEnabled
+			mqtt["tls_enabled"] = spec.MQTT.TLSEnabled
+			if spec.MQTT.Root != "" {
+				mqtt["root"] = spec.MQTT.Root
+			}
+			if spec.MQTT.Username != "" {
+				mqtt["username"] = spec.MQTT.Username
+			}
+			if !mqttPassword.IsZero() {
+				mqtt["password"] = mqttPassword.Reveal()
+			}
 		}
 		desired["module_config"] = map[string]any{"mqtt": mqtt}
 	}

@@ -227,6 +227,44 @@ func TestReconcileResolvesChannelPSKAndReportsInSync(t *testing.T) {
 	assert.Equal(t, metav1.ConditionTrue, cond.Status)
 }
 
+func TestReconcileEmptyChannelSecretIsRefused(t *testing.T) {
+	node := newNode()
+	node.Finalizers = []string{meshv1alpha1.Finalizer}
+	node.Spec.Channels = []meshv1alpha1.ChannelSpec{{
+		Index: 1, Name: "ops",
+		PSKSecretRef: &corev1.SecretKeySelector{
+			LocalObjectReference: corev1.LocalObjectReference{Name: "ch"}, Key: "psk",
+		},
+	}}
+	// The referenced Secret exists but its value is empty: must be refused, not
+	// silently downgraded to the public default key.
+	sec := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "ch", Namespace: "default"},
+		Data:       map[string][]byte{"psk": {}},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(testScheme(t)).
+		WithObjects(node, sec).
+		WithStatusSubresource(&meshv1alpha1.MeshtasticNode{}).
+		Build()
+	r := &MeshtasticNodeReconciler{Client: c, Reader: c, NewDevice: func(context.Context, *meshv1alpha1.MeshtasticNode) (device.Client, error) {
+		return device.NewFake(desiredUS(), 0), nil
+	}}
+
+	_, err := r.Reconcile(context.Background(), request())
+	require.Error(t, err, "an empty PSK secret must not silently become the public default key")
+	assert.Contains(t, err.Error(), "empty")
+
+	// The failure is surfaced on the object (Ready=False, SecretMissing), not
+	// frozen at a stale healthy state.
+	var got meshv1alpha1.MeshtasticNode
+	require.NoError(t, c.Get(context.Background(), request().NamespacedName, &got))
+	cond := meta.FindStatusCondition(got.Status.Conditions, meshv1alpha1.ConditionReady)
+	require.NotNil(t, cond)
+	assert.Equal(t, metav1.ConditionFalse, cond.Status)
+	assert.Equal(t, meshv1alpha1.ReasonSecretMissing, cond.Reason)
+}
+
 func TestReconcileMissingChannelSecretIsSurfaced(t *testing.T) {
 	node := newNode()
 	node.Finalizers = []string{meshv1alpha1.Finalizer}

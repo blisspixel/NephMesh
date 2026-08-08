@@ -32,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -60,6 +61,10 @@ type MeshtasticNodeReconciler struct {
 	// an uncached get keeps the RBAC a namespaced get, per the threat model.
 	Reader    client.Reader
 	NewDevice DeviceFactory
+	// Recorder emits Kubernetes Events so operational transitions (config applied,
+	// device degraded, a missing Secret) show up in `kubectl describe`, not just in
+	// conditions. It may be nil in unit tests that do not assert on events.
+	Recorder record.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=mesh.nephmesh.io,resources=meshtasticnodes,verbs=get;list;watch;update;patch
@@ -113,13 +118,13 @@ func (r *MeshtasticNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	mqttPassword, err := r.resolveMQTTPassword(ctx, &node)
 	if err != nil {
 		// The error names the secret and key, never the value.
-		return ctrl.Result{}, err
+		return r.secretFailure(ctx, &node, err)
 	}
 
 	desiredChannels, err := r.buildDesiredChannels(ctx, &node)
 	if err != nil {
 		// The error names the secret and key, never the key material.
-		return ctrl.Result{}, err
+		return r.secretFailure(ctx, &node, err)
 	}
 
 	desired := config.BuildDesired(node.Spec, r.resolveBroker(ctx, &node), mqttPassword)
@@ -127,6 +132,8 @@ func (r *MeshtasticNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		RebootPending: meta.IsStatusConditionTrue(node.Status.Conditions, meshv1alpha1.ConditionRebootPending),
 		ApplyAttempts: node.Status.ApplyAttempts,
 	}
+	priorDegraded := meta.IsStatusConditionTrue(node.Status.Conditions, meshv1alpha1.ConditionDegraded)
+	priorReachable := meta.IsStatusConditionTrue(node.Status.Conditions, meshv1alpha1.ConditionReachable)
 
 	outcome, err := reconcile.Converge(ctx, dev, desired, desiredChannels, prior)
 	if err != nil {
@@ -139,9 +146,29 @@ func (r *MeshtasticNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		applyChannelsInSync(&node, desiredChannels.Compare, outcome.LiveChannels, node.Generation)
 		applyAirtimeBudget(&node, outcome.CurrentModemPreset, outcome.Info, node.Generation)
 	}
+
+	// Log and emit Events on the meaningful transitions this step, so a rollout or
+	// a stuck node leaves a trail in the logs and in `kubectl describe`. These fire
+	// on transitions, not every reconcile, to avoid noise; no secret material or
+	// the desired config (which carries the password) is logged.
+	switch {
+	case outcome.Degraded && !priorDegraded:
+		log.Info("node degraded, did not converge", "applyAttempts", outcome.ApplyAttempts, "drift", outcome.Drift)
+		r.event(&node, corev1.EventTypeWarning, meshv1alpha1.ReasonApplyFailed,
+			fmt.Sprintf("did not converge after %d applies; still drifted: %s", outcome.ApplyAttempts, strings.Join(outcome.Drift, ", ")))
+	case outcome.RebootPending && !prior.RebootPending:
+		log.Info("applied config, device rebooting", "applyAttempts", outcome.ApplyAttempts, "drift", outcome.Drift, "requeueAfter", outcome.Requeue.String())
+		r.event(&node, corev1.EventTypeNormal, meshv1alpha1.ReasonConfigApplied, "applied config changes; device rebooting")
+	}
+	if !outcome.Reachable && priorReachable {
+		log.Info("device became unreachable", "reason", outcome.Reason)
+		r.event(&node, corev1.EventTypeWarning, meshv1alpha1.ReasonConnectFailed, "device became unreachable")
+	}
+
 	metrics.Record(metrics.Sample{
 		Namespace: node.Namespace, Name: node.Name,
 		Ready: outcome.Ready, ConfigInSync: outcome.ConfigInSync, ApplyAttempts: outcome.ApplyAttempts,
+		Reachable: outcome.Reachable, Degraded: outcome.Degraded,
 		ChannelUtilization: outcome.Info.ChannelUtilization, AirUtilTx: outcome.Info.AirUtilTx,
 	})
 	if statusErr := r.Status().Update(ctx, &node); statusErr != nil {
@@ -210,6 +237,12 @@ func (r *MeshtasticNodeReconciler) buildDesiredChannels(ctx context.Context, nod
 			if !ok {
 				return reconcile.DesiredChannels{}, fmt.Errorf("channel %d psk secret %q has no key %q", ch.Index, ch.PSKSecretRef.Name, ch.PSKSecretRef.Key)
 			}
+			if len(data) == 0 {
+				// An explicit pskSecretRef with an empty value would fall through to
+				// the device's public default key, making a "private" channel
+				// world-readable. Surface it instead of silently downgrading.
+				return reconcile.DesiredChannels{}, fmt.Errorf("channel %d psk secret %q key %q is empty; refusing to fall back to the public default key", ch.Index, ch.PSKSecretRef.Name, ch.PSKSecretRef.Key)
+			}
 			key = secret.New(string(data))
 		}
 		// The compare hash: an explicit key hashes its raw bytes, a default (no
@@ -261,9 +294,40 @@ func applyChannelsInSync(node *meshv1alpha1.MeshtasticNode, desired, live []conf
 	})
 }
 
+// event emits a Kubernetes Event when a recorder is configured (it is nil in some
+// unit tests). Messages must never contain secret material.
+func (r *MeshtasticNodeReconciler) event(node *meshv1alpha1.MeshtasticNode, eventtype, reason, message string) {
+	if r.Recorder != nil {
+		r.Recorder.Event(node, eventtype, reason, message)
+	}
+}
+
+// secretFailure surfaces a Secret-resolution error instead of leaving the object's
+// conditions and metrics frozen at their last-good values, which would show the
+// node Ready while it is stuck failing (a deleted or rotated Secret). It marks the
+// node not-Ready with the error (which names the secret and key, never the value),
+// records a Warning Event, drops the ready metric, writes status, and returns the
+// error for a rate-limited retry.
+func (r *MeshtasticNodeReconciler) secretFailure(ctx context.Context, node *meshv1alpha1.MeshtasticNode, cause error) (ctrl.Result, error) {
+	meta.SetStatusCondition(&node.Status.Conditions, metav1.Condition{
+		Type: meshv1alpha1.ConditionReady, Status: metav1.ConditionFalse,
+		Reason: meshv1alpha1.ReasonSecretMissing, ObservedGeneration: node.Generation,
+		Message: cause.Error(),
+	})
+	r.event(node, corev1.EventTypeWarning, meshv1alpha1.ReasonSecretMissing, cause.Error())
+	metrics.Record(metrics.Sample{
+		Namespace: node.Namespace, Name: node.Name,
+		Ready: false, Reachable: false, ApplyAttempts: node.Status.ApplyAttempts,
+	})
+	if statusErr := r.Status().Update(ctx, node); statusErr != nil {
+		return ctrl.Result{}, statusErr
+	}
+	return ctrl.Result{}, cause
+}
+
 func applyOutcome(node *meshv1alpha1.MeshtasticNode, o reconcile.Outcome) {
 	gen := node.Generation
-	set := func(condType string, ok bool, reason string) {
+	set := func(condType string, ok bool, reason, message string) {
 		status := metav1.ConditionFalse
 		if ok {
 			status = metav1.ConditionTrue
@@ -273,17 +337,26 @@ func applyOutcome(node *meshv1alpha1.MeshtasticNode, o reconcile.Outcome) {
 			Status:             status,
 			Reason:             reason,
 			ObservedGeneration: gen,
+			Message:            message,
 		})
 	}
-	set(meshv1alpha1.ConditionReachable, o.Reachable, o.Reason)
-	set(meshv1alpha1.ConditionConfigInSync, o.ConfigInSync, o.Reason)
-	set(meshv1alpha1.ConditionRebootPending, o.RebootPending, o.Reason)
-	set(meshv1alpha1.ConditionDegraded, o.Degraded, o.Reason)
+	driftMsg := ""
+	if len(o.Drift) > 0 {
+		driftMsg = "still drifted: " + strings.Join(o.Drift, ", ")
+	}
+	degradedMsg := ""
+	if o.Degraded {
+		degradedMsg = fmt.Sprintf("did not converge after %d applies; %s", o.ApplyAttempts, driftMsg)
+	}
+	set(meshv1alpha1.ConditionReachable, o.Reachable, o.Reason, "")
+	set(meshv1alpha1.ConditionConfigInSync, o.ConfigInSync, o.Reason, driftMsg)
+	set(meshv1alpha1.ConditionRebootPending, o.RebootPending, o.Reason, "")
+	set(meshv1alpha1.ConditionDegraded, o.Degraded, o.Reason, degradedMsg)
 	readyReason := meshv1alpha1.ReasonNotReady
 	if o.Ready {
 		readyReason = meshv1alpha1.ReasonReady
 	}
-	set(meshv1alpha1.ConditionReady, o.Ready, readyReason)
+	set(meshv1alpha1.ConditionReady, o.Ready, readyReason, "")
 
 	node.Status.ObservedGeneration = gen
 	node.Status.ApplyAttempts = o.ApplyAttempts

@@ -23,7 +23,9 @@ package main
 import (
 	"context"
 	"flag"
+	"net"
 	"os"
+	"strconv"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -84,6 +86,7 @@ func main() {
 		Client:    mgr.GetClient(),
 		Reader:    mgr.GetAPIReader(), // uncached, for namespaced Secret reads
 		NewDevice: newCLIDevice,
+		Recorder:  mgr.GetEventRecorderFor("meshtastic-operator"),
 	}
 	if err := reconciler.SetupWithManager(mgr); err != nil {
 		log.Error(err, "unable to set up controller")
@@ -124,9 +127,16 @@ func helperArgv(env, fallback string) []string {
 // a node that selects them is reported as unreachable rather than silently
 // mishandled.
 func newCLIDevice(_ context.Context, node *meshv1alpha1.MeshtasticNode) (device.Client, error) {
-	if node.Spec.Connection.TCP != nil {
+	if tcp := node.Spec.Connection.TCP; tcp != nil {
+		// Honor the declared port (the CRD defaults it to 4403); passing it as
+		// host:port is understood by the CLI and split by the helpers. Without
+		// this a device on a non-default port was silently contacted on 4403.
+		host := tcp.Host
+		if tcp.Port != 0 {
+			host = net.JoinHostPort(host, strconv.Itoa(int(tcp.Port)))
+		}
 		return &device.CLIClient{
-			Host:     node.Spec.Connection.TCP.Host,
+			Host:     host,
 			Exporter: helperArgv("NEPHMESH_EXPORTER", defaultExporter),
 			Applier:  helperArgv("NEPHMESH_APPLIER", defaultApplier),
 		}, nil
