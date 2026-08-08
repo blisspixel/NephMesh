@@ -48,6 +48,42 @@ func TestConvergeSurfacesLiveChannels(t *testing.T) {
 	assert.True(t, out.LiveChannels[0].UplinkEnabled)
 }
 
+func TestConvergesWithWriteOnlyPasswordAgainstFakeDevice(t *testing.T) {
+	// The fake now models the real device: it does not echo the MQTT password back
+	// in its export. So a node with a password must still converge, because the
+	// write-only field is excluded from the drift comparison (config.ForComparison).
+	// Before that exclusion this looped forever, and now the fake, not only the
+	// sim, guards the regression.
+	desired := map[string]any{
+		"config": map[string]any{"lora": map[string]any{"region": "US"}},
+		"module_config": map[string]any{"mqtt": map[string]any{
+			"enabled": true, "address": "10.0.0.5", "password": "s3cret",
+		}},
+	}
+	dev := device.NewFake(map[string]any{}, 1) // starts drifted, reboot window 1
+
+	state := State{}
+	var final Outcome
+	for i := 0; i < 6; i++ {
+		out, err := Converge(context.Background(), dev, desired, DesiredChannels{}, state)
+		require.NoError(t, err)
+		state = State{RebootPending: out.RebootPending, ApplyAttempts: out.ApplyAttempts}
+		if out.Ready {
+			final = out
+			break
+		}
+	}
+	require.True(t, final.Ready, "a node with a write-only MQTT password must converge, not reboot-loop")
+	assert.True(t, final.ConfigInSync)
+
+	// The device received the password (via Apply) but never echoes it back.
+	live, err := dev.ExportConfig(context.Background())
+	require.NoError(t, err)
+	mqtt := live["module_config"].(map[string]any)["mqtt"].(map[string]any)
+	_, hasPw := mqtt["password"]
+	assert.False(t, hasPw, "the fake models the real device: the password is not echoed back")
+}
+
 func TestConvergesChannelsThroughApplyAndReboot(t *testing.T) {
 	// The device starts with the scalar config already converged (region US) and
 	// only the default primary channel; the desired state adds a secondary.
