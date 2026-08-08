@@ -21,6 +21,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"sort"
+	"strconv"
+	"strings"
 
 	meshv1alpha1 "github.com/blisspixel/nephmesh/api/mesh/v1alpha1"
 )
@@ -114,8 +116,14 @@ func LiveChannels(export map[string]any) []ChannelState {
 		if !ok {
 			continue
 		}
+		idx, ok := toInt32(m["index"])
+		if !ok {
+			// An unparseable index would otherwise default to slot 0 and either
+			// mask a real channel-0 drift or fabricate one; skip it instead.
+			continue
+		}
 		out = append(out, ChannelState{
-			Index:           toInt32(m["index"]),
+			Index:           idx,
 			Name:            toString(m["name"]),
 			PSKHash:         toString(m["pskHash"]),
 			UplinkEnabled:   toBool(m["uplinkEnabled"]),
@@ -178,17 +186,27 @@ func toBool(v any) bool {
 	return b
 }
 
-func toInt32(v any) int32 {
+// toInt32 converts a decoded index value (YAML gives int/int64, JSON gives
+// float64, a stray source might give a string) to int32. ok is false for an
+// unparseable value, so the caller can skip the entry rather than defaulting it
+// to slot 0.
+func toInt32(v any) (int32, bool) {
 	switch n := v.(type) {
 	case int:
-		return int32(n)
+		return int32(n), true
 	case int32:
-		return n
+		return n, true
 	case int64:
-		return int32(n)
+		return int32(n), true
 	case float64:
-		return int32(n)
+		return int32(n), true
+	case string:
+		i, err := strconv.Atoi(strings.TrimSpace(n))
+		if err != nil {
+			return 0, false
+		}
+		return int32(i), true
 	default:
-		return 0
+		return 0, false
 	}
 }

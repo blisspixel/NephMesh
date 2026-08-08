@@ -20,6 +20,11 @@ limitations under the License.
 // through Reveal, called at the single point that writes device configuration.
 package secret
 
+import (
+	"fmt"
+	"io"
+)
+
 // Value wraps a secret string. Its String, GoString, MarshalJSON, and
 // MarshalLog (the logr structured-logging hook) all render a fixed placeholder
 // instead of the secret, so logging or formatting a Value, a struct containing
@@ -53,6 +58,19 @@ func (v Value) String() string {
 
 // GoString covers %#v, which would otherwise print the struct field verbatim.
 func (v Value) GoString() string { return "secret.Value{" + v.String() + "}" }
+
+// Format implements fmt.Formatter so that EVERY verb renders the placeholder, not
+// just the string-family verbs that route through String. Without this, a numeric
+// or other verb (%d, %x, %q on the struct, %+v deep in a wrapping struct) makes
+// fmt reflect over the struct and print the unexported field's real value. With a
+// Formatter present, fmt sends all verbs here first.
+func (v Value) Format(f fmt.State, verb rune) {
+	if verb == 'v' && f.Flag('#') {
+		_, _ = io.WriteString(f, v.GoString())
+		return
+	}
+	_, _ = io.WriteString(f, v.String())
+}
 
 // MarshalJSON covers JSON encoders, including structured loggers that serialize
 // fields as JSON.

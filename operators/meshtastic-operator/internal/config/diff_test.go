@@ -22,6 +22,35 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestForComparisonDropsWriteOnlyPassword(t *testing.T) {
+	desired := map[string]any{
+		"config": map[string]any{"lora": map[string]any{"region": "US"}},
+		"module_config": map[string]any{"mqtt": map[string]any{
+			"enabled": true, "address": "1.2.3.4", "password": "s3cret",
+		}},
+	}
+	// The device export never echoes the MQTT password back.
+	live := map[string]any{
+		"config": map[string]any{"lora": map[string]any{"region": "US"}},
+		"module_config": map[string]any{"mqtt": map[string]any{
+			"enabled": true, "address": "1.2.3.4",
+		}},
+	}
+
+	// The bug: comparing the full desired treats the never-echoed password as
+	// permanent drift, so the node reboot-loops and never converges.
+	assert.False(t, IsConverged(desired, live), "including the write-only password reports permanent drift")
+
+	// The fix: dropping the write-only key from the comparison lets it converge.
+	assert.True(t, IsConverged(ForComparison(desired), live), "excluding the write-only password converges")
+
+	// ForComparison must not mutate the original: the full desired still carries
+	// the password for the apply path.
+	mqtt := desired["module_config"].(map[string]any)["mqtt"].(map[string]any)
+	_, stillThere := mqtt["password"]
+	assert.True(t, stillThere, "the original desired keeps the password to apply it")
+}
+
 func TestConvergedWhenDesiredSubsetPresent(t *testing.T) {
 	desired := map[string]any{
 		"config": map[string]any{"lora": map[string]any{"region": "US"}},

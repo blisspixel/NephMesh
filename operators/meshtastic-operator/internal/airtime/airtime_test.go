@@ -106,3 +106,15 @@ func TestWithinChannelBudget(t *testing.T) {
 	assert.True(t, WithinChannelBudget(10.0))
 	assert.False(t, WithinChannelBudget(RecommendedChannelUtilizationPercent+0.1))
 }
+
+func TestLongPresetsUseCodingRate48(t *testing.T) {
+	// LONG_MODERATE and LONG_SLOW use 4/8 coding (per the Meshtastic firmware
+	// preset table), which lengthens their time-on-air versus 4/5. Pin LONG_SLOW
+	// (SF12, BW125k, CR4/8, 40-byte payload): ~3023 ms. A regression to 4/5 would
+	// compute ~2236 ms, well below the assertion.
+	toa, ok := PresetTimeOnAir("LONG_SLOW", 40)
+	assert.True(t, ok)
+	ms := float64(toa.Microseconds()) / 1000
+	assert.InDelta(t, 3022.8, ms, 5.0, "LONG_SLOW time-on-air must reflect 4/8 coding")
+	assert.Greater(t, ms, 2900.0, "a regression to 4/5 coding (~2236 ms) would fail this")
+}

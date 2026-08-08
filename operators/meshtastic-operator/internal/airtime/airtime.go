@@ -44,9 +44,12 @@ type Params struct {
 // MeshtasticPreamble is the preamble length (in symbols) Meshtastic uses.
 const MeshtasticPreamble = 16
 
-// meshtasticPresets maps each Meshtastic modem preset to its radio parameters.
-// All presets use coding rate 4/5. Values track the Meshtastic firmware preset
-// table; the default is LONG_FAST.
+// meshtasticPresets maps each Meshtastic modem preset to its radio parameters,
+// tracking the firmware preset table (modemPresetToParams in RadioInterface.cpp).
+// Most presets use coding rate 4/5, but the two maximum-range presets,
+// LONG_MODERATE and LONG_SLOW, use the stronger 4/8 coding rate, which lengthens
+// their time-on-air; getting this wrong under-counts the airtime of exactly the
+// presets most likely to saturate a channel. The default is LONG_FAST.
 var meshtasticPresets = map[string]Params{
 	"SHORT_TURBO":   {SpreadingFactor: 7, BandwidthHz: 500000, CodingRate: 5},
 	"SHORT_FAST":    {SpreadingFactor: 7, BandwidthHz: 250000, CodingRate: 5},
@@ -54,8 +57,8 @@ var meshtasticPresets = map[string]Params{
 	"MEDIUM_FAST":   {SpreadingFactor: 9, BandwidthHz: 250000, CodingRate: 5},
 	"MEDIUM_SLOW":   {SpreadingFactor: 10, BandwidthHz: 250000, CodingRate: 5},
 	"LONG_FAST":     {SpreadingFactor: 11, BandwidthHz: 250000, CodingRate: 5},
-	"LONG_MODERATE": {SpreadingFactor: 11, BandwidthHz: 125000, CodingRate: 5},
-	"LONG_SLOW":     {SpreadingFactor: 12, BandwidthHz: 125000, CodingRate: 5},
+	"LONG_MODERATE": {SpreadingFactor: 11, BandwidthHz: 125000, CodingRate: 8},
+	"LONG_SLOW":     {SpreadingFactor: 12, BandwidthHz: 125000, CodingRate: 8},
 }
 
 // TimeOnAir returns the LoRa time-on-air of one frame with the given radio

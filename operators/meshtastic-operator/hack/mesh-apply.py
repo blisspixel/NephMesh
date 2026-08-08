@@ -44,8 +44,25 @@ def psk_bytes(directive: str) -> bytes:
     if directive == "default":
         return b"\x01"
     if directive.startswith("base64:"):
-        return base64.b64decode(directive[len("base64:") :])
+        # validate=True so a malformed key raises rather than being silently
+        # mangled (b64decode otherwise discards stray non-alphabet characters and
+        # writes a different key to the device).
+        return base64.b64decode(directive[len("base64:") :], validate=True)
     raise ValueError("unknown psk directive")
+
+
+def split_host_port(host):
+    """Split a host into (host, port), handling host:port and bracketed IPv6.
+
+    A bare host or a bracketless IPv6 literal (multiple colons) has no port.
+    """
+    if host.startswith("[") and "]" in host:  # [2001:db8::1]:4403
+        addr, _, rest = host[1:].partition("]")
+        return addr, (rest[1:] if rest.startswith(":") else "")
+    if host.count(":") == 1:
+        addr, _, port = host.partition(":")
+        return addr, port
+    return host, ""
 
 
 def make_iface(serial, host):
@@ -55,12 +72,14 @@ def make_iface(serial, host):
         return SerialInterface(serial)
     from meshtastic.tcp_interface import TCPInterface
 
-    # The operator passes the TCP transport as host:port; the library takes them
-    # separately, so split when a port is present.
-    hostname, sep, port = host.partition(":")
-    if sep and port:
-        return TCPInterface(hostname, portNumber=int(port))
-    return TCPInterface(hostname)
+    addr, port = split_host_port(host)
+    if not port:
+        return TCPInterface(addr)
+    try:
+        portnum = int(port)
+    except ValueError:
+        raise ValueError("invalid TCP port %r in host %r" % (port, host))
+    return TCPInterface(addr, portNumber=portnum)
 
 
 def main() -> int:
@@ -74,30 +93,51 @@ def main() -> int:
     with open(args.channels_file, "r", encoding="utf-8") as fh:
         channels = json.load(fh)
 
+    # First pass: parse and validate every channel (index and psk directive)
+    # BEFORE connecting, so a malformed entry aborts with zero device writes rather
+    # than leaving the mesh half-configured after a mid-loop crash.
+    parsed = []
+    for ch in channels:
+        parsed.append(
+            {
+                "index": int(ch["index"]),
+                "name": ch.get("name", ""),
+                "psk": psk_bytes(ch.get("psk", "default")),
+                "uplink": bool(ch.get("uplinkEnabled", False)),
+                "downlink": bool(ch.get("downlinkEnabled", False)),
+            }
+        )
+
     iface = make_iface(args.serial, args.host)
     try:
         node = iface.localNode
         node_channels = node.channels
         if node_channels is None:
             raise RuntimeError("device returned no channel set")
-        for ch in channels:
-            idx = int(ch["index"])
+        slots = len(node_channels)
+        # Bounds-check every index before writing anything, so an out-of-range
+        # index cannot leave earlier channels already written.
+        for ch in parsed:
+            if not 0 <= ch["index"] < slots:
+                raise IndexError("channel index %d out of range 0..%d" % (ch["index"], slots - 1))
+        for ch in parsed:
+            idx = ch["index"]
             c = node_channels[idx]
             c.role = (
                 channel_pb2.Channel.Role.PRIMARY
                 if idx == 0
                 else channel_pb2.Channel.Role.SECONDARY
             )
-            c.settings.name = ch.get("name", "")
-            c.settings.psk = psk_bytes(ch.get("psk", "default"))
-            c.settings.uplink_enabled = bool(ch.get("uplinkEnabled", False))
-            c.settings.downlink_enabled = bool(ch.get("downlinkEnabled", False))
+            c.settings.name = ch["name"]
+            c.settings.psk = ch["psk"]
+            c.settings.uplink_enabled = ch["uplink"]
+            c.settings.downlink_enabled = ch["downlink"]
             node.writeChannel(idx)
     finally:
         iface.close()
 
     # Never echo names or keys; a count is enough for the operator to log.
-    sys.stdout.write("applied %d channel(s)\n" % len(channels))
+    sys.stdout.write("applied %d channel(s)\n" % len(parsed))
     return 0
 
 

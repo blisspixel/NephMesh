@@ -78,19 +78,27 @@ func (c *CLIClient) bin() string {
 }
 
 // looksUnreachable reports whether CLI output indicates the device could not be
-// reached, so the caller can requeue rather than treat it as a hard failure.
-func looksUnreachable(output string) bool {
+// reached, so the caller can requeue rather than treat it as a hard failure. The
+// serial parameter matters: the port-open phrases below are a transient reboot
+// signal only on a serial transport; on TCP the same strings come from a fatal
+// helper or path error (a missing file, a permission problem) that must NOT be
+// swallowed as unreachable, or a misconfiguration would requeue forever and never
+// surface or degrade.
+func looksUnreachable(output string, serial bool) bool {
 	o := strings.ToLower(output)
-	// TCP transports.
+	// Transport-agnostic connection failures.
 	if strings.Contains(o, "timed out") ||
 		strings.Contains(o, "connection refused") ||
 		strings.Contains(o, "error connecting") ||
 		strings.Contains(o, "no route to host") {
 		return true
 	}
-	// Serial transports: while a device reboots after an apply it drops off the
-	// USB bus and the port briefly cannot be opened. That is a transient
-	// unreachable window (the loop should requeue), not a hard failure.
+	if !serial {
+		return false
+	}
+	// Serial only: while a device reboots after an apply it drops off the USB bus
+	// and the port briefly cannot be opened. That is a transient unreachable
+	// window (the loop should requeue), not a hard failure.
 	return strings.Contains(o, "could not open port") ||
 		strings.Contains(o, "permissionerror") ||
 		strings.Contains(o, "access is denied") ||
@@ -119,7 +127,7 @@ func (c *CLIClient) execRun(ctx context.Context, args ...string) (string, error)
 	cmd := exec.CommandContext(ctx, c.bin(), full...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		if looksUnreachable(string(out)) {
+		if looksUnreachable(string(out), c.Serial != "") {
 			return string(out), ErrUnreachable
 		}
 		return string(out), fmt.Errorf("%s %s: %w: %s", c.bin(), strings.Join(full, " "), err, strings.TrimSpace(string(out)))
@@ -142,7 +150,7 @@ func (c *CLIClient) runExporter(ctx context.Context) (string, error) {
 	cmd := exec.CommandContext(ctx, c.Exporter[0], args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		if looksUnreachable(string(out)) {
+		if looksUnreachable(string(out), c.Serial != "") {
 			return string(out), ErrUnreachable
 		}
 		return string(out), fmt.Errorf("%s: %w: %s", c.Exporter[0], err, strings.TrimSpace(string(out)))
@@ -294,7 +302,7 @@ func (c *CLIClient) runApplier(ctx context.Context, channelsFile string) error {
 		out, err = string(b), e
 	}
 	if err != nil {
-		if looksUnreachable(out) {
+		if looksUnreachable(out, c.Serial != "") {
 			return ErrUnreachable
 		}
 		return fmt.Errorf("%s: applying channels: %w: %s", c.Applier[0], err, strings.TrimSpace(out))

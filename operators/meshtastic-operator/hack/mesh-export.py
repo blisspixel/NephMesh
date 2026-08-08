@@ -51,10 +51,21 @@ def main() -> int:
         from meshtastic.tcp_interface import TCPInterface
 
         # The operator passes the TCP transport as host:port; the library takes
-        # them separately, so split when a port is present.
-        hostname, sep, port = args.host.partition(":")
-        if sep and port:
-            iface = TCPInterface(hostname, portNumber=int(port))
+        # them separately. Handle host:port and bracketed IPv6 ([::1]:4403); a
+        # bare host or bracketless IPv6 (multiple colons) has no port.
+        host = args.host
+        if host.startswith("[") and "]" in host:
+            hostname, _, rest = host[1:].partition("]")
+            port = rest[1:] if rest.startswith(":") else ""
+        elif host.count(":") == 1:
+            hostname, _, port = host.partition(":")
+        else:
+            hostname, port = host, ""
+        if port:
+            try:
+                iface = TCPInterface(hostname, portNumber=int(port))
+            except ValueError:
+                raise ValueError("invalid TCP port %r in host %r" % (port, host))
         else:
             iface = TCPInterface(hostname)
 

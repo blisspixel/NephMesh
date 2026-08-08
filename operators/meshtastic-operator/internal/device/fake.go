@@ -194,13 +194,28 @@ func (f *Fake) Info(_ context.Context) (Info, error) {
 func deepCopyMap(m map[string]any) map[string]any {
 	out := make(map[string]any, len(m))
 	for k, v := range m {
-		if sub, ok := v.(map[string]any); ok {
-			out[k] = deepCopyMap(sub)
-		} else {
-			out[k] = v
-		}
+		out[k] = deepCopyValue(v)
 	}
 	return out
+}
+
+// deepCopyValue copies nested maps AND slices, so the config returned by
+// ExportConfig is fully independent of the Fake's internal state (a shallow copy
+// would share the "channels" slice by reference, letting a test corrupt device
+// state and mask a real bug).
+func deepCopyValue(v any) any {
+	switch t := v.(type) {
+	case map[string]any:
+		return deepCopyMap(t)
+	case []any:
+		cp := make([]any, len(t))
+		for i, e := range t {
+			cp[i] = deepCopyValue(e)
+		}
+		return cp
+	default:
+		return v
+	}
 }
 
 func mergeMap(dst, src map[string]any) {
