@@ -199,6 +199,12 @@ func TestIntentAdmissionRejectsHostileResources(t *testing.T) {
 		{"duplicate channel index", func(ci *intentv1alpha1.CommunicationIntent) {
 			ci.Spec.Channels = []meshv1alpha1.ChannelSpec{{Index: 1, Name: "a"}, {Index: 1, Name: "b"}}
 		}},
+		{"expectedTraffic rate below minimum", func(ci *intentv1alpha1.CommunicationIntent) {
+			ci.Spec.ExpectedTraffic = &intentv1alpha1.ExpectedTraffic{MessagesPerMinutePerNode: 0}
+		}},
+		{"expectedTraffic payload over Meshtastic maximum", func(ci *intentv1alpha1.CommunicationIntent) {
+			ci.Spec.ExpectedTraffic = &intentv1alpha1.ExpectedTraffic{MessagesPerMinutePerNode: 5, PayloadBytes: 500}
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -216,6 +222,7 @@ func TestIntentAdmissionAcceptsValidResource(t *testing.T) {
 	ci := validIntent()
 	ci.Spec.Role = "CLIENT"
 	ci.Spec.Channels = []meshv1alpha1.ChannelSpec{{Index: 1, Name: "relief"}}
+	ci.Spec.ExpectedTraffic = &intentv1alpha1.ExpectedTraffic{MessagesPerMinutePerNode: 4, PayloadBytes: 40}
 	require.NoError(t, envtestClient.Create(ctx, ci), "a well-formed intent must be accepted")
 	require.NoError(t, envtestClient.Delete(ctx, ci))
 }

@@ -107,6 +107,43 @@ func TestWithinChannelBudget(t *testing.T) {
 	assert.False(t, WithinChannelBudget(RecommendedChannelUtilizationPercent+0.1))
 }
 
+func TestFleetChannelUtilizationMatchesHandCalculation(t *testing.T) {
+	// SHORT_FAST (SF7, BW250k, CR4/5), 40-byte payload, 16-symbol preamble has a
+	// per-frame time-on-air of ~45.184 ms. Ten nodes at 6 messages/min each is 60
+	// frames/min, so airtime/min = 60 * 45.184 = 2711.04 ms, which is
+	// 2711.04/60000 = 4.5184% of the channel (rebroadcast ignored: this is a floor).
+	got, ok := FleetChannelUtilizationPercent("SHORT_FAST", 10, 6, 40)
+	assert.True(t, ok)
+	assert.InDelta(t, 4.5184, got, 0.02, "fleet utilization must match the hand calculation")
+}
+
+func TestFleetChannelUtilizationScalesWithFleetAndRate(t *testing.T) {
+	base, _ := FleetChannelUtilizationPercent("MEDIUM_SLOW", 10, 6, 40)
+	moreNodes, _ := FleetChannelUtilizationPercent("MEDIUM_SLOW", 20, 6, 40)
+	moreRate, _ := FleetChannelUtilizationPercent("MEDIUM_SLOW", 10, 12, 40)
+	assert.InDelta(t, 2*base, moreNodes, 1e-9, "doubling the fleet doubles the floor")
+	assert.InDelta(t, 2*base, moreRate, 1e-9, "doubling the message rate doubles the floor")
+}
+
+func TestFleetChannelUtilizationTripsBudgetForDenseFleet(t *testing.T) {
+	// A large fleet on a long-range preset exceeds the recommended ceiling even by
+	// the conservative floor, so infeasibility is certain.
+	got, ok := FleetChannelUtilizationPercent("LONG_FAST", 100, 12, 40)
+	assert.True(t, ok)
+	assert.False(t, WithinChannelBudget(got), "a dense fleet on a slow preset is over budget by the floor alone")
+}
+
+func TestFleetChannelUtilizationGuards(t *testing.T) {
+	_, ok := FleetChannelUtilizationPercent("NOT_A_PRESET", 10, 6, 40)
+	assert.False(t, ok, "an unknown preset yields no estimate")
+	got, ok := FleetChannelUtilizationPercent("LONG_FAST", 0, 6, 40)
+	assert.True(t, ok, "a known preset with no nodes is a valid zero, not an error")
+	assert.Equal(t, 0.0, got)
+	got, ok = FleetChannelUtilizationPercent("LONG_FAST", 10, 0, 40)
+	assert.True(t, ok)
+	assert.Equal(t, 0.0, got, "no offered traffic is zero utilization")
+}
+
 func TestLongPresetsUseCodingRate48(t *testing.T) {
 	// LONG_MODERATE and LONG_SLOW use 4/8 coding (per the Meshtastic firmware
 	// preset table), which lengthens their time-on-air versus 4/5. Pin LONG_SLOW

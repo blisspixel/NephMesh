@@ -18,6 +18,14 @@
 # recognizes as a real Meshtastic preset, so you express a preference order and a
 # tolerance band at once. An empty set, no target nodes, or a set with no known
 # preset is reported as infeasible (a verdict on status, not an error).
+#
+# expectedTraffic is optional. When set, the operator estimates whether the whole
+# fleet fits the channel's airtime budget, a check only the intent layer can make
+# (the per-node reconcile sees one radio, not the shared channel), and reports it
+# on the AirtimeWithinBudget condition. The estimate is a conservative floor: it
+# counts each originated message once and ignores Meshtastic's flood rebroadcast,
+# so real utilization is higher. An over-budget verdict is therefore certain;
+# within-budget is advisory, and the device's measured airtime stays ground truth.
 ---
 apiVersion: intent.nephmesh.io/v1alpha1
 kind: CommunicationIntent
@@ -30,6 +38,11 @@ spec:
   approvedModemPresets:
     - MEDIUM_SLOW
     - LONG_FAST
+  # Optional: describe the offered load so the operator can check fleet airtime.
+  # Two nodes at 4 messages/min each on MEDIUM_SLOW sits well under the ceiling.
+  expectedTraffic:
+    messagesPerMinutePerNode: 4
+    payloadBytes: 40
   channels:
     - index: 1
       name: relief

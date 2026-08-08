@@ -27,6 +27,10 @@ spec:
     - jsonPath: .status.conditions[?(@.type=="Feasible")].status
       name: Feasible
       type: string
+    - jsonPath: .status.predictedChannelUtilizationPercent
+      name: Airtime%
+      priority: 1
+      type: integer
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -140,6 +144,32 @@ spec:
                 x-kubernetes-list-map-keys:
                 - index
                 x-kubernetes-list-type: map
+              expectedTraffic:
+                description: |-
+                  expectedTraffic optionally describes the offered application load the fleet
+                  will generate, so the compiler can estimate whether the whole fleet fits the
+                  channel's airtime budget. This is a fleet-wide check the per-node reconcile
+                  cannot make: it sees one radio, never the shared channel. Omit it and airtime
+                  is reported as not evaluated rather than guessed.
+                properties:
+                  messagesPerMinutePerNode:
+                    description: |-
+                      messagesPerMinutePerNode is the application messages each node originates per
+                      minute. The estimate assumes every node offers this load.
+                    maximum: 600
+                    minimum: 1
+                    type: integer
+                  payloadBytes:
+                    description: |-
+                      payloadBytes is the representative application payload per message. It
+                      defaults to a representative size when unset, and is capped at the
+                      Meshtastic maximum payload.
+                    maximum: 237
+                    minimum: 1
+                    type: integer
+                required:
+                - messagesPerMinutePerNode
+                type: object
               nodes:
                 description: |-
                   nodes are the target devices this intent renders to. Keyed by name so two
@@ -350,6 +380,13 @@ spec:
               observedGeneration:
                 description: observedGeneration is the spec generation last compiled.
                 format: int64
+                type: integer
+              predictedChannelUtilizationPercent:
+                description: |-
+                  predictedChannelUtilizationPercent is the fleet's estimated share of the
+                  channel at the selected preset and declared traffic, a conservative floor
+                  (rebroadcast ignored). It is set only when expectedTraffic is declared; the
+                  AirtimeWithinBudget condition carries the verdict and caveats.
                 type: integer
               proposedNodes:
                 description: |-

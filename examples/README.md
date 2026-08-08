@@ -56,6 +56,15 @@ You apply those `MeshtasticNode` specs yourself: the report-only boundary (ADR
 0001) is enforced by RBAC, not merely intended. Autonomous actuation is gated
 behind the signed-autonomy and safety-kernel work (ADR 0002).
 
+If the intent declares `expectedTraffic`, the operator also reports whether the
+whole fleet fits the channel's airtime budget on the `AirtimeWithinBudget`
+condition and `.status.predictedChannelUtilizationPercent`. This is the
+fleet-wide airtime check only the intent layer can make; the per-node reconcile
+sees one radio, not the shared channel. The estimate is a conservative floor
+(each message counted once, mesh rebroadcast ignored), so an over-budget verdict
+is certain while within-budget is advisory, and the device's measured
+`AirtimeHealthy` condition stays the ground truth.
+
 ## Secrets, said once more
 
 Channel keys and the MQTT broker password are referenced from Secrets and never

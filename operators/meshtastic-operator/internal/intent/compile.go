@@ -24,6 +24,7 @@ package intent
 
 import (
 	"fmt"
+	"math"
 
 	intentv1alpha1 "github.com/blisspixel/nephmesh/api/intent/v1alpha1"
 	meshv1alpha1 "github.com/blisspixel/nephmesh/api/mesh/v1alpha1"
@@ -39,6 +40,23 @@ type Result struct {
 	Message        string
 	SelectedPreset string
 	Proposed       []intentv1alpha1.ProposedNode
+
+	// Airtime is the fleet-wide airtime estimate, populated only when the intent
+	// declares expectedTraffic. It is separate from Feasible: renderability and
+	// fitting the airtime commons are distinct questions.
+	Airtime AirtimeResult
+}
+
+// AirtimeResult is the fleet airtime verdict. Evaluated is false when the intent
+// declares no expectedTraffic. When evaluated, PredictedUtilizationPercent is a
+// conservative floor (rebroadcast ignored), so WithinBudget=false is
+// authoritative and WithinBudget=true is advisory.
+type AirtimeResult struct {
+	Evaluated                   bool
+	WithinBudget                bool
+	PredictedUtilizationPercent int
+	Reason                      string
+	Message                     string
 }
 
 // Compile lowers a CommunicationIntent to proposed MeshtasticNode specs, or
@@ -93,5 +111,54 @@ func Compile(spec intentv1alpha1.CommunicationIntentSpec) Result {
 		SelectedPreset: selected,
 		Message:        fmt.Sprintf("renders %d node(s) at preset %s in region %s", len(proposed), selected, spec.Region),
 		Proposed:       proposed,
+		Airtime:        evaluateAirtime(spec, selected, len(proposed)),
 	}
+}
+
+// evaluateAirtime estimates whether the rendered fleet fits the channel's airtime
+// budget. It runs only when the intent declares expectedTraffic; otherwise it
+// reports NotEvaluated rather than guessing at the offered load. The estimate is
+// the conservative floor from the airtime model (rebroadcast ignored), so an
+// over-budget verdict is authoritative and a within-budget one is advisory.
+func evaluateAirtime(spec intentv1alpha1.CommunicationIntentSpec, preset string, nodeCount int) AirtimeResult {
+	if spec.ExpectedTraffic == nil {
+		return AirtimeResult{
+			Reason:  intentv1alpha1.ReasonAirtimeNotEvaluated,
+			Message: "no expectedTraffic declared; fleet airtime not evaluated",
+		}
+	}
+
+	payload := spec.ExpectedTraffic.PayloadBytes
+	if payload <= 0 {
+		payload = airtime.RepresentativeFramePayloadBytes
+	}
+	percent, ok := airtime.FleetChannelUtilizationPercent(preset, nodeCount, spec.ExpectedTraffic.MessagesPerMinutePerNode, payload)
+	if !ok {
+		// The preset was already validated as known above, so this is unreachable
+		// in practice; report it rather than claim a spurious verdict.
+		return AirtimeResult{
+			Reason:  intentv1alpha1.ReasonAirtimeNotEvaluated,
+			Message: "fleet airtime could not be estimated for the selected preset",
+		}
+	}
+
+	rounded := int(math.Round(percent))
+	within := airtime.WithinChannelBudget(percent)
+	res := AirtimeResult{
+		Evaluated:                   true,
+		WithinBudget:                within,
+		PredictedUtilizationPercent: rounded,
+	}
+	if within {
+		res.Reason = intentv1alpha1.ReasonWithinBudget
+		res.Message = fmt.Sprintf(
+			"estimated channel utilization floor is %.1f%% (ceiling %.0f%%); this ignores mesh rebroadcast, so actual utilization is higher and the device's measured airtime remains the ground truth",
+			percent, airtime.RecommendedChannelUtilizationPercent)
+	} else {
+		res.Reason = intentv1alpha1.ReasonOverBudget
+		res.Message = fmt.Sprintf(
+			"estimated channel utilization floor is %.1f%%, over the %.0f%% ceiling by the conservative floor alone (rebroadcast ignored), so the fleet is over budget for certain; reduce nodes or message rate, or choose a faster preset",
+			percent, airtime.RecommendedChannelUtilizationPercent)
+	}
+	return res
 }
