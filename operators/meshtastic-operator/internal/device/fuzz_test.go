@@ -57,6 +57,7 @@ func FuzzLooksUnreachable(f *testing.F) {
 	f.Add("Set lora.region to US")
 	f.Add("")
 	f.Fuzz(func(t *testing.T, out string) {
-		_ = looksUnreachable(out)
+		_ = looksUnreachable(out, false)
+		_ = looksUnreachable(out, true)
 	})
 }

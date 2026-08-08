@@ -45,6 +45,55 @@ func IsConverged(desired, live map[string]any) bool {
 	return len(Drift(desired, live)) == 0
 }
 
+// writeOnlyPaths are desired keys the device accepts on a write but never echoes
+// back in its export (secrets it will not disclose, notably the MQTT password).
+// They must still be applied, but including them in the comparison reports
+// permanent drift, since the live export never contains them, which would make a
+// node with an MQTT password reboot-loop forever and never converge.
+var writeOnlyPaths = [][]string{
+	{"module_config", "mqtt", "password"},
+}
+
+// ForComparison returns a copy of desired with the write-only keys removed, so
+// the drift check does not treat an unverifiable field as permanent drift. The
+// full desired, write-only keys included, is still what gets applied to the
+// device; this affects only the comparison. Because the write-only field is
+// dropped from the compare, it is applied whenever any other field drifts (which
+// covers initial provisioning); changing only a write-only field on an otherwise
+// converged node is a separate, hash-based concern (see the channel path).
+func ForComparison(desired map[string]any) map[string]any {
+	out := copyNestedMaps(desired)
+	for _, path := range writeOnlyPaths {
+		removePath(out, path)
+	}
+	return out
+}
+
+func copyNestedMaps(m map[string]any) map[string]any {
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		if sub, ok := v.(map[string]any); ok {
+			out[k] = copyNestedMaps(sub)
+		} else {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+func removePath(m map[string]any, path []string) {
+	switch len(path) {
+	case 0:
+		return
+	case 1:
+		delete(m, path[0])
+	default:
+		if sub, ok := m[path[0]].(map[string]any); ok {
+			removePath(sub, path[1:])
+		}
+	}
+}
+
 // Drift returns the dotted paths of desired keys that are missing from live or
 // whose values differ. An empty result means converged. Paths are sorted so
 // callers and tests get deterministic output.

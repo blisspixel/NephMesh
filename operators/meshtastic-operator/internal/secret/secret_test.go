@@ -34,17 +34,33 @@ func TestRevealReturnsTheSecret(t *testing.T) {
 func TestEveryRenderPathRedacts(t *testing.T) {
 	v := New(sentinel)
 
-	// Every fmt verb a careless log line might use.
+	// Every fmt verb a careless log line might use, including the non-string verbs
+	// (%d, %x, %q, %X) that would otherwise reflect over the struct and print the
+	// unexported field verbatim if the type did not implement fmt.Formatter.
+	numericV := New("12345") // a numeric-looking secret, so %d/%x cannot coincidentally hide it
 	for _, s := range []string{
 		fmt.Sprintf("%v", v),
 		fmt.Sprintf("%+v", v),
 		fmt.Sprintf("%#v", v),
 		fmt.Sprintf("pw=%s.", v), // %s verb, wrapped so it is not a bare Sprintf
+		fmt.Sprintf("%q", v),
+		fmt.Sprintf("%x", v),
+		fmt.Sprintf("%X", v),
 		fmt.Sprint(v),
 		v.String(),
 		v.GoString(),
 	} {
 		assert.NotContains(t, s, sentinel, "a format verb leaked the secret: %q", s)
+	}
+	// The numeric verbs on a numeric-looking secret: these are the paths that
+	// bypass String() without a Formatter.
+	for _, s := range []string{
+		fmt.Sprintf("%d", numericV),
+		fmt.Sprintf("%x", numericV),
+		fmt.Sprintf("%o", numericV),
+		fmt.Sprintf("%b", numericV),
+	} {
+		assert.NotContains(t, s, "12345", "a numeric verb leaked the secret: %q", s)
 	}
 
 	// JSON, including structured loggers that serialize fields as JSON.

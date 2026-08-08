@@ -300,6 +300,9 @@ func applyOutcome(node *meshv1alpha1.MeshtasticNode, o reconcile.Outcome) {
 // than silently degrading. It is set only when the device reported the metrics.
 func applyAirtimeHealth(node *meshv1alpha1.MeshtasticNode, info device.Info, gen int64) {
 	if info.ChannelUtilization == nil && info.AirUtilTx == nil {
+		// No telemetry this step: drop any prior condition rather than leaving a
+		// stale health verdict the device is no longer reporting.
+		meta.RemoveStatusCondition(&node.Status.Conditions, meshv1alpha1.ConditionAirtimeHealthy)
 		return
 	}
 	ch, tx := valueOr(info.ChannelUtilization), valueOr(info.AirUtilTx)

@@ -79,11 +79,17 @@ func Record(s Sample) {
 	ready.With(l).Set(boolToFloat(s.Ready))
 	configInSync.With(l).Set(boolToFloat(s.ConfigInSync))
 	applyAttempts.With(l).Set(float64(s.ApplyAttempts))
+	// When a value is unknown (the device did not report it), delete the series
+	// rather than leaving a previously-set gauge lingering as stale live data.
 	if s.ChannelUtilization != nil {
 		channelUtilization.With(l).Set(*s.ChannelUtilization)
+	} else {
+		channelUtilization.Delete(l)
 	}
 	if s.AirUtilTx != nil {
 		airUtilTx.With(l).Set(*s.AirUtilTx)
+	} else {
+		airUtilTx.Delete(l)
 	}
 }
 
