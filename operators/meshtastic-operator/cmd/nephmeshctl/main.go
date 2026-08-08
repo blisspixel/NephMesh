@@ -1,0 +1,127 @@
+/*
+Copyright 2026 The NephMesh Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+// Command nephmeshctl is the agent- and human-facing CLI for NephMesh. Its first
+// subcommand, plan, dry-runs a CommunicationIntent through the report-only
+// compiler and prints the verdict (feasibility, selected preset, fleet airtime,
+// and the proposed MeshtasticNode specs) as JSON or text. It needs no cluster and
+// no hardware: the compiler is pure, so an agent (Claude Code, Codex, a local
+// LLM) or a person can iterate on a mesh design and get grounded, deterministic
+// feedback before anything is applied. The JSON output is the same contract the
+// nephmesh-mcp server exposes as an MCP tool; both wrap internal/plan.
+package main
+
+import (
+	"encoding/json"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+
+	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/plan"
+)
+
+// exit codes: 0 success, 2 usage or input error. A compiled verdict of
+// infeasible or over-budget is still a successful evaluation (exit 0); the
+// verdict is in the output, so scripts branch on the payload, not the exit code.
+const (
+	exitOK    = 0
+	exitUsage = 2
+)
+
+func main() {
+	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+}
+
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		usage(stderr)
+		return exitUsage
+	}
+	switch args[0] {
+	case "plan":
+		return runPlan(args[1:], stdin, stdout, stderr)
+	case "-h", "--help", "help":
+		usage(stdout)
+		return exitOK
+	default:
+		fmt.Fprintf(stderr, "unknown command %q\n", args[0])
+		usage(stderr)
+		return exitUsage
+	}
+}
+
+func runPlan(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("plan", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	file := fs.String("f", "-", "CommunicationIntent file to read (YAML or JSON); - is stdin")
+	format := fs.String("o", "json", "output format: json or text")
+	fs.Usage = func() {
+		fmt.Fprintln(stderr, "usage: nephmeshctl plan [-f file] [-o json|text]")
+		fmt.Fprintln(stderr, "  Dry-run a CommunicationIntent through the report-only compiler.")
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		return exitUsage
+	}
+	if *format != "json" && *format != "text" {
+		fmt.Fprintf(stderr, "invalid -o %q: want json or text\n", *format)
+		return exitUsage
+	}
+
+	data, err := readInput(*file, stdin)
+	if err != nil {
+		fmt.Fprintf(stderr, "read intent: %v\n", err)
+		return exitUsage
+	}
+
+	out, err := plan.Run(data)
+	if err != nil {
+		fmt.Fprintf(stderr, "plan: %v\n", err)
+		return exitUsage
+	}
+
+	if *format == "text" {
+		fmt.Fprint(stdout, out.Text())
+		return exitOK
+	}
+	enc := json.NewEncoder(stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(out); err != nil {
+		fmt.Fprintf(stderr, "encode: %v\n", err)
+		return exitUsage
+	}
+	return exitOK
+}
+
+// readInput reads the intent from a file, or from stdin when the path is "-".
+func readInput(path string, stdin io.Reader) ([]byte, error) {
+	if path == "-" {
+		return io.ReadAll(stdin)
+	}
+	return os.ReadFile(path)
+}
+
+func usage(w io.Writer) {
+	fmt.Fprintln(w, "nephmeshctl: the NephMesh command-line interface")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "usage:")
+	fmt.Fprintln(w, "  nephmeshctl plan [-f file] [-o json|text]   dry-run a CommunicationIntent")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "plan reads a CommunicationIntent (the same document you would apply to a")
+	fmt.Fprintln(w, "cluster) and reports feasibility, the selected preset, fleet airtime, and the")
+	fmt.Fprintln(w, "proposed MeshtasticNode specs. It needs no cluster and no hardware.")
+}
