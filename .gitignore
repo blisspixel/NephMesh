@@ -23,3 +23,6 @@ logs/
 .mcp.json
 hack/deepr-*.ps1
 hack/deepr-*.sh
+
+# Windows crash dumps
+*.stackdump
