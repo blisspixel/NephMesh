@@ -109,6 +109,29 @@ def main() -> int:
         except Exception:  # noqa: BLE001 - owner is best-effort
             pass
 
+        # Local node identity and airtime telemetry, taken from the library's own
+        # view of THIS node (getMyNodeInfo). Sourcing it here, rather than scanning
+        # the whole --info node database for the first "!id" and the first metric,
+        # avoids picking a neighbor's identity or channel load on a real multi-node
+        # mesh. Wrapped so a device that does not return it does not break the
+        # export.
+        try:
+            mine = iface.getMyNodeInfo()
+            if mine:
+                num = mine.get("num")
+                if num is not None:
+                    doc["nodeId"] = "!%08x" % (int(num) & 0xFFFFFFFF)
+                dm = mine.get("deviceMetrics") or {}
+                telemetry = {}
+                if dm.get("airUtilTx") is not None:
+                    telemetry["airUtilTx"] = dm["airUtilTx"]
+                if dm.get("channelUtilization") is not None:
+                    telemetry["channelUtilization"] = dm["channelUtilization"]
+                if telemetry:
+                    doc["deviceMetrics"] = telemetry
+        except Exception:  # noqa: BLE001 - identity/telemetry is best-effort
+            pass
+
         # Channels, keyed by slot index. The pre-shared key is emitted only as a
         # SHA-256 hash so the raw key never leaves the device: the operator
         # compares this against the hash of the declared key (resolved from a

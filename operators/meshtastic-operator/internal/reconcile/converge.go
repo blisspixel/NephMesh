@@ -126,19 +126,29 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 	// prediction matters). If the single-client device dropped between the export
 	// and this call (it is mid-reboot), treat the step as unreachable rather than
 	// reporting a converged, Ready state with no identity.
-	info, err := dev.Info(ctx)
-	if errors.Is(err, device.ErrUnreachable) {
-		reason := meshv1alpha1.ReasonConnectFailed
-		if prior.RebootPending {
-			reason = meshv1alpha1.ReasonConfigApplied
+	// Prefer the local node's identity and airtime telemetry from the export
+	// itself: the exporter reads them from the library's own local-node view,
+	// which is reliable on a multi-node mesh, unlike scanning --info for the first
+	// "!id" and the first metric (which may belong to a neighbor). Fall back to
+	// --info only when the export did not carry them (the CLI --export-config path
+	// with no exporter configured).
+	info := infoFromExport(live)
+	if info.NodeID == "" {
+		var infoErr error
+		info, infoErr = dev.Info(ctx)
+		if errors.Is(infoErr, device.ErrUnreachable) {
+			reason := meshv1alpha1.ReasonConnectFailed
+			if prior.RebootPending {
+				reason = meshv1alpha1.ReasonConfigApplied
+			}
+			return Outcome{Reachable: false, RebootPending: prior.RebootPending, ApplyAttempts: prior.ApplyAttempts, Reason: reason, Requeue: ReconnectBackoff}, nil
 		}
-		return Outcome{Reachable: false, RebootPending: prior.RebootPending, ApplyAttempts: prior.ApplyAttempts, Reason: reason, Requeue: ReconnectBackoff}, nil
-	}
-	if err != nil {
-		// An unexpected --info failure (not a mid-reboot drop): surface it for a
-		// rate-limited retry rather than proceeding with empty identity/telemetry
-		// and possibly reporting a converged, Ready state built on nothing.
-		return Outcome{ApplyAttempts: prior.ApplyAttempts}, err
+		if infoErr != nil {
+			// An unexpected --info failure (not a mid-reboot drop): surface it for
+			// a rate-limited retry rather than proceeding with empty identity and
+			// possibly reporting a converged, Ready state built on nothing.
+			return Outcome{ApplyAttempts: prior.ApplyAttempts}, infoErr
+		}
 	}
 	liveChannels := config.LiveChannels(live)
 	currentPreset := liveModemPreset(live)
@@ -207,6 +217,39 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 		CurrentModemPreset: currentPreset,
 		Drift:              allDrift,
 	}, nil
+}
+
+// infoFromExport reads the local node id and airtime telemetry the exporter
+// emits, so the reliable local-node values are used without a separate --info
+// call. NodeID is empty when the export did not carry it (the CLI export path).
+func infoFromExport(live map[string]any) device.Info {
+	var info device.Info
+	if id, ok := live["nodeId"].(string); ok {
+		info.NodeID = id
+	}
+	if dm, ok := live["deviceMetrics"].(map[string]any); ok {
+		info.AirUtilTx = floatFromAny(dm["airUtilTx"])
+		info.ChannelUtilization = floatFromAny(dm["channelUtilization"])
+	}
+	return info
+}
+
+func floatFromAny(v any) *float64 {
+	switch n := v.(type) {
+	case float64:
+		return &n
+	case float32:
+		f := float64(n)
+		return &f
+	case int:
+		f := float64(n)
+		return &f
+	case int64:
+		f := float64(n)
+		return &f
+	default:
+		return nil
+	}
 }
 
 // liveModemPreset reads the modem preset from a device export, or "" when absent.

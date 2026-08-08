@@ -1,0 +1,52 @@
+# A MeshtasticNode with a private, encrypted channel. The channel's pre-shared
+# key lives in a Kubernetes Secret and is referenced, never inlined in the CR and
+# never committed to Git. The operator reads the key with a namespaced, get-only
+# permission, writes it to the device through a file (never the command line), and
+# compares by hash so the key never appears in the diff, the logs, or the status.
+#
+# IMPORTANT: the Secret below carries an EXAMPLE key. Generate your own before
+# using this for anything real; never reuse an example or the public default key.
+# A Meshtastic channel key is 16 or 32 raw bytes. To make one and load it:
+#
+#     head -c 16 /dev/urandom | base64            # a fresh 16-byte key
+#     kubectl create secret generic relief-channel-key \
+#       --from-literal=psk="$(head -c 16 /dev/urandom)"
+#
+# Then apply the node (edit out the example Secret below if you created your own):
+#
+#     kubectl apply -f examples/secure-channel-node.yaml
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: relief-channel-key
+type: Opaque
+# stringData holds the raw 16-byte key (Kubernetes stores Secret data as raw
+# bytes). This is an EXAMPLE value; replace it. Do not commit a real key.
+stringData:
+  psk: "0123456789abcdef"
+---
+apiVersion: mesh.nephmesh.io/v1alpha1
+kind: MeshtasticNode
+metadata:
+  name: relief-01
+spec:
+  region: US
+  modemPreset: MEDIUM_SLOW
+  role: CLIENT
+  owner:
+    longName: Relief Net 01
+    shortName: RN01
+  channels:
+    # Index 0 is the primary channel; a private group channel is a secondary.
+    - index: 1
+      name: relief
+      pskSecretRef:
+        name: relief-channel-key
+        key: psk
+      # Forward this channel's traffic to the MQTT bridge (optional).
+      uplinkEnabled: false
+  connection:
+    tcp:
+      host: 10.0.0.51
+      port: 4403

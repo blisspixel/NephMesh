@@ -82,6 +82,16 @@ func TestIntegrationConvergeAgainstSimDevice(t *testing.T) {
 			"lora":   map[string]any{"region": "US", "modemPreset": "MEDIUM_SLOW"},
 			"device": map[string]any{"role": "ROUTER"},
 		},
+		// MQTT with a password. The password is a write-only field the device never
+		// echoes back, so this converging against real firmware is the regression
+		// guard for the drift-comparison exclusion (config.ForComparison): the fake
+		// hid this bug by merging and echoing the password, but a node with an MQTT
+		// password used to reboot-loop forever against a real device.
+		"module_config": map[string]any{"mqtt": map[string]any{
+			"enabled": true, "address": "127.0.0.1",
+			"json_enabled": true, "encryption_enabled": false, "tls_enabled": false,
+			"password": "sim-broker-secret",
+		}},
 	}
 	// Reconcile a secondary channel with a Secret-backed key, so the channel
 	// export path (via the helper) and the file-fed apply are exercised against
