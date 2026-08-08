@@ -114,7 +114,11 @@ type TCPConnection struct {
 
 // SerialConnection reaches the device over a serial port.
 type SerialConnection struct {
-	// device is the serial device path, for example /dev/ttyUSB0.
+	// device is the serial device path, for example /dev/ttyUSB0 or COM3. The
+	// pattern forbids a leading dash so the value cannot be misread as a CLI flag
+	// when it reaches the device client's argv (the same guard host carries).
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9/][a-zA-Z0-9/._-]*$`
+	// +kubebuilder:validation:MaxLength=255
 	Device string `json:"device"`
 }
 
@@ -122,7 +126,10 @@ type SerialConnection struct {
 type ViaGatewayConnection struct {
 	// gatewayRef names another MeshtasticNode that carries the admin channel.
 	GatewayRef corev1.LocalObjectReference `json:"gatewayRef"`
-	// dest is the target radio node id, for example "!6e000001".
+	// dest is the target radio node id, for example "!6e000001": a "!" followed by
+	// 8 hex digits. The pattern both validates the id and forbids a leading dash,
+	// so the value cannot be misread as a CLI flag when it reaches argv.
+	// +kubebuilder:validation:Pattern=`^![0-9a-fA-F]{8}$`
 	Dest string `json:"dest"`
 }
 
@@ -144,7 +151,11 @@ type ChannelSpec struct {
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=7
 	Index int32 `json:"index"`
-	// name is the channel name.
+	// name is the channel name. The device stores a short name (about 12 bytes)
+	// and silently truncates a longer one, which would then never round-trip and
+	// leave the node stuck re-applying, so it is bounded here to fail fast at
+	// admission instead.
+	// +kubebuilder:validation:MaxLength=12
 	// +optional
 	Name string `json:"name,omitempty"`
 	// pskSecretRef references the channel pre-shared key. It is never inlined.
