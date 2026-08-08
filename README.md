@@ -50,6 +50,7 @@ Pre-alpha, and further along than that sounds. **0.2.0** shipped the flagship: t
 | [Plans](docs/plans/) | Implementation and design plans: the phases and the operator, plus the intent-layer frontier (CommunicationIntent and the compiler, signed autonomy and the safety kernel, rejoin as a treaty, key rotation, message authentication, contingency semantics) |
 | [Research](docs/research/) | Sourced research: Nephio mechanics and codebase conventions, Meshtastic, SDR, prior art, terminology and legality, and a [resilient-comms landscape synthesis](docs/research/resilient-comms-landscape.md) (DTN, adversarial mesh, LoRa prior art, Reticulum/MeshCore) |
 | [Guides](docs/guides/) | How-to guides, for example registering the packages with Nephio Porch |
+| [Examples](examples/) | Starting-point `MeshtasticNode` resources: a basic node and a secure-private-channel node with its Secret |
 | [Code quality standards](docs/CODE-QUALITY-STANDARDS.md) | The engineering bar (race, fuzzing, govulncheck, envtest, assume-breach tests), what is enforced, and honest gaps |
 | [Agent playbook](docs/agent-playbook.md) | Tool-agnostic commands and entry points for any coding agent or human |
 | [AGENTS.md](AGENTS.md) | Conventions for AI coding agents; the repo is agent-native from day one |

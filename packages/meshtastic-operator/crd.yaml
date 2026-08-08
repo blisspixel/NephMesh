@@ -23,9 +23,15 @@ spec:
     - jsonPath: .spec.region
       name: Region
       type: string
+    - jsonPath: .spec.modemPreset
+      name: Preset
+      type: string
     - jsonPath: .status.nodeID
       name: NodeID
       type: string
+    - jsonPath: .status.lastHeard
+      name: LastHeard
+      type: date
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date

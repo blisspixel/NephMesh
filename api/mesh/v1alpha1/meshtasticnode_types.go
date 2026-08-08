@@ -232,7 +232,9 @@ type MeshtasticNodeStatus struct {
 // +kubebuilder:resource:categories=nephmesh
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Region",type=string,JSONPath=`.spec.region`
+// +kubebuilder:printcolumn:name="Preset",type=string,JSONPath=`.spec.modemPreset`
 // +kubebuilder:printcolumn:name="NodeID",type=string,JSONPath=`.status.nodeID`
+// +kubebuilder:printcolumn:name="LastHeard",type=date,JSONPath=`.status.lastHeard`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // MeshtasticNode is the declared desired state of one Meshtastic node.

@@ -83,6 +83,50 @@ func TestConvergesChannelsThroughApplyAndReboot(t *testing.T) {
 	assert.Equal(t, 1, dev.ChannelApplies, "channels are written exactly once, not on every pass")
 }
 
+func TestInfoFromExport(t *testing.T) {
+	info := infoFromExport(map[string]any{
+		"nodeId":        "!abcd1234",
+		"deviceMetrics": map[string]any{"airUtilTx": 2.5, "channelUtilization": 11.0},
+	})
+	assert.Equal(t, "!abcd1234", info.NodeID)
+	require.NotNil(t, info.AirUtilTx)
+	assert.Equal(t, 2.5, *info.AirUtilTx)
+	require.NotNil(t, info.ChannelUtilization)
+	assert.Equal(t, 11.0, *info.ChannelUtilization)
+
+	// Absent identity yields an empty NodeID (so Converge falls back to --info),
+	// and absent telemetry stays nil rather than a misleading 0.
+	empty := infoFromExport(map[string]any{})
+	assert.Empty(t, empty.NodeID)
+	assert.Nil(t, empty.AirUtilTx)
+	assert.Nil(t, empty.ChannelUtilization)
+}
+
+func TestConvergePrefersExportIdentityOverInfo(t *testing.T) {
+	// When the export carries the local node id, Converge uses it and does not
+	// fall back to --info, which on a real mesh could return a neighbor's values.
+	live := desiredUS()
+	live["nodeId"] = "!feed0001"
+	dev := &countingInfoFake{Fake: device.NewFake(live, 0)}
+
+	out, err := Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, State{})
+	require.NoError(t, err)
+	assert.Equal(t, "!feed0001", out.Info.NodeID, "identity comes from the export")
+	assert.Zero(t, dev.infoCalls, "no --info fallback when the export carries identity")
+}
+
+// countingInfoFake counts Info calls to prove Converge avoids the --info fallback
+// when the export already carries the node id.
+type countingInfoFake struct {
+	*device.Fake
+	infoCalls int
+}
+
+func (f *countingInfoFake) Info(ctx context.Context) (device.Info, error) {
+	f.infoCalls++
+	return f.Fake.Info(ctx)
+}
+
 func TestConvergeSurfacesTelemetryWhileDrifted(t *testing.T) {
 	// The airtime prediction needs the radio's measured utilization at the moment
 	// a preset change is still pending, which is when the config is NOT converged.

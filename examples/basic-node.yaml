@@ -1,0 +1,29 @@
+# A minimal MeshtasticNode: declare the region, radio preset, role, and owner of
+# one node reached over its TCP API, and the operator keeps the device matching
+# this. No secrets, nothing private. Apply with:
+#
+#     kubectl apply -f examples/basic-node.yaml
+#
+# Then watch it converge:
+#
+#     kubectl get meshtasticnode field-01 -w
+---
+apiVersion: mesh.nephmesh.io/v1alpha1
+kind: MeshtasticNode
+metadata:
+  name: field-01
+spec:
+  # The regulatory region. This is a hard, per-region constraint (band, duty
+  # cycle, power); see docs/reference/regulatory-matrix.md.
+  region: US
+  # A non-default preset, because a device left at its default (LONG_FAST) does
+  # not echo the preset back and would read as permanent drift.
+  modemPreset: MEDIUM_SLOW
+  role: CLIENT
+  owner:
+    longName: NephMesh Field 01
+    shortName: NF01
+  connection:
+    tcp:
+      host: 10.0.0.51
+      port: 4403
