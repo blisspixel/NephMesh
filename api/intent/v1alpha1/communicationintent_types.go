@@ -58,6 +58,14 @@ type CommunicationIntentSpec struct {
 	// +kubebuilder:validation:MaxItems=8
 	Channels []meshv1alpha1.ChannelSpec `json:"channels,omitempty"`
 
+	// expectedTraffic optionally describes the offered application load the fleet
+	// will generate, so the compiler can estimate whether the whole fleet fits the
+	// channel's airtime budget. This is a fleet-wide check the per-node reconcile
+	// cannot make: it sees one radio, never the shared channel. Omit it and airtime
+	// is reported as not evaluated rather than guessed.
+	// +optional
+	ExpectedTraffic *ExpectedTraffic `json:"expectedTraffic,omitempty"`
+
 	// nodes are the target devices this intent renders to. Keyed by name so two
 	// targets cannot share a name (they would render two colliding MeshtasticNode
 	// specs); the collision is rejected at admission rather than surfaced later.
@@ -69,6 +77,28 @@ type CommunicationIntentSpec struct {
 	// +listType=map
 	// +listMapKey=name
 	Nodes []NodeTarget `json:"nodes"`
+}
+
+// ExpectedTraffic is the offered application load used to estimate fleet airtime.
+// The estimate is a conservative floor: it counts each originated message once
+// and ignores Meshtastic's flood rebroadcast, so real channel utilization is
+// higher. An over-budget verdict is therefore authoritative; within-budget is
+// necessary but not sufficient, and the device's measured airtime stays the
+// ground truth.
+type ExpectedTraffic struct {
+	// messagesPerMinutePerNode is the application messages each node originates per
+	// minute. The estimate assumes every node offers this load.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=600
+	MessagesPerMinutePerNode int `json:"messagesPerMinutePerNode"`
+
+	// payloadBytes is the representative application payload per message. It
+	// defaults to a representative size when unset, and is capped at the
+	// Meshtastic maximum payload.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=237
+	PayloadBytes int `json:"payloadBytes,omitempty"`
 }
 
 // NodeTarget names one device the intent applies to and how to reach it.
@@ -103,6 +133,12 @@ type CommunicationIntentStatus struct {
 	// nodeCount is how many nodes the intent renders to.
 	// +optional
 	NodeCount int `json:"nodeCount,omitempty"`
+	// predictedChannelUtilizationPercent is the fleet's estimated share of the
+	// channel at the selected preset and declared traffic, a conservative floor
+	// (rebroadcast ignored). It is set only when expectedTraffic is declared; the
+	// AirtimeWithinBudget condition carries the verdict and caveats.
+	// +optional
+	PredictedChannelUtilizationPercent int `json:"predictedChannelUtilizationPercent,omitempty"`
 	// proposedNodes is the rendered MeshtasticNode specs the intent compiles to.
 	// Report-only: these are what the operator would create, not created. Bounded
 	// to match spec.nodes (each rendered spec carries a Connection with a CEL
@@ -133,12 +169,26 @@ const (
 	ReasonNoTargetNodes = "NoTargetNodes"
 )
 
+// Airtime-budget condition and reasons. This is the fleet-wide airtime check the
+// intent layer can make and the per-node reconcile cannot. Over-budget (False)
+// is authoritative because the estimate is a floor; within-budget (True) is
+// advisory, and NotEvaluated when no traffic is declared.
+const (
+	// ConditionAirtimeWithinBudget reports the fleet airtime verdict.
+	ConditionAirtimeWithinBudget = "AirtimeWithinBudget"
+
+	ReasonWithinBudget        = "WithinBudget"
+	ReasonOverBudget          = "OverBudget"
+	ReasonAirtimeNotEvaluated = "NoExpectedTraffic"
+)
+
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Region",type=string,JSONPath=`.spec.region`
 // +kubebuilder:printcolumn:name="Preset",type=string,JSONPath=`.status.selectedModemPreset`
 // +kubebuilder:printcolumn:name="Nodes",type=integer,JSONPath=`.status.nodeCount`
 // +kubebuilder:printcolumn:name="Feasible",type=string,JSONPath=`.status.conditions[?(@.type=="Feasible")].status`
+// +kubebuilder:printcolumn:name="Airtime%",type=integer,JSONPath=`.status.predictedChannelUtilizationPercent`,priority=1
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // CommunicationIntent is outcome-level mesh communications intent that compiles to

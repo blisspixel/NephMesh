@@ -65,9 +65,35 @@ func (r *CommunicationIntentReconciler) Reconcile(ctx context.Context, req ctrl.
 		Message:            result.Message,
 		ObservedGeneration: ci.Generation,
 	})
+
+	// The fleet airtime verdict is a distinct condition: renderability and fitting
+	// the airtime commons are separate questions. It is Unknown when the intent
+	// declares no expectedTraffic (nothing to estimate from), rather than a
+	// misleading True.
+	airtimeStatus := metav1.ConditionUnknown
+	airtimeReason := result.Airtime.Reason
+	if airtimeReason == "" {
+		airtimeReason = intentv1alpha1.ReasonAirtimeNotEvaluated
+	}
+	if result.Airtime.Evaluated {
+		if result.Airtime.WithinBudget {
+			airtimeStatus = metav1.ConditionTrue
+		} else {
+			airtimeStatus = metav1.ConditionFalse
+		}
+	}
+	meta.SetStatusCondition(&ci.Status.Conditions, metav1.Condition{
+		Type:               intentv1alpha1.ConditionAirtimeWithinBudget,
+		Status:             airtimeStatus,
+		Reason:             airtimeReason,
+		Message:            result.Airtime.Message,
+		ObservedGeneration: ci.Generation,
+	})
+
 	ci.Status.ObservedGeneration = ci.Generation
 	ci.Status.SelectedModemPreset = result.SelectedPreset
 	ci.Status.NodeCount = len(result.Proposed)
+	ci.Status.PredictedChannelUtilizationPercent = result.Airtime.PredictedUtilizationPercent
 	ci.Status.ProposedNodes = result.Proposed
 
 	if err := r.Status().Update(ctx, &ci); err != nil {

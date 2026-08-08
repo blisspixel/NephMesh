@@ -165,3 +165,28 @@ func PredictedChannelUtilizationPercent(currentPreset, desiredPreset string, mea
 func WithinChannelBudget(utilizationPercent float64) bool {
 	return utilizationPercent <= RecommendedChannelUtilizationPercent
 }
+
+// FleetChannelUtilizationPercent estimates the share of a shared channel that a
+// fleet occupies: nodeCount nodes each originating messagesPerMinutePerNode
+// frames of payloadBytes at the given preset. This is the fleet-wide view only
+// the intent layer has; the per-node reconcile sees one radio, never the whole
+// channel.
+//
+// It is deliberately a conservative FLOOR. It counts each originated frame once
+// and ignores mesh rebroadcast amplification: Meshtastic floods, so a frame is
+// retransmitted by relaying nodes up to the hop limit, and real channel
+// utilization is therefore HIGHER than this number, often several times higher
+// in a dense mesh. The honest consequence is asymmetric and useful: a fleet that
+// exceeds the budget by this floor exceeds it for certain, so an over-budget
+// verdict is authoritative; a within-budget result is necessary but not
+// sufficient, which is why the measured AirtimeHealthy condition stays the
+// ground truth. ok is false for an unknown preset.
+func FleetChannelUtilizationPercent(preset string, nodeCount, messagesPerMinutePerNode, payloadBytes int) (percent float64, ok bool) {
+	toa, ok := PresetTimeOnAir(preset, payloadBytes)
+	if !ok || nodeCount <= 0 || messagesPerMinutePerNode <= 0 {
+		return 0, ok
+	}
+	framesPerMinute := float64(nodeCount) * float64(messagesPerMinutePerNode)
+	airtimePerMinute := framesPerMinute * float64(toa)
+	return airtimePerMinute / float64(time.Minute) * 100, true
+}

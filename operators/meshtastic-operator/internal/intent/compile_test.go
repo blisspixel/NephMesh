@@ -93,3 +93,71 @@ func TestCompileInfeasibleNoNodes(t *testing.T) {
 	assert.False(t, r.Feasible)
 	assert.Equal(t, intentv1alpha1.ReasonNoTargetNodes, r.Reason)
 }
+
+func TestCompileAirtimeNotEvaluatedWithoutTraffic(t *testing.T) {
+	r := Compile(intentv1alpha1.CommunicationIntentSpec{
+		Region:               "US",
+		ApprovedModemPresets: []string{"MEDIUM_SLOW"},
+		Nodes:                []intentv1alpha1.NodeTarget{{Name: "n1", Connection: tcp("10.0.0.1")}},
+	})
+	require.True(t, r.Feasible, "airtime is orthogonal to renderability")
+	assert.False(t, r.Airtime.Evaluated, "no expectedTraffic means no estimate")
+	assert.Equal(t, intentv1alpha1.ReasonAirtimeNotEvaluated, r.Airtime.Reason)
+	assert.Zero(t, r.Airtime.PredictedUtilizationPercent)
+}
+
+func TestCompileAirtimeWithinBudget(t *testing.T) {
+	// A small fleet at a modest rate on a fast preset sits well under the ceiling.
+	r := Compile(intentv1alpha1.CommunicationIntentSpec{
+		Region:               "US",
+		ApprovedModemPresets: []string{"SHORT_FAST"},
+		ExpectedTraffic:      &intentv1alpha1.ExpectedTraffic{MessagesPerMinutePerNode: 2, PayloadBytes: 40},
+		Nodes: []intentv1alpha1.NodeTarget{
+			{Name: "n1", Connection: tcp("10.0.0.1")},
+			{Name: "n2", Connection: tcp("10.0.0.2")},
+		},
+	})
+	require.True(t, r.Feasible)
+	require.True(t, r.Airtime.Evaluated)
+	assert.True(t, r.Airtime.WithinBudget)
+	assert.Equal(t, intentv1alpha1.ReasonWithinBudget, r.Airtime.Reason)
+	assert.Contains(t, r.Airtime.Message, "rebroadcast", "the within-budget message must carry the floor caveat")
+}
+
+func TestCompileAirtimeOverBudget(t *testing.T) {
+	// A dense fleet at a high rate on the slowest long-range preset is over the
+	// ceiling by the floor alone, so the verdict is authoritative.
+	r := Compile(intentv1alpha1.CommunicationIntentSpec{
+		Region:               "US",
+		ApprovedModemPresets: []string{"LONG_SLOW"},
+		ExpectedTraffic:      &intentv1alpha1.ExpectedTraffic{MessagesPerMinutePerNode: 10, PayloadBytes: 40},
+		Nodes: []intentv1alpha1.NodeTarget{
+			{Name: "n1", Connection: tcp("10.0.0.1")},
+			{Name: "n2", Connection: tcp("10.0.0.2")},
+			{Name: "n3", Connection: tcp("10.0.0.3")},
+		},
+	})
+	require.True(t, r.Feasible, "over budget is a separate verdict; the intent still renders")
+	require.True(t, r.Airtime.Evaluated)
+	assert.False(t, r.Airtime.WithinBudget)
+	assert.Equal(t, intentv1alpha1.ReasonOverBudget, r.Airtime.Reason)
+	assert.Positive(t, r.Airtime.PredictedUtilizationPercent)
+}
+
+func TestCompileAirtimeDefaultsPayload(t *testing.T) {
+	// An unset payload falls back to the representative size rather than zero.
+	withDefault := Compile(intentv1alpha1.CommunicationIntentSpec{
+		Region:               "US",
+		ApprovedModemPresets: []string{"MEDIUM_SLOW"},
+		ExpectedTraffic:      &intentv1alpha1.ExpectedTraffic{MessagesPerMinutePerNode: 5},
+		Nodes:                []intentv1alpha1.NodeTarget{{Name: "n1", Connection: tcp("10.0.0.1")}},
+	})
+	explicit := Compile(intentv1alpha1.CommunicationIntentSpec{
+		Region:               "US",
+		ApprovedModemPresets: []string{"MEDIUM_SLOW"},
+		ExpectedTraffic:      &intentv1alpha1.ExpectedTraffic{MessagesPerMinutePerNode: 5, PayloadBytes: 40},
+		Nodes:                []intentv1alpha1.NodeTarget{{Name: "n1", Connection: tcp("10.0.0.1")}},
+	})
+	assert.Equal(t, explicit.Airtime.PredictedUtilizationPercent, withDefault.Airtime.PredictedUtilizationPercent,
+		"an unset payload should use the representative default (40 bytes)")
+}

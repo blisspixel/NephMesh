@@ -78,6 +78,73 @@ func TestCommunicationIntentReportsProposedNodes(t *testing.T) {
 	assert.Empty(t, nodes.Items, "report-only: no MeshtasticNode is created")
 }
 
+func TestCommunicationIntentReportsAirtimeOverBudget(t *testing.T) {
+	ci := &intentv1alpha1.CommunicationIntent{
+		ObjectMeta: metav1.ObjectMeta{Name: "dense", Namespace: "default"},
+		Spec: intentv1alpha1.CommunicationIntentSpec{
+			Region:               "US",
+			ApprovedModemPresets: []string{"LONG_SLOW"},
+			ExpectedTraffic:      &intentv1alpha1.ExpectedTraffic{MessagesPerMinutePerNode: 10, PayloadBytes: 40},
+			Nodes: []intentv1alpha1.NodeTarget{
+				{Name: "n1", Connection: meshv1alpha1.ConnectionSpec{TCP: &meshv1alpha1.TCPConnection{Host: "10.0.0.1"}}},
+				{Name: "n2", Connection: meshv1alpha1.ConnectionSpec{TCP: &meshv1alpha1.TCPConnection{Host: "10.0.0.2"}}},
+				{Name: "n3", Connection: meshv1alpha1.ConnectionSpec{TCP: &meshv1alpha1.TCPConnection{Host: "10.0.0.3"}}},
+			},
+		},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(intentScheme(t)).
+		WithObjects(ci).
+		WithStatusSubresource(&intentv1alpha1.CommunicationIntent{}).
+		Build()
+	r := &CommunicationIntentReconciler{Client: c}
+
+	key := types.NamespacedName{Name: "dense", Namespace: "default"}
+	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: key})
+	require.NoError(t, err)
+
+	var got intentv1alpha1.CommunicationIntent
+	require.NoError(t, c.Get(context.Background(), key, &got))
+	// Renderable but over the airtime budget: two distinct verdicts.
+	assert.True(t, meta.IsStatusConditionTrue(got.Status.Conditions, intentv1alpha1.ConditionFeasible))
+	cond := meta.FindStatusCondition(got.Status.Conditions, intentv1alpha1.ConditionAirtimeWithinBudget)
+	require.NotNil(t, cond)
+	assert.Equal(t, metav1.ConditionFalse, cond.Status)
+	assert.Equal(t, intentv1alpha1.ReasonOverBudget, cond.Reason)
+	assert.Positive(t, got.Status.PredictedChannelUtilizationPercent)
+}
+
+func TestCommunicationIntentAirtimeUnknownWithoutTraffic(t *testing.T) {
+	ci := &intentv1alpha1.CommunicationIntent{
+		ObjectMeta: metav1.ObjectMeta{Name: "notraffic", Namespace: "default"},
+		Spec: intentv1alpha1.CommunicationIntentSpec{
+			Region:               "US",
+			ApprovedModemPresets: []string{"MEDIUM_SLOW"},
+			Nodes: []intentv1alpha1.NodeTarget{
+				{Name: "n1", Connection: meshv1alpha1.ConnectionSpec{TCP: &meshv1alpha1.TCPConnection{Host: "10.0.0.1"}}},
+			},
+		},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(intentScheme(t)).
+		WithObjects(ci).
+		WithStatusSubresource(&intentv1alpha1.CommunicationIntent{}).
+		Build()
+	r := &CommunicationIntentReconciler{Client: c}
+
+	key := types.NamespacedName{Name: "notraffic", Namespace: "default"}
+	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: key})
+	require.NoError(t, err)
+
+	var got intentv1alpha1.CommunicationIntent
+	require.NoError(t, c.Get(context.Background(), key, &got))
+	cond := meta.FindStatusCondition(got.Status.Conditions, intentv1alpha1.ConditionAirtimeWithinBudget)
+	require.NotNil(t, cond)
+	assert.Equal(t, metav1.ConditionUnknown, cond.Status, "no declared traffic means no airtime verdict")
+	assert.Equal(t, intentv1alpha1.ReasonAirtimeNotEvaluated, cond.Reason)
+	assert.Zero(t, got.Status.PredictedChannelUtilizationPercent)
+}
+
 func TestCommunicationIntentReportsInfeasible(t *testing.T) {
 	ci := &intentv1alpha1.CommunicationIntent{
 		ObjectMeta: metav1.ObjectMeta{Name: "bad", Namespace: "default"},
