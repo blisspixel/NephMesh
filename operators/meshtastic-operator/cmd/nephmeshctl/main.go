@@ -26,13 +26,17 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
+	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/advisor"
+	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/airtime"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/plan"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/spectrum"
 )
@@ -66,6 +70,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runPlan(args[1:], stdin, stdout, stderr)
 	case "spectrum":
 		return runSpectrum(args[1:], stdin, stdout, stderr)
+	case "advise":
+		return runAdvise(args[1:], stdin, stdout, stderr)
 	case "-h", "--help", "help":
 		usage(stdout)
 		return exitOK
@@ -170,6 +176,114 @@ func runSpectrum(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
+func runAdvise(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("advise", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	file := fs.String("f", "-", "rtl_power/hackrf_sweep CSV to reason over; - is stdin")
+	bandName := fs.String("band", "ism-915-us", "band to advise on")
+	ollamaURL := fs.String("ollama-url", "http://localhost:11434", "local Ollama server")
+	model := fs.String("model", "llama3.2:3b", "Ollama model")
+	preset := fs.String("preset", "LONG_FAST", "current modem preset")
+	region := fs.String("region", "US", "region")
+	approved := fs.String("approved", "LONG_FAST,MEDIUM_SLOW,LONG_MODERATE", "comma-separated approved presets")
+	numGPU := fs.Int("num-gpu", -1, "GPU layers for Ollama (0 forces CPU for a capable model on a memory-tight edge host; -1 lets Ollama decide)")
+	format := fs.String("o", "text", "output format: json or text")
+	fs.Usage = func() {
+		fprintln(stderr, "usage: nephmeshctl advise [-f file] [-ollama-url URL] [-model M] [-preset P] [-approved list]")
+		fprintln(stderr, "  Ask a local LLM to reason over sensed spectrum and propose a report-only action.")
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return exitOK
+		}
+		return exitUsage
+	}
+	if *format != "json" && *format != "text" {
+		fprintf(stderr, "invalid -o %q: want json or text\n", *format)
+		return exitUsage
+	}
+
+	data, err := readInput(*file, stdin)
+	if err != nil {
+		fprintf(stderr, "read sweep: %v\n", err)
+		return exitUsage
+	}
+
+	// Locate the target band, then build the sensed situation: occupancy and peak
+	// from the aggregate reduction, and classified emissions from the time series.
+	var band spectrum.Band
+	found := false
+	for _, b := range spectrum.DefaultBands() {
+		if b.Name == *bandName {
+			band, found = b, true
+		}
+	}
+	if !found {
+		fprintf(stderr, "unknown band %q\n", *bandName)
+		return exitUsage
+	}
+	stats := spectrum.Analyze(mustBins(bytes.NewReader(data)), []spectrum.Band{band}, spectrum.DefaultOptions())
+	series, serr := spectrum.ParseSweepSeries(bytes.NewReader(data))
+	if serr != nil {
+		fprintf(stderr, "advise: %v\n", serr)
+		return exitUsage
+	}
+	emissions := spectrum.Classify(series, band, spectrum.DefaultClassifyOptions())
+
+	sit := advisor.Situation{
+		Band:                  stats[0],
+		Emissions:             emissions,
+		CurrentPreset:         *preset,
+		Region:                *region,
+		ApprovedPresets:       splitCSV(*approved),
+		ChannelCeilingPercent: airtime.RecommendedChannelUtilizationPercent,
+	}
+	client := advisor.NewOllama(*ollamaURL, *model)
+	client.NumGPU = *numGPU
+	rec, raw, err := advisor.New(client).Advise(context.Background(), sit)
+	if err != nil {
+		fprintf(stderr, "advise: %v\n", err)
+		return exitUsage
+	}
+
+	if *format == "json" {
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(rec); err != nil {
+			fprintf(stderr, "encode: %v\n", err)
+			return exitUsage
+		}
+		return exitOK
+	}
+	fprintf(stdout, "recommendation: %s", rec.Action)
+	if rec.TargetPreset != "" {
+		fprintf(stdout, " -> %s", rec.TargetPreset)
+	}
+	fprintf(stdout, " (confidence %s)\n  rationale: %s\n", rec.Confidence, rec.Rationale)
+	_ = raw
+	return exitOK
+}
+
+// mustBins parses a sweep, returning nil bins on error (Analyze handles empty).
+func mustBins(r io.Reader) []spectrum.Bin {
+	bins, err := spectrum.ParseSweep(r)
+	if err != nil {
+		return nil
+	}
+	return bins
+}
+
+func splitCSV(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // readInput reads the intent from a file, or from stdin when the path is "-".
 func readInput(path string, stdin io.Reader) ([]byte, error) {
 	if path == "-" {
@@ -184,6 +298,7 @@ func usage(w io.Writer) {
 	fprintln(w, "usage:")
 	fprintln(w, "  nephmeshctl plan [-f file] [-o json|text]       dry-run a CommunicationIntent")
 	fprintln(w, "  nephmeshctl spectrum [-f file] [-o json|text]   reduce an SDR sweep to per-band occupancy")
+	fprintln(w, "  nephmeshctl advise [-f file] [-model M]          ask a local LLM to propose a report-only action")
 	fprintln(w, "")
 	fprintln(w, "plan reads a CommunicationIntent (the same document you would apply to a")
 	fprintln(w, "cluster) and reports feasibility, the selected preset, fleet airtime, and the")

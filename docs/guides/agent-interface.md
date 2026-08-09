@@ -67,6 +67,17 @@ it touches no hardware), so an agent can analyze a capture offline. See the
 ./nephmeshctl spectrum -f sweep.csv -o text
 ```
 
+And `nephmeshctl advise` closes the loop with a *local* model: it reduces and
+classifies a sweep, hands the situation to a local Ollama server, and prints a
+report-only recommendation (hold, change preset, or investigate) with a
+rationale. The model proposes; it never actuates, and the output is validated
+against the approved preset set so a hallucination cannot escape the envelope.
+See the [edge advisor demo](../../demo/edge-advisor/).
+
+```sh
+./nephmeshctl advise -f sweep.csv -model qwen2.5:14b -ollama-url http://localhost:11434
+```
+
 ## nephmesh-mcp (Model Context Protocol)
 
 Build it:
