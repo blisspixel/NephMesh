@@ -115,8 +115,14 @@ JSON (`-o json`) is the machine form for an agent or a downstream exporter.
   `-margin-db` (how far above the floor counts as a signal) and
   `-noise-percentile` (what counts as the floor), and record what worked.
 - Point it at your own mesh: with a Meshtastic node transmitting on your US
-  channel, the `ism-915-us` occupancy and the peak frequency should track its
-  activity. This is the "watch your own mesh from the outside" check.
+  channel, the peak power and peak frequency should track its activity. This is
+  the "watch your own mesh from the outside" check. Validated 2026-08-09: a
+  T-Deck flooding its US LongFast channel raised the peak from -40.9 dB idle to
+  -17.1 dB at 906.5 MHz (the LongFast channel), 1367 strong hits versus 0 idle.
+  Watch peak power (`maxDb` / `peakFreqHz`), not occupancy: a single transmitter
+  lights up one channel, so it barely moves the band-wide occupancy percentage
+  but spikes the peak by tens of dB. Occupancy answers "how busy is the whole
+  band"; peak answers "is a specific transmitter active".
 - Integrate, do not trust a single pass. One sweep is noisy; a few seconds
   settles the estimate (the helper defaults to a 3-second integration for this
   reason). If two back-to-back captures disagree by a lot, integrate longer.
