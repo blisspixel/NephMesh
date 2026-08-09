@@ -44,8 +44,6 @@ FLASH=0
 log() { printf '\n>>> %s\n' "$1"; }
 die() { printf 'ERROR: %s\n' "$1" >&2; exit 1; }
 
-command -v git >/dev/null 2>&1 || true # git is installed below if missing
-
 log "Removing the stale apt hackrf packages (the source build replaces them)"
 sudo apt-get remove -y hackrf libhackrf0 2>/dev/null || true
 
@@ -90,16 +88,21 @@ if [ "$FLASH" -eq 1 ]; then
     log "Flashing firmware (device write)"
     # Prefer a Pro-specific image when the board reports as a Pro; otherwise stop
     # rather than flash a guess, since the wrong image can brick until DFU recovery.
+    # Globs, not ls, so odd filenames and the no-match case are handled cleanly.
     BIN=""
     if hackrf_info 2>/dev/null | grep -qi "pro"; then
-        BIN="$(ls "$FW_DEST"/*pro*.bin 2>/dev/null | head -1 || true)"
+        for f in "$FW_DEST"/*pro*.bin; do
+            [ -f "$f" ] && BIN="$f" && break
+        done
     fi
-    if [ -z "$BIN" ]; then
-        BIN="$(ls "$FW_DEST"/hackrf_one_usb.bin 2>/dev/null | head -1 || true)"
+    if [ -z "$BIN" ] && [ -f "$FW_DEST/hackrf_one_usb.bin" ]; then
+        BIN="$FW_DEST/hackrf_one_usb.bin"
     fi
     if [ -z "$BIN" ]; then
         log "Could not confidently pick a firmware image. Available images:"
-        ls -1 "$FW_DEST" 2>/dev/null || echo "  (none staged)"
+        for f in "$FW_DEST"/*.bin; do
+            [ -f "$f" ] && echo "  $f"
+        done
         die "flash aborted; run hackrf_spiflash -w <one of the files above> yourself after checking the board type with hackrf_info"
     fi
     printf 'About to flash: %s\nPress Enter to continue, or Ctrl-C to abort.' "$BIN"
