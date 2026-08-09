@@ -37,7 +37,7 @@ Each working milestone earns a 0.x release, by demonstrated capability rather th
 | 0.3 | Phase 3 demo: packages consumable by a stock Porch install (this repo registered as a catalog). Packaging and specialization resources done and render-validated; the end-to-end Porch run is the remaining gate |
 | 0.4 | Real radios (Phases 2 and 4 on hardware): intent drives physical Meshtastic boards, the operator reconciles drift on a real device, and the mesh is visible in sensed spectrum |
 | 0.5 | Phase 5 demo: two sites managed from one Git repo with per-site specialization |
-| 0.6 | Phase 6 demo: closed loop from sensed occupancy to reconciled channel change |
+| 0.6 | Phase 6 demo: closed loop from sensed occupancy to reconciled channel change (a hand-driven bench proof-of-concept ran 2026-08-09, see `demo/closed-loop/`; the 0.6 gate is the safe, autonomous form behind ADR 0002) |
 | 0.7 | Phase 7 demo: cellular outage fails over to mesh and back |
 | 1.0 | See below |
 
@@ -212,7 +212,13 @@ it can be made correct, and most of this is hardware-free.
     kernel authorizes and Porch approves, with anti-herding from the start (randomized
     candidate selection, site-specific tie-breaking, dwell, cooldown, and treating
     "every candidate is congested" as evidence of jamming). The first actuating L2
-    channel switch lives here.
+    channel switch lives here. A hand-driven mechanism proof-of-concept ran on the
+    bench (2026-08-09, `demo/closed-loop/`): the SDR sensed the mesh's channel peak
+    at -17.2 dB, a threshold policy decided to relocate, the operator reconciled the
+    preset (which moved the channel slot), and a second sweep confirmed the mesh
+    peak had moved from 906.5 to 903.5 MHz, then restored it. That proves the
+    mechanism; what item 17 adds is the safety envelope (the kernel, Porch approval,
+    and anti-herding) that lets it run unattended, which is the actual gate.
 18. Phase 7 hybrid backhaul: a cellular outage fails over to the mesh and back, reported
     as message delivery ratio and time-to-failover, with UERANSIM standing in for the
     RAN.
