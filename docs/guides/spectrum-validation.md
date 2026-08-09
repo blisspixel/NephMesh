@@ -11,6 +11,18 @@ Until you run this, the sensing path is exercised only against synthetic sweeps
 (`internal/spectrum` unit tests and `examples/spectrum-sweep-sample.csv`). This
 runbook closes that gap with a real capture.
 
+Validated end to end on 2026-08-09 against a HackRF (board reported as an
+unrecognized id 5 by the 2021.03 tools, i.e. newer than they name) on the USB-C
+port of a Jetson Orin Nano (Ubuntu 22.04, arm64), receive-only. The parser
+handled real, out-of-frequency-order sweep segments and tens of thousands of bins
+with no errors. Findings that shaped this runbook: a single sweep is noisy (the
+915 band read anywhere from 30 to 46 percent occupancy with an 8 dB noise-floor
+swing across passes), while integrating a few seconds of sweeps settled to a
+stable ~32 to 34 percent with a noise floor near -69 dB and a persistent elevated
+region around 905 to 918 MHz. There was no DC-spike artifact to mask: modern
+`hackrf_sweep` offset-tunes the DC bin away, so each 20 MHz tile center reads as a
+dip, not a false signal.
+
 ## Before you plug in: the host
 
 AGENTS.md sets a deliberate policy: USB device work is Linux-hosted. The HackRF
@@ -40,11 +52,19 @@ kernel module blacklisted on the host.
 
 ## 2. Capture a receive-only sweep
 
-The bundled helper does one pass of the US 915 MHz ISM band and prints CSV:
+The bundled helper integrates several seconds of sweeps of the US 915 MHz ISM
+band (integrating matters, per the findings above) and prints CSV:
 
 ```sh
-sh hack/spectrum-sweep.sh > sweep.csv                 # 902-928 MHz, 1 MHz bins
-sh hack/spectrum-sweep.sh 400 960 1000000 > survey.csv # wider ISM survey
+sh hack/spectrum-sweep.sh > sweep.csv                    # 902-928 MHz, 1 MHz bins, 3s
+sh hack/spectrum-sweep.sh 400 960 1000000 5 > survey.csv # wider ISM survey, 5s
+sh hack/spectrum-sweep.sh 902 928 1000000 0 > one.csv    # a single pass (noisier)
+```
+
+You can drive it over SSH from another machine without copying it first:
+
+```sh
+ssh user@sensor 'sh -s 902 928 1000000 3' < hack/spectrum-sweep.sh > sweep.csv
 ```
 
 For an RTL-SDR, produce the same CSV format directly:
@@ -59,12 +79,13 @@ rtl_power -f 902M:928M:1M -1 sweep.csv
 go run ./operators/meshtastic-operator/cmd/nephmeshctl spectrum -f sweep.csv -o text
 ```
 
-Expected shape (numbers depend on your RF environment):
+Expected shape (numbers depend on your RF environment; this is a real 3-second
+integrated capture from the validation host):
 
 ```
 ism-433      433.050-434.790 MHz: not covered by this sweep
 ism-868-eu   863.000-870.000 MHz: not covered by this sweep
-ism-915-us   902.000-928.000 MHz: occupancy 7.7% (2/26 bins), noise -95.4 dB, peak -48.6 dB @ 916.500 MHz
+ism-915-us   902.000-928.000 MHz: occupancy 32.3% (4936/15288 bins), noise -69.1 dB, peak -52.0 dB @ 906.500 MHz
 ```
 
 JSON (`-o json`) is the machine form for an agent or a downstream exporter.
@@ -81,6 +102,17 @@ JSON (`-o json`) is the machine form for an agent or a downstream exporter.
 - Point it at your own mesh: with a Meshtastic node transmitting on your US
   channel, the `ism-915-us` occupancy and the peak frequency should track its
   activity. This is the "watch your own mesh from the outside" check.
+- Integrate, do not trust a single pass. One sweep is noisy; a few seconds
+  settles the estimate (the helper defaults to a 3-second integration for this
+  reason). If two back-to-back captures disagree by a lot, integrate longer.
+- Separate signal from a shaped noise floor. A band reading ~30 percent occupancy
+  may be real ambient traffic or just a non-flat instrument noise floor. To tell
+  them apart, capture a baseline with the antenna removed (ideally a 50-ohm
+  terminator on the input): if occupancy and the peak collapse without the
+  antenna, you were seeing real signal; if they persist, you were measuring the
+  receiver's own noise-floor shape, and the `-margin-db` / `-noise-percentile`
+  thresholds want tuning. Telling "busy with what" apart from "busy" is
+  classification, deliberately later work.
 
 ## Scope
 
