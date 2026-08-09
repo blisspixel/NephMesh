@@ -178,6 +178,44 @@ func TestServeLoopHandlesMultipleMessages(t *testing.T) {
 	assert.EqualValues(t, 2, second["id"])
 }
 
+func TestLargeIntegerIDEchoedVerbatim(t *testing.T) {
+	s := New("nephmesh-mcp", "test")
+	// An id beyond 2^53 must round-trip byte-for-byte; decoding through float64
+	// would corrupt it, so assert on the raw response bytes.
+	resp, ok := s.HandleMessage([]byte(`{"jsonrpc":"2.0","id":9007199254740993,"method":"ping"}`))
+	require.True(t, ok)
+	assert.Contains(t, string(resp), "9007199254740993", "the id must be echoed verbatim, not through float64")
+	assert.NotContains(t, string(resp), "9007199254740992", "a corrupted id would appear here")
+}
+
+func TestStringIDEchoedVerbatim(t *testing.T) {
+	s := New("nephmesh-mcp", "test")
+	resp, ok := s.HandleMessage([]byte(`{"jsonrpc":"2.0","id":"abc-123","method":"ping"}`))
+	require.True(t, ok)
+	assert.Contains(t, string(resp), `"id":"abc-123"`)
+}
+
+func TestSuccessResponseAlwaysHasResult(t *testing.T) {
+	s := New("nephmesh-mcp", "test")
+	// A client wrongly sends the initialized notification WITH an id, so it is a
+	// request. The success response must still carry a result member (null), never
+	// neither result nor error.
+	resp, ok := s.HandleMessage([]byte(`{"jsonrpc":"2.0","id":1,"method":"notifications/initialized"}`))
+	require.True(t, ok)
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(resp, &m))
+	_, hasResult := m["result"]
+	assert.True(t, hasResult, "a success response must include a result member")
+	assert.Nil(t, m["error"], "and no error member")
+}
+
+func TestParseErrorIDIsNull(t *testing.T) {
+	s := New("nephmesh-mcp", "test")
+	resp, ok := s.HandleMessage([]byte(`{not json`))
+	require.True(t, ok)
+	assert.Contains(t, string(resp), `"id":null`, "a parse error uses a null id")
+}
+
 func TestEmptyLineIgnored(t *testing.T) {
 	s := New("nephmesh-mcp", "test")
 	_, ok := s.HandleMessage([]byte("   \n"))

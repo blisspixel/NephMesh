@@ -50,6 +50,28 @@ func TestParseSweepSkipsCommentsAndShortRows(t *testing.T) {
 	assert.Len(t, bins, 2, "only the one valid sweep row contributes bins")
 }
 
+func TestParseSweepRejectsNonFinite(t *testing.T) {
+	// strconv.ParseFloat accepts "nan"/"inf"; a single one would poison the whole
+	// band's noise floor, mean, and occupancy. They must be skipped like any other
+	// unparseable bin.
+	csv := "2026-08-08, 12:00:00, 902000000, 905000000, 1000000, 20, -90.0, nan, inf, -88.0\n"
+	bins, err := ParseSweep(strings.NewReader(csv))
+	require.NoError(t, err)
+	require.Len(t, bins, 2, "the nan and inf bins are dropped, the two real bins kept")
+	for _, b := range bins {
+		assert.False(t, b.PowerDB != b.PowerDB, "no NaN survives") // NaN != NaN
+	}
+}
+
+func TestParseSweepToleratesStrayQuoteWithoutLosingBins(t *testing.T) {
+	// A stray quote must not abort the capture and discard already-parsed bins.
+	csv := "2026-08-08, 12:00:00, 902000000, 905000000, 1000000, 20, -90.0, -89.0, -88.0\n" +
+		"2026-08-08, 12:00:00, 905000000, 908000000, 1000000, 20, -40.0\", -91.0, -90.5\n"
+	bins, err := ParseSweep(strings.NewReader(csv))
+	require.NoError(t, err, "a stray quote must not fail the whole parse")
+	assert.GreaterOrEqual(t, len(bins), 3, "the first row's valid bins survive")
+}
+
 func TestParseSweepErrorsWhenNotASweep(t *testing.T) {
 	_, err := ParseSweep(strings.NewReader("hello\nworld\n"))
 	assert.Error(t, err, "non-sweep text yields no bins and is an error")

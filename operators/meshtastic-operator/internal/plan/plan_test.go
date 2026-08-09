@@ -125,6 +125,34 @@ spec:
 	assert.Positive(t, out.Airtime.PredictedUtilizationPercent)
 }
 
+func TestRunRejectsMultipleDocuments(t *testing.T) {
+	// sigs.k8s.io/yaml silently drops all but the first document; plan must reject
+	// multi-document input rather than return a partial verdict.
+	multi := "spec:\n  region: US\n  approvedModemPresets: [LONG_FAST]\n  nodes: [{name: n1, connection: {tcp: {host: 10.0.0.1}}}]\n" +
+		"---\n" +
+		"spec:\n  region: EU\n  approvedModemPresets: [LONG_FAST]\n  nodes: [{name: n2, connection: {tcp: {host: 10.0.0.2}}}]\n"
+	_, err := Run([]byte(multi))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "multiple YAML documents")
+}
+
+func TestRunLeadingSeparatorIsSingleDocument(t *testing.T) {
+	// A leading "---" opens the first document; it is not a second document.
+	one := "---\nspec:\n  region: US\n  approvedModemPresets: [LONG_FAST]\n  nodes: [{name: n1, connection: {tcp: {host: 10.0.0.1}}}]\n"
+	out, err := Run([]byte(one))
+	require.NoError(t, err)
+	assert.True(t, out.Feasible)
+}
+
+func TestRunZeroTrafficReportsNotEvaluated(t *testing.T) {
+	// expectedTraffic present but with a non-positive rate (reachable offline where
+	// CRD admission does not apply) must read as not-evaluated, not "within budget".
+	out, err := Run([]byte("spec:\n  region: US\n  approvedModemPresets: [MEDIUM_SLOW]\n  expectedTraffic: {messagesPerMinutePerNode: 0}\n  nodes: [{name: n1, connection: {tcp: {host: 10.0.0.1}}}]\n"))
+	require.NoError(t, err)
+	assert.True(t, out.Feasible)
+	assert.False(t, out.Airtime.Evaluated, "zero traffic is not a meaningful declaration")
+}
+
 func TestRunEmptyInput(t *testing.T) {
 	_, err := Run([]byte("   \n\t"))
 	assert.ErrorIs(t, err, ErrEmptyInput)

@@ -72,10 +72,15 @@ type rpcRequest struct {
 }
 
 type rpcResponse struct {
-	JSONRPC string    `json:"jsonrpc"`
-	ID      any       `json:"id"`
-	Result  any       `json:"result,omitempty"`
-	Error   *rpcError `json:"error,omitempty"`
+	JSONRPC string `json:"jsonrpc"`
+	// ID is echoed verbatim from the request (as raw JSON) so a large-integer or
+	// string id round-trips byte-for-byte; a nil ID marshals to null, which is
+	// what JSON-RPC 2.0 requires for a parse-error response.
+	ID json.RawMessage `json:"id"`
+	// Result is raw JSON so a success response always carries a result member
+	// (null when the handler has no payload); exactly one of Result/Error is set.
+	Result json.RawMessage `json:"result,omitempty"`
+	Error  *rpcError       `json:"error,omitempty"`
 }
 
 type rpcError struct {
@@ -122,21 +127,22 @@ func (s *Server) HandleMessage(raw []byte) ([]byte, bool) {
 	}
 	var req rpcRequest
 	if err := json.Unmarshal(raw, &req); err != nil {
+		// Parse error: the id is unknown, so it is null per JSON-RPC 2.0.
 		return marshalResponse(rpcResponse{
-			JSONRPC: "2.0", ID: nil,
-			Error: &rpcError{Code: codeParseError, Message: "parse error"},
+			JSONRPC: "2.0",
+			Error:   &rpcError{Code: codeParseError, Message: "parse error"},
 		}), true
 	}
 
-	// A request with an id expects a response; a notification (no id) does not.
+	// A request carries an id (echoed verbatim, including a large integer or a
+	// string); a notification has no id and never gets a response.
 	isNotification := len(req.ID) == 0
-	id := idValue(req.ID)
 
 	if req.JSONRPC != "2.0" {
 		if isNotification {
 			return nil, false
 		}
-		return marshalResponse(errorResponse(id, codeInvalidRequest, "jsonrpc must be \"2.0\"")), true
+		return marshalResponse(errorResponse(req.ID, &rpcError{Code: codeInvalidRequest, Message: "jsonrpc must be \"2.0\""})), true
 	}
 
 	result, rerr := s.dispatch(req.Method, req.Params)
@@ -145,9 +151,11 @@ func (s *Server) HandleMessage(raw []byte) ([]byte, bool) {
 		return nil, false
 	}
 	if rerr != nil {
-		return marshalResponse(rpcResponse{JSONRPC: "2.0", ID: id, Error: rerr}), true
+		return marshalResponse(errorResponse(req.ID, rerr)), true
 	}
-	return marshalResponse(rpcResponse{JSONRPC: "2.0", ID: id, Result: result}), true
+	// A success response must always carry a result member (null when the handler
+	// has no payload), never neither result nor error.
+	return successResponse(req.ID, result), true
 }
 
 // dispatch routes a method to its handler, returning either a result or a
@@ -283,21 +291,19 @@ func toolError(msg string) any {
 	}
 }
 
-func errorResponse(id any, code int, msg string) rpcResponse {
-	return rpcResponse{JSONRPC: "2.0", ID: id, Error: &rpcError{Code: code, Message: msg}}
+func errorResponse(id json.RawMessage, e *rpcError) rpcResponse {
+	return rpcResponse{JSONRPC: "2.0", ID: id, Error: e}
 }
 
-// idValue decodes the JSON-RPC id (a string or number) to a value suitable for
-// echoing back verbatim. A nil raw id yields nil.
-func idValue(raw json.RawMessage) any {
-	if len(raw) == 0 {
-		return nil
+// successResponse builds a success response whose result member is always present
+// (null when the handler returned no payload), so a reply never has neither
+// result nor error. The id is echoed verbatim.
+func successResponse(id json.RawMessage, result any) []byte {
+	raw, err := json.Marshal(result)
+	if err != nil {
+		return marshalResponse(errorResponse(id, &rpcError{Code: -32603, Message: "internal error"}))
 	}
-	var v any
-	if err := json.Unmarshal(raw, &v); err != nil {
-		return nil
-	}
-	return v
+	return marshalResponse(rpcResponse{JSONRPC: "2.0", ID: id, Result: raw})
 }
 
 func marshalResponse(resp rpcResponse) []byte {

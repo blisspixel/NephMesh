@@ -118,6 +118,18 @@ func TestSpectrumMalformedInputIsUsageError(t *testing.T) {
 	assert.Contains(t, errBuf.String(), "spectrum:")
 }
 
+func TestPlanHelpExitsZero(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	code := run([]string{"plan", "-h"}, strings.NewReader(""), &out, &errBuf)
+	assert.Equal(t, exitOK, code, "an explicit help request is not an error")
+}
+
+func TestSpectrumHelpExitsZero(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	code := run([]string{"spectrum", "--help"}, strings.NewReader(""), &out, &errBuf)
+	assert.Equal(t, exitOK, code)
+}
+
 func TestHelp(t *testing.T) {
 	var out, errBuf bytes.Buffer
 	code := run([]string{"help"}, strings.NewReader(""), &out, &errBuf)
