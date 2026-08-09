@@ -81,10 +81,14 @@ func TestToolsListAdvertisesPlanIntent(t *testing.T) {
 	m, _ := handle(t, s, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
 	res := m["result"].(map[string]any)
 	tools := res["tools"].([]any)
-	require.Len(t, tools, 1)
-	tool := tools[0].(map[string]any)
-	assert.Equal(t, "plan_intent", tool["name"])
-	schema := tool["inputSchema"].(map[string]any)
+	var planTool map[string]any
+	for _, tl := range tools {
+		if tl.(map[string]any)["name"] == "plan_intent" {
+			planTool = tl.(map[string]any)
+		}
+	}
+	require.NotNil(t, planTool, "plan_intent must be advertised")
+	schema := planTool["inputSchema"].(map[string]any)
 	props := schema["properties"].(map[string]any)
 	assert.Contains(t, props, "intent")
 }
@@ -126,6 +130,41 @@ func TestToolsCallBadIntentIsToolError(t *testing.T) {
 	res := m["result"].(map[string]any)
 	assert.Equal(t, true, res["isError"], "a bad intent is a tool error result, not a protocol error")
 	assert.Nil(t, m["error"])
+}
+
+func TestToolsListAdvertisesSenseSpectrum(t *testing.T) {
+	s := New("nephmesh-mcp", "test")
+	m, _ := handle(t, s, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
+	tools := m["result"].(map[string]any)["tools"].([]any)
+	names := map[string]bool{}
+	for _, tl := range tools {
+		names[tl.(map[string]any)["name"].(string)] = true
+	}
+	assert.True(t, names["plan_intent"], "plan_intent is advertised")
+	assert.True(t, names["sense_spectrum"], "sense_spectrum is advertised")
+}
+
+func TestToolsCallSenseSpectrum(t *testing.T) {
+	s := New("nephmesh-mcp", "test")
+	sweep := "2026-08-08, 12:00:00, 911000000, 920000000, 1000000, 20, -95.1, -94.0, -95.4, -93.8, -55.2, -48.6, -94.3, -95.5, -96.0\n"
+	args, err := json.Marshal(map[string]any{"name": "sense_spectrum", "arguments": map[string]any{"sweep": sweep}})
+	require.NoError(t, err)
+	m, _ := handle(t, s, `{"jsonrpc":"2.0","id":10,"method":"tools/call","params":`+string(args)+`}`)
+	res := m["result"].(map[string]any)
+	assert.Equal(t, false, res["isError"])
+	text := res["content"].([]any)[0].(map[string]any)["text"].(string)
+	// The text payload is the per-band stats JSON.
+	var stats []map[string]any
+	require.NoError(t, json.Unmarshal([]byte(text), &stats))
+	assert.NotEmpty(t, stats)
+}
+
+func TestToolsCallSenseSpectrumMissingSweepIsToolError(t *testing.T) {
+	s := New("nephmesh-mcp", "test")
+	params := `{"name":"sense_spectrum","arguments":{}}`
+	m, _ := handle(t, s, `{"jsonrpc":"2.0","id":11,"method":"tools/call","params":`+params+`}`)
+	res := m["result"].(map[string]any)
+	assert.Equal(t, true, res["isError"])
 }
 
 func TestToolsCallUnknownToolIsProtocolError(t *testing.T) {

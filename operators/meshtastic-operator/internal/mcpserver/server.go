@@ -34,8 +34,10 @@ import (
 	"bufio"
 	"encoding/json"
 	"io"
+	"strings"
 
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/plan"
+	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/spectrum"
 )
 
 // The MCP protocol revisions this server understands. It negotiates by echoing
@@ -225,27 +227,58 @@ func (s *Server) toolsList() any {
 					"required": []any{"intent"},
 				},
 			},
+			map[string]any{
+				"name":        "sense_spectrum",
+				"description": "Reduce a receive-only SDR power sweep (rtl_power/hackrf_sweep CSV) to per-band occupancy: occupancy percent against each band's own noise floor, plus noise floor, peak, and mean power, for the 433/868/915 MHz ISM ranges. Analysis only; it reads a capture and touches no radio.",
+				"inputSchema": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"sweep": map[string]any{
+							"type":        "string",
+							"description": "A power sweep in rtl_power/hackrf_sweep CSV format.",
+						},
+						"marginDb": map[string]any{
+							"type":        "number",
+							"description": "Optional: dB above the noise floor a bin must be to count as occupied (default 6).",
+						},
+						"noisePercentile": map[string]any{
+							"type":        "number",
+							"description": "Optional: per-band percentile taken as the noise floor, 0..100 (default 25).",
+						},
+					},
+					"required": []any{"sweep"},
+				},
+			},
 		},
 	}
 }
 
-type toolCallParams struct {
-	Name      string `json:"name"`
-	Arguments struct {
-		Intent json.RawMessage `json:"intent"`
-	} `json:"arguments"`
-}
-
 func (s *Server) toolsCall(params json.RawMessage) (any, *rpcError) {
-	var p toolCallParams
+	var p struct {
+		Name      string          `json:"name"`
+		Arguments json.RawMessage `json:"arguments"`
+	}
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, &rpcError{Code: codeInvalidParams, Message: "invalid tools/call params: " + err.Error()}
 	}
-	if p.Name != "plan_intent" {
+	switch p.Name {
+	case "plan_intent":
+		return s.callPlanIntent(p.Arguments)
+	case "sense_spectrum":
+		return s.callSenseSpectrum(p.Arguments)
+	default:
 		return nil, &rpcError{Code: codeInvalidParams, Message: "unknown tool: " + p.Name}
 	}
+}
 
-	intentBytes, err := intentArgument(p.Arguments.Intent)
+func (s *Server) callPlanIntent(args json.RawMessage) (any, *rpcError) {
+	var a struct {
+		Intent json.RawMessage `json:"intent"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil {
+		return toolError("invalid arguments: " + err.Error()), nil
+	}
+	intentBytes, err := intentArgument(a.Intent)
 	if err != nil {
 		return toolError(err.Error()), nil
 	}
@@ -255,14 +288,47 @@ func (s *Server) toolsCall(params json.RawMessage) (any, *rpcError) {
 		// protocol error, so it is returned as an error result.
 		return toolError("plan: " + err.Error()), nil
 	}
+	return toolText(out), nil
+}
 
-	pretty, _ := json.MarshalIndent(out, "", "  ")
+func (s *Server) callSenseSpectrum(args json.RawMessage) (any, *rpcError) {
+	var a struct {
+		Sweep           string   `json:"sweep"`
+		MarginDB        *float64 `json:"marginDb"`
+		NoisePercentile *float64 `json:"noisePercentile"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil {
+		return toolError("invalid arguments: " + err.Error()), nil
+	}
+	if a.Sweep == "" {
+		return toolError("sweep is required (rtl_power/hackrf_sweep CSV)"), nil
+	}
+	opts := spectrum.DefaultOptions()
+	if a.MarginDB != nil {
+		opts.ThresholdMarginDB = *a.MarginDB
+	}
+	if a.NoisePercentile != nil {
+		opts.NoiseFloorPercentile = *a.NoisePercentile
+	}
+	stats, err := spectrum.Sense(strings.NewReader(a.Sweep), spectrum.DefaultBands(), opts)
+	if err != nil {
+		return toolError("spectrum: " + err.Error()), nil
+	}
+	return toolText(stats), nil
+}
+
+// toolText renders a value as pretty JSON in a successful tool result.
+func toolText(v any) any {
+	pretty, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return toolError("internal: could not encode result")
+	}
 	return map[string]any{
 		"content": []any{
 			map[string]any{"type": "text", "text": string(pretty)},
 		},
 		"isError": false,
-	}, nil
+	}
 }
 
 // intentArgument accepts the intent either as a JSON string (containing YAML or

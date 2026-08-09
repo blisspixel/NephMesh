@@ -97,14 +97,18 @@ Or in an MCP client configuration:
 }
 ```
 
-It advertises one tool:
+It advertises two tools:
 
 - `plan_intent`: input `{ "intent": "<CommunicationIntent as YAML or JSON>" }`
   (a full object or a bare spec; a string or an inlined object both work). The
   result is the plan JSON above, returned as tool text.
+- `sense_spectrum`: input `{ "sweep": "<rtl_power/hackrf_sweep CSV>" }`, with
+  optional `marginDb` and `noisePercentile`. The result is the per-band
+  occupancy JSON (the same reduction as `nephmeshctl spectrum`), returned as
+  tool text.
 
-An over-budget or infeasible intent is a normal result, not a tool error; a tool
-error (`isError: true`) means the intent could not be parsed.
+An over-budget or infeasible intent, or an idle band, is a normal result, not a
+tool error; a tool error (`isError: true`) means the input could not be parsed.
 
 ## What this is not, yet
 
