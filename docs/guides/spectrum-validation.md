@@ -50,6 +50,21 @@ udev rules (`53-hackrf.rules`) are present so a non-root user can access the
 device. An RTL-SDR uses `rtl_power` instead and needs the `dvb_usb_rtl28xxu`
 kernel module blacklisted on the host.
 
+If you have a HackRF Pro, the distro package (2021.03) is too old to recognize it
+and runs it in a legacy compatibility mode (`hackrf_info` reports an unknown board
+id), which also predates the Pro spectrum-inversion fix, so per-frequency
+attribution is unreliable until you update. Build the current host tools from
+source with the bundled helper, then optionally flash the matching firmware:
+
+```sh
+bash hack/update-hackrf.sh          # latest host tools from source
+bash hack/update-hackrf.sh --flash  # also flash firmware (a deliberate device write)
+```
+
+The aggregate occupancy is robust to the inversion bug (it just reorders bins
+within a tile), so an occupancy comparison is valid even before updating; trusting
+the peak frequency is not.
+
 ## 2. Capture a receive-only sweep
 
 The bundled helper integrates several seconds of sweeps of the US 915 MHz ISM
