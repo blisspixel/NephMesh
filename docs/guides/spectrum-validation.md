@@ -135,6 +135,25 @@ JSON (`-o json`) is the machine form for an agent or a downstream exporter.
   thresholds want tuning. Telling "busy with what" apart from "busy" is
   classification, deliberately later work.
 
+## Continuous sensing: the Prometheus exporter
+
+For ongoing monitoring rather than one-shot captures, run the exporter on the
+sensor host. It sweeps on a loop and serves the per-band aggregates as Prometheus
+metrics, so they can be scraped, graphed, and alerted on:
+
+```sh
+spectrum-exporter -bind :9808 -freq-min 902 -freq-max 928 -interval 15s
+curl -s localhost:9808/metrics | grep nephmesh_spectrum
+```
+
+It builds from `operators/meshtastic-operator/cmd/spectrum-exporter` (cross-compile
+for the sensor's architecture, for example `GOOS=linux GOARCH=arm64`). Key series:
+`nephmesh_spectrum_occupancy_percent`, `nephmesh_spectrum_peak_dbm`,
+`nephmesh_spectrum_peak_frequency_hz`, and `nephmesh_spectrum_noise_floor_dbm`,
+each labelled by band. Watch `peak_dbm` to see a transmitter come and go;
+`occupancy_percent` for how busy the whole band is. A band the sweep did not
+cover reports `bins=0` and no occupancy value, so a gap is never a false zero.
+
 ## Scope
 
 This is sensing (is the band busy, and how busy), not classification (busy with
