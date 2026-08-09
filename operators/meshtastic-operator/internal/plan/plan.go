@@ -82,6 +82,12 @@ func ParseSpec(data []byte) (intentv1alpha1.CommunicationIntentSpec, error) {
 	if len(trimSpace(data)) == 0 {
 		return spec, ErrEmptyInput
 	}
+	// sigs.k8s.io/yaml decodes only the first document and silently drops the rest,
+	// so a file with several intents would get a partial verdict with no warning.
+	// Reject multi-document input explicitly; plan evaluates one intent at a time.
+	if hasSecondDocument(data) {
+		return spec, errors.New("multiple YAML documents provided; plan evaluates one CommunicationIntent at a time")
+	}
 
 	// Detect a full object (has a top-level spec) versus a bare spec by probing
 	// for the spec key. sigs.k8s.io/yaml converts YAML to JSON, so a JSON input
@@ -157,6 +163,28 @@ func (o Output) Text() string {
 		fmt.Fprintf(&b, "  node %s -> region=%s preset=%s role=%s\n", n.Name, n.Spec.Region, n.Spec.ModemPreset, n.Spec.Role)
 	}
 	return b.String()
+}
+
+// hasSecondDocument reports whether the input contains a YAML document separator
+// ("---" on its own line) that begins a second document, that is, one appearing
+// after real content. A leading separator before any content is the ordinary
+// single-document form and is not counted. A "---" inside a quoted or block
+// scalar is not on its own line, so it does not false-positive.
+func hasSecondDocument(data []byte) bool {
+	seenContent := false
+	for _, line := range strings.Split(string(data), "\n") {
+		trimmed := strings.TrimSpace(strings.TrimRight(line, "\r"))
+		if trimmed == "---" {
+			if seenContent {
+				return true
+			}
+			continue // a separator before any content just opens the first document
+		}
+		if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+			seenContent = true
+		}
+	}
+	return false
 }
 
 // trimSpace reports the input with leading and trailing ASCII whitespace removed,

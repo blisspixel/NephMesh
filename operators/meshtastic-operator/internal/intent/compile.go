@@ -127,6 +127,16 @@ func evaluateAirtime(spec intentv1alpha1.CommunicationIntentSpec, preset string,
 			Message: "no expectedTraffic declared; fleet airtime not evaluated",
 		}
 	}
+	// A non-positive message rate is not a meaningful traffic declaration (the CRD
+	// requires >= 1, but this pure path also runs offline via the CLI where that
+	// admission check has not applied). Report not-evaluated rather than a
+	// reassuring but meaningless "within budget, 0%".
+	if spec.ExpectedTraffic.MessagesPerMinutePerNode <= 0 {
+		return AirtimeResult{
+			Reason:  intentv1alpha1.ReasonAirtimeNotEvaluated,
+			Message: "expectedTraffic.messagesPerMinutePerNode must be >= 1; fleet airtime not evaluated",
+		}
+	}
 
 	payload := spec.ExpectedTraffic.PayloadBytes
 	if payload <= 0 {

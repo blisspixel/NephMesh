@@ -115,6 +115,9 @@ func ParseSweep(r io.Reader) ([]Bin, error) {
 	cr.TrimLeadingSpace = true
 	cr.FieldsPerRecord = -1 // rows have variable bin counts
 	cr.Comment = '#'
+	// rtl_power/hackrf_sweep output is unquoted; tolerate a stray quote as literal
+	// data so one odd line cannot abort the whole capture and discard valid bins.
+	cr.LazyQuotes = true
 
 	var bins []Bin
 	rows := 0
@@ -134,13 +137,16 @@ func ParseSweep(r io.Reader) ([]Bin, error) {
 		}
 		low, err1 := parseFloat(rec[2])
 		bw, err3 := parseFloat(rec[4])
-		if err1 != nil || err3 != nil {
+		if err1 != nil || err3 != nil || !isFinite(low) || !isFinite(bw) {
 			continue
 		}
 		for j := 6; j < len(rec); j++ {
 			p, err := parseFloat(rec[j])
-			if err != nil {
-				continue // skip an individual unparseable bin
+			// strconv.ParseFloat accepts "nan"/"inf"; a single non-finite token
+			// would poison the whole band's noise floor, mean, and occupancy, so
+			// skip it like any other unparseable bin.
+			if err != nil || !isFinite(p) {
+				continue
 			}
 			center := low + bw*(float64(j-6)+0.5)
 			bins = append(bins, Bin{FreqHz: center, PowerDB: p})
@@ -255,4 +261,8 @@ func percentile(values []float64, p float64) float64 {
 
 func parseFloat(s string) (float64, error) {
 	return strconv.ParseFloat(strings.TrimSpace(s), 64)
+}
+
+func isFinite(f float64) bool {
+	return !math.IsNaN(f) && !math.IsInf(f, 0)
 }
