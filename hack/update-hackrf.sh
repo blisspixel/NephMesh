@@ -49,7 +49,7 @@ sudo apt-get remove -y hackrf libhackrf0 2>/dev/null || true
 
 log "Installing build dependencies (sudo)"
 sudo apt-get update
-sudo apt-get install -y build-essential cmake pkg-config git libusb-1.0-0-dev libfftw3-dev
+sudo apt-get install -y build-essential cmake pkg-config git libusb-1.0-0-dev libfftw3-dev curl xz-utils
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -77,11 +77,18 @@ hash -r 2>/dev/null || true
 hackrf_info 2>&1 | head -8 || true
 
 # Stage the prebuilt firmware next to the user so a flash is one clear command.
-FW_SRC="$WORK/hackrf/firmware-bin"
+# The git checkout does not carry the .bin images (only the release tarball
+# does), so fetch and extract that. The Pro image is hackrf_pro_usb.bin.
 FW_DEST="$HOME/hackrf-firmware-${HACKRF_REF}"
-if [ -d "$FW_SRC" ]; then
-    mkdir -p "$FW_DEST"
-    cp "$FW_SRC"/*.bin "$FW_DEST"/ 2>/dev/null || true
+FW_TARBALL="hackrf-${HACKRF_REF#v}.tar.xz"
+FW_URL="https://github.com/greatscottgadgets/hackrf/releases/download/${HACKRF_REF}/${FW_TARBALL}"
+mkdir -p "$FW_DEST"
+log "Fetching prebuilt firmware images (${FW_TARBALL})"
+if curl -fsSL -o "$WORK/${FW_TARBALL}" "$FW_URL"; then
+    tar -xJf "$WORK/${FW_TARBALL}" -C "$WORK"
+    cp "$WORK"/hackrf-*/firmware-bin/*.bin "$FW_DEST"/ 2>/dev/null || true
+else
+    log "Could not download ${FW_TARBALL}; --flash will have no image to write"
 fi
 
 if [ "$FLASH" -eq 1 ]; then
