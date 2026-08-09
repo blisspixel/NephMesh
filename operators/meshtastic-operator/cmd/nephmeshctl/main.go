@@ -27,6 +27,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -37,6 +38,7 @@ import (
 
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/advisor"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/airtime"
+	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/meshframe"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/plan"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/spectrum"
 )
@@ -72,6 +74,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runSpectrum(args[1:], stdin, stdout, stderr)
 	case "advise":
 		return runAdvise(args[1:], stdin, stdout, stderr)
+	case "decode":
+		return runDecode(args[1:], stdin, stdout, stderr)
 	case "-h", "--help", "help":
 		usage(stdout)
 		return exitOK
@@ -265,6 +269,80 @@ func runAdvise(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
+// runDecode reads decoded LoRa payloads as hex (one packet per line, as the SDR
+// decoder emits them) and prints each packet's clear-text Meshtastic header: who
+// sent it, to whom, on which channel. This is the out-of-band witness readout,
+// the sender read straight off the air, independent of any node's self-report.
+func runDecode(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("decode", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	file := fs.String("f", "-", "file of hex LoRa payloads, one per line; - is stdin")
+	format := fs.String("o", "text", "output format: json or text")
+	fs.Usage = func() {
+		fprintln(stderr, "usage: nephmeshctl decode [-f file] [-o json|text]")
+		fprintln(stderr, "  Parse Meshtastic packet headers from decoded LoRa payloads (hex, one per line).")
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return exitOK
+		}
+		return exitUsage
+	}
+	if *format != "json" && *format != "text" {
+		fprintf(stderr, "invalid -o %q: want json or text\n", *format)
+		return exitUsage
+	}
+
+	data, err := readInput(*file, stdin)
+	if err != nil {
+		fprintf(stderr, "read: %v\n", err)
+		return exitUsage
+	}
+	enc := json.NewEncoder(stdout)
+	enc.SetIndent("", "  ")
+	seen := 0
+	for _, line := range strings.Split(string(data), "\n") {
+		hexStr := strings.TrimPrefix(strings.TrimSpace(line), "0x")
+		hexStr = strings.ReplaceAll(hexStr, " ", "")
+		if hexStr == "" || strings.HasPrefix(hexStr, "#") {
+			continue
+		}
+		raw, derr := hex.DecodeString(hexStr)
+		if derr != nil {
+			fprintf(stderr, "skip unparsable hex: %v\n", derr)
+			continue
+		}
+		h, perr := meshframe.ParseHeader(raw)
+		if perr != nil {
+			fprintf(stderr, "skip: %v\n", perr)
+			continue
+		}
+		seen++
+		if *format == "json" {
+			if err := enc.Encode(h); err != nil {
+				fprintf(stderr, "encode: %v\n", err)
+				return exitUsage
+			}
+			continue
+		}
+		fprintf(stdout, "from %s to %s  id 0x%08x  hop %d/%d  channel 0x%02x%s\n",
+			h.FromID(), h.ToID(), h.ID, h.HopLimit, h.HopStart, h.ChannelHash, ackStr(h))
+	}
+	if seen == 0 {
+		fprintln(stderr, "no valid packets decoded")
+		return exitUsage
+	}
+	return exitOK
+}
+
+func ackStr(h meshframe.Header) string {
+	if h.WantAck {
+		return "  wantAck"
+	}
+	return ""
+}
+
 // mustBins parses a sweep, returning nil bins on error (Analyze handles empty).
 func mustBins(r io.Reader) []spectrum.Bin {
 	bins, err := spectrum.ParseSweep(r)
@@ -299,6 +377,7 @@ func usage(w io.Writer) {
 	fprintln(w, "  nephmeshctl plan [-f file] [-o json|text]       dry-run a CommunicationIntent")
 	fprintln(w, "  nephmeshctl spectrum [-f file] [-o json|text]   reduce an SDR sweep to per-band occupancy")
 	fprintln(w, "  nephmeshctl advise [-f file] [-model M]          ask a local LLM to propose a report-only action")
+	fprintln(w, "  nephmeshctl decode [-f file]                     read Meshtastic packet headers off decoded LoRa payloads")
 	fprintln(w, "")
 	fprintln(w, "plan reads a CommunicationIntent (the same document you would apply to a")
 	fprintln(w, "cluster) and reports feasibility, the selected preset, fleet airtime, and the")
