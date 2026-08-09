@@ -51,6 +51,21 @@ Each working milestone earns a 0.x release, by demonstrated capability rather th
 
 Phases 6 and 7 are not 1.0 gates: the closed loop and the cellular leg are research features and can mature after 1.0.
 
+## What comes next (recommended order, reviewed 2026-08-09)
+
+The recent hardware milestones (the 0.4 gate essentially demonstrated, plus a Phase 6 mechanism proof of concept) put the engineering ahead of the packaging and the proof. A deliberate multi-perspective review (research, engineering, creative, product) converged on one conclusion: the next work is to make what exists installable and to prove the core claim, not to add capability. The intent-layer frontier below stays frozen at the shipped report-only compiler.
+
+In order:
+
+1. **Publish the operator image**, signed and digest-pinned, with an SBOM (the Phase 4 release step and a named 1.0 gap). It unblocks reproducible install, every demo, and a first user, and it is hardware-free. Land the supply-chain hardening (trivy/hadolint/pip-audit, SBOM, signing, digest-pinned bases) with it rather than splitting them.
+2. **Prove control-plane independence**: bring up a configured mesh, delete the entire management cluster, and show the message delivery ratio is unchanged (the 0.5 / Phase 5 proof). This is the single most load-bearing unproven claim; until it runs, "resilient" is asserted, not shown. Rehearsable now with two kind clusters plus an SBC as the surviving second cluster, no second physical site to buy. It also forces the reusable delivery-ratio measurement harness that Phase 6 and 7 numbers need.
+3. **Finish the core on hardware and in the observability plane**: confirm role and channels round-trip on the physical board (the last 0.4 piece, bench time, and channels apply through a distinct path so the sim is weaker evidence there); wire the spectrum exporter onto the operator's Prometheus so the SDR pillar is visible in-cluster instead of an orphan; and pair server-side apply for status with the k8s v0.36 / controller-runtime v0.24 upgrade so the correctness fix and the version bump touch the status path once.
+4. **Close the 0.3 Porch gate** end to end (register, propose, approve, pull, apply), the credibility proof that Nephio-native is real rather than aspirational. Hardware-free (WSL2).
+5. **Make the claims independently verifiable**: a one-take "three witnesses" capture (the intent change, the reconcile loop, and the SDR peak physically moving, with the airtime agreeing across the model, the radio's telemetry, and the sensed spectrum); a Grafana panel over the existing `nephmesh_spectrum_*` and node exporters; and a short agent-driven-planning recording. The substance of the first already exists on disk.
+6. **Then, and only as research behind the core**: spectrum classification (mine versus neighbor versus jammer) built on a shared labeled IQ corpus, so the loop reads cause and not merely occupancy (and its honest deliverable is a false-positive curve, not a jammer-detector claim); plus the cheap, decisive firmware probes several designs currently assume unverified (whether a per-node identity key can sign an application payload for message auth, whether the frequency slot derives only from the primary channel name for epoch channels) and a rebroadcast-aware airtime model measured on a multi-node mesh so `AirtimeWithinBudget` can graduate from an advisory floor to an enforceable budget.
+
+Held frozen until the above lands: actuation from `CommunicationIntent`, the autonomy stack (safety kernel, signed capsules, degrading lease, rejoin), an enforceable `ChannelBudget` admission gate, a second radio driver, and Phases 6 and 7. Over-scoping into that frontier before the core is packaged and proven is the doctrine's named first failure mode; the report-only compiler and the closed-loop proof of concept already signal the direction convincingly.
+
 ## Design direction: intent as an outcome envelope (research frontier, gated behind the core)
 
 There is a larger shape this project could grow into, written up in full in the
