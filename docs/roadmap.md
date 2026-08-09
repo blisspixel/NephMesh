@@ -157,6 +157,11 @@ it can be made correct, and most of this is hardware-free.
    oversubscribes it, and hold an emergency reserve. This turns airtime from an
    observed number into a governed invariant, the clearest thing a declarative
    system would offer over hand-tuning, and the Phase 6 prerequisite. Design: [airtime budget](plans/airtime-budget.md).
+   First step shipped (2026-08-08): the intent compiler estimates a fleet's channel
+   utilization from declared `expectedTraffic` and reports an `AirtimeWithinBudget` verdict
+   (a conservative floor that ignores rebroadcast, so over-budget is authoritative). This is
+   the observed-to-governed move in report-only form; refusing an oversubscribing change and
+   holding a reserve is the remaining enforcement step.
 7. Mission traffic classes and reserve accounting: protected shares per class, airtime
    debt when an emergency borrows the reserve, and reconfiguration-airtime accounting
    so a remote change budgets its own admin traffic. Design: [traffic classes and degraded modes](plans/contingency-semantics-dtn.md).
@@ -174,6 +179,15 @@ it can be made correct, and most of this is hardware-free.
    `ChangePlan`, report `IntentInfeasible` honestly, and never actuate. Here
    `MeshtasticNode` formally becomes the compiled artifact and ADR 0001 moves from
    Proposed to Accepted. Design: [CommunicationIntent and the report-only compiler](plans/communication-intent.md).
+   Shipped (report-only), 2026-08-08: the `intent.nephmesh.io/v1alpha1`
+   `CommunicationIntent` CRD and a pure compiler (`internal/intent`) that renders proposed
+   `MeshtasticNode` specs on status with a `Feasible` verdict, selects the preset from an
+   approved set, and reports a fleet-wide `AirtimeWithinBudget` verdict (the fleet airtime
+   check only the intent layer can make). Report-only is enforced by RBAC (no create/write
+   on `MeshtasticNode`) and by an envtest admission suite, not just intended. Still open
+   before ADR 0001 moves to Accepted: the `ChangePlan` artifact (item 10) and the richer
+   feasibility surface. Also exposed to agents offline via `nephmeshctl plan` and the
+   `nephmesh-mcp` MCP server (`docs/guides/agent-interface.md`).
 10. A `ChangePlan` resource and least-change actuation: field- or section-level deltas,
     a last-known-good cache, a disruption score, rate and dwell limits, and a rendezvous
     procedure for channel and preset changes (an announced switch epoch and predeclared
@@ -219,7 +233,9 @@ it can be made correct, and most of this is hardware-free.
 - Continuous hardening: server-side apply for status, the NetworkPolicy cross-namespace
   proof, reproducible-build flags and digest-pinned base images, trivy/hadolint/pip-audit,
   then SBOM and signing at image publish; the deliberate k8s v0.36 and
-  controller-runtime v0.24 upgrade; agent-native skills and an MCP server; and the
+  controller-runtime v0.24 upgrade; agent-native skills and an MCP server (an offline
+  first slice shipped 2026-08-08: `nephmeshctl` and `nephmesh-mcp` expose the report-only
+  compiler as a CLI and an MCP tool; the richer live-state MCP layer remains ahead); and the
   regulatory matrix kept as a living reference.
 
 ### Is everything captured?
@@ -286,8 +302,8 @@ Goal: the same pipeline drives physical RF, and the mesh is visible in the sense
 
 - [ ] Attach the owned Meshtastic boards (USB serial to the Pi or PC); extend the config pipeline to physical nodes (Python CLI over serial/TCP, same YAML desired-state format)
 - [ ] USB device access on k3s via `squat/generic-device-plugin` (advertise devices by USB vendor:product ID, no privileged pods); document host prep (udev rules)
-- [ ] Spectrum sensor container using the HackRF Pro, receive-only: `hackrf_sweep` or `soapy_power` sweeping 902 to 928 MHz (SoapySDR keeps the container hardware-agnostic for future RTL-SDR sites)
-- [ ] Exporter: parse sweep CSV into per-band aggregate Prometheus gauges (occupancy percent, max/mean dB, not per-bin series). Research found no existing exporter for sweep data; this is novel glue
+- [ ] Spectrum sensor container using the HackRF Pro, receive-only: `hackrf_sweep` or `soapy_power` sweeping 902 to 928 MHz (SoapySDR keeps the container hardware-agnostic for future RTL-SDR sites). Hardware-free half built (2026-08-08): a receive-only capture helper (`hack/spectrum-sweep.sh`, `hackrf_sweep`, one pass) and a validation runbook (`docs/guides/spectrum-validation.md`); the over-the-air capture awaits the RF Pro being plugged in
+- [ ] Exporter: parse sweep CSV into per-band aggregate Prometheus gauges (occupancy percent, max/mean dB, not per-bin series). Research found no existing exporter for sweep data; this is novel glue. The reduction is built (2026-08-08): `internal/spectrum` parses rtl_power/hackrf_sweep CSV into per-band occupancy/noise/peak (unit-tested against synthetic sweeps), surfaced by `nephmeshctl spectrum`; wiring those aggregates onto the operator's existing Prometheus endpoint from a live sweep loop is the remaining step
 - [ ] Demo: a Git intent change (for example modem preset LongFast to MediumSlow) propagates to the physical boards; a message crosses real RF; the mesh's own transmissions appear in the occupancy metrics
 
 ## Phase 3: Nephio-native packaging ($0) (in progress; packaging done, Porch gate open; depends only on Phase 1)
