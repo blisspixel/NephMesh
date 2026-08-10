@@ -1,0 +1,31 @@
+apiVersion: kpt.dev/v1
+kind: Kptfile
+metadata:
+  name: spectrum-exporter
+  annotations:
+    config.kubernetes.io/local-config: "true"
+info:
+  description: |
+    The receive-only SDR spectrum exporter as a kpt package: a hardened
+    Deployment that publishes per-band occupancy, peak power, and noise floor
+    as Prometheus metrics, a ClusterIP Service, a ServiceMonitor so Prometheus
+    scrapes it, and report-only alert rules. This puts sensed spectrum on the
+    same observability plane as the operator's node health.
+
+    Simulation-first and receive-only, like the mesh-gateway node: the shipped
+    Deployment runs in -replay mode over a bundled sample sweep, so it is a real
+    metrics source in a cluster with no radio and it renders and passes the
+    manifest security gate (no hostPath, no privileged, no host namespaces). The
+    real-SDR sensor path needs host USB access and runs outside this package; see
+    the README.
+
+    All resources are namespaced; set-namespace places them in the per-clone
+    namespace.
+pipeline:
+  mutators:
+    - image: ghcr.io/kptdev/krm-functions-catalog/set-namespace:v0.4.1
+      configPath: package-context.yaml
+    - image: ghcr.io/kptdev/krm-functions-catalog/set-labels:v0.2.0
+      configMap:
+        app.kubernetes.io/part-of: nephmesh
+        app.kubernetes.io/managed-by: nephmesh-catalog

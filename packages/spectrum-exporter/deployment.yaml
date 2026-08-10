@@ -1,0 +1,104 @@
+# Copyright 2026 The NephMesh Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# The exporter Deployment and its metrics Service. Receive-only and
+# simulation-first: it runs with -replay over a bundled sample sweep
+# (replay-sample.yaml), so it publishes real per-band metrics in a cluster with
+# no SDR, the same posture as the mesh gateway's --sim node. The real-SDR sensor
+# path needs host USB access (a hostPath/device the manifest security gate
+# rightly forbids here) and runs outside this package; see the README.
+#
+# Hardened like the operator: non-root, no privilege escalation, all
+# capabilities dropped, read-only root filesystem, RuntimeDefault seccomp, and
+# no service-account token (the exporter talks to no API).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spectrum-exporter
+  labels:
+    app.kubernetes.io/name: spectrum-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spectrum-exporter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: spectrum-exporter
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: exporter
+          # Placeholder tag until a release publishes the image to a registry
+          # with a digest (see operators/meshtastic-operator/cmd/spectrum-exporter/Dockerfile).
+          image: ghcr.io/blisspixel/nephmesh-spectrum-exporter:v0.4.0
+          args:
+            - -bind=:9808
+            # Simulation-first: replay a recorded sweep instead of a radio. Swap
+            # for the live sensor path on a host with the SDR attached.
+            - -replay=/etc/nephmesh/sample-sweep.csv
+            - -interval=15s
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - {name: metrics, containerPort: 9808}
+          livenessProbe:
+            httpGet: {path: /healthz, port: metrics}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          readinessProbe:
+            httpGet: {path: /healthz, port: metrics}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: replay
+              mountPath: /etc/nephmesh
+              readOnly: true
+      volumes:
+        - name: replay
+          configMap:
+            name: spectrum-exporter-replay
+---
+# ClusterIP only: sensed spectrum is telemetry, but the project keeps every
+# workload surface cluster-internal by default (the manifest gate forbids
+# NodePort/LoadBalancer). Prometheus reaches it through the ServiceMonitor.
+apiVersion: v1
+kind: Service
+metadata:
+  name: spectrum-exporter
+  labels:
+    app.kubernetes.io/name: spectrum-exporter
+spec:
+  selector:
+    app.kubernetes.io/name: spectrum-exporter
+  ports:
+    - name: metrics
+      port: 9808
+      targetPort: metrics

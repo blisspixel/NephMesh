@@ -1,0 +1,89 @@
+# Copyright 2026 The NephMesh Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Report-only alert rules over the sensed-spectrum metrics. These raise a signal
+# for a human; nothing here actuates a radio or changes config. The exporter is
+# receive-only and the mesh does not auto-respond to a band being busy, matching
+# the closed-loop rule in docs/security/threat-model.md: an observation may
+# inform a reviewed proposal, never an unattended action.
+#
+# The `release` label mirrors the ServiceMonitor so the same Prometheus selects
+# these rules; adjust to your install (see servicemonitor.yaml). Requires the
+# monitoring.coreos.com CRDs and is ignored on a cluster without them.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: spectrum-exporter
+  # A placeholder namespace so set-namespace rewrites it to the per-clone
+  # namespace (the mutator only touches custom resources that already carry one).
+  namespace: nephmesh-placeholder
+  labels:
+    app.kubernetes.io/name: spectrum-exporter
+    role: alert-rules
+    release: prometheus
+spec:
+  groups:
+    - name: nephmesh-spectrum
+      rules:
+        # No sensor is reporting at all. Distinct from "stale": the metric is
+        # entirely absent, so a sensor was never up or its scrape target is gone.
+        - alert: SpectrumExporterAbsent
+          expr: absent(nephmesh_spectrum_sweeps_total)
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: No spectrum sensor is reporting
+            description: >-
+              nephmesh_spectrum_sweeps_total is absent for 10m. The receive-only
+              spectrum exporter is not being scraped, so there is no view of the
+              RF environment.
+        # A sensor is scraped but its last successful sweep is old: the capture
+        # or parse loop stalled while the process kept serving stale gauges.
+        - alert: SpectrumSweepStale
+          expr: time() - nephmesh_spectrum_last_sweep_timestamp_seconds > 300
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Spectrum sweeps have gone stale
+            description: >-
+              No successfully published sweep for over 5 minutes on
+              {{ $labels.instance }}. The sweep tool or SDR may have stopped;
+              the published occupancy no longer reflects the current air.
+        # Sweeps are failing to capture or parse (SDR unplugged, tool error).
+        - alert: SpectrumSweepErrors
+          expr: rate(nephmesh_spectrum_sweep_errors_total[15m]) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: Spectrum sweeps are failing
+            description: >-
+              nephmesh_spectrum_sweep_errors_total is climbing on
+              {{ $labels.instance }} over the last 15m. The sweep tool is
+              erroring or producing no output.
+        # A band is sustained-busy. Informational: a human decides whether this
+        # warrants a reviewed channel change; the system does not act on it.
+        - alert: SpectrumBandCongested
+          expr: nephmesh_spectrum_occupancy_percent > 50
+          for: 15m
+          labels:
+            severity: info
+          annotations:
+            summary: Band {{ $labels.band }} is sustained-busy
+            description: >-
+              Occupancy on {{ $labels.band }} has held above 50% for 15m
+              ({{ $value | printf "%.0f" }}%). This is a report-only signal for
+              human review, not an automated trigger.

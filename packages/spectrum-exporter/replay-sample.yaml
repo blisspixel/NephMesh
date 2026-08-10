@@ -1,0 +1,33 @@
+# Copyright 2026 The NephMesh Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# A representative hackrf_sweep capture for the simulation-first Deployment.
+# Format (rtl_power / hackrf_sweep): date, time, hz_low, hz_high, hz_bin_width,
+# num_samples, then one dB value per bin from hz_low upward. This models a quiet
+# US 915 MHz ISM band (noise near -95 dB) with a strong LONG_FAST emitter around
+# 907 MHz and a weaker one near 916 MHz, so the exporter publishes non-trivial
+# but sub-alert occupancy with no radio attached. Replace with your own recorded
+# sweep to demo a different scene.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spectrum-exporter-replay
+  labels:
+    app.kubernetes.io/name: spectrum-exporter
+data:
+  sample-sweep.csv: |
+    2026-08-08, 12:00:00, 902000000, 908000000, 1000000, 20, -94.2, -93.1, -95.4, -92.7, -60.3, -52.1
+    2026-08-08, 12:00:00, 908000000, 914000000, 1000000, 20, -95.1, -94.6, -96.0, -93.8, -95.2, -94.1
+    2026-08-08, 12:00:00, 914000000, 920000000, 1000000, 20, -95.3, -94.0, -75.4, -93.1, -95.8, -94.2
+    2026-08-08, 12:00:00, 920000000, 928000000, 1000000, 20, -95.0, -94.3, -96.1, -93.7, -95.5, -94.8, -95.9, -94.4
