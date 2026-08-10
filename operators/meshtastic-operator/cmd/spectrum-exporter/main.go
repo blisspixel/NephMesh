@@ -57,6 +57,7 @@ func main() {
 		sweepSecs = flag.Int("sweep-seconds", 3, "integrate each sweep for this many seconds (0 = single pass)")
 		marginDB  = flag.Float64("margin-db", spectrum.DefaultOptions().ThresholdMarginDB, "dB above the noise floor a bin must be to count as occupied")
 		noisePct  = flag.Float64("noise-percentile", spectrum.DefaultOptions().NoiseFloorPercentile, "per-band noise-floor percentile (0..100)")
+		replay    = flag.String("replay", "", "read this sweep CSV file each interval instead of running the sweep tool (simulation-first: publish real metrics with no SDR attached)")
 		once      = flag.Bool("once", false, "run a single sweep, print /metrics to stdout, and exit")
 	)
 	flag.Parse()
@@ -67,8 +68,18 @@ func main() {
 	reg := prometheus.NewRegistry()
 	pub := specexport.New(reg)
 
+	// capture returns one sweep's CSV, either replayed from a recorded file
+	// (simulation-first: a real metrics source with no radio, mirroring the mesh
+	// gateway's --sim node) or read live from the sweep tool on a sensor host.
+	capture := func() ([]byte, error) {
+		if *replay != "" {
+			return os.ReadFile(*replay)
+		}
+		return runSweep(*sweepCmd, *freqMin, *freqMax, *binWidth, *sweepSecs)
+	}
+
 	sweep := func() {
-		data, err := runSweep(*sweepCmd, *freqMin, *freqMax, *binWidth, *sweepSecs)
+		data, err := capture()
 		if err != nil || len(data) == 0 {
 			log.Printf("sweep failed: %v (%d bytes)", err, len(data))
 			pub.PublishError()
@@ -96,8 +107,12 @@ func main() {
 	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 	srv := &http.Server{Addr: *bind, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	source := fmt.Sprintf("sweeping %d-%d MHz", *freqMin, *freqMax)
+	if *replay != "" {
+		source = "replaying " + *replay
+	}
 	go func() {
-		log.Printf("spectrum-exporter serving on %s, sweeping %d-%d MHz every %s", *bind, *freqMin, *freqMax, *interval)
+		log.Printf("spectrum-exporter serving on %s, %s every %s (receive-only)", *bind, source, *interval)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("serve: %v", err)
 		}

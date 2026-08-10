@@ -154,11 +154,29 @@ each labelled by band. Watch `peak_dbm` to see a transmitter come and go;
 `occupancy_percent` for how busy the whole band is. A band the sweep did not
 cover reports `bins=0` and no occupancy value, so a gap is never a false zero.
 
+### In-cluster: scrape it with Prometheus
+
+The `packages/spectrum-exporter` kpt package puts these metrics on the cluster's
+Prometheus. It ships a hardened, receive-only Deployment plus a `ServiceMonitor`
+so the Prometheus Operator scrapes it, and a `PrometheusRule` with report-only
+alerts (no sensor reporting, stale sweeps, sweep errors, a band sustained-busy).
+Nothing in it actuates a radio; the alerts raise a signal for human review.
+
+Like the mesh-gateway node, the shipped Deployment is simulation-first: it runs
+with `-replay` over a bundled sample sweep, so it publishes the same
+`nephmesh_spectrum_*` series with no SDR attached. That makes the whole Prometheus
+wiring provable in a `kind` cluster at `$0`, and it lets the package pass the
+manifest security gate (a live sweep needs host USB access, which the gate rightly
+forbids in a shipped manifest). The real-SDR sensor runs the exporter directly on
+the sensor host as above; see `packages/spectrum-exporter/README.md` for the two
+install-specific selector knobs (`release` label and namespace discovery) and the
+real-sensor path.
+
 ## Scope
 
 This is sensing (is the band busy, and how busy), not classification (busy with
-what: my mesh, another network, or a jammer). Classification, direction finding,
-and a Prometheus exporter for the per-band gauges are later work; see
+what: my mesh, another network, or a jammer). Classification and direction finding
+are later work; see
 `docs/research/spectrum-classification.md` and
 `docs/research/sdr-spectrum-sensing.md`. Nothing here transmits, and the transmit
 interlock (`hack/check-transmit.sh`) keeps it that way.

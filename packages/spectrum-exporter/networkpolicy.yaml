@@ -1,0 +1,48 @@
+# Copyright 2026 The NephMesh Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Bounds for the exporter pod. It talks to no cluster service (it reads a local
+# sweep, or a local recorded file in -replay mode), so egress is limited to DNS
+# for hygiene and ingress is limited to the metrics port. Requires a
+# policy-enforcing CNI.
+#
+# Ingress rule note: the metrics port is allowed from any source rather than only
+# the monitoring namespace on purpose. /metrics and /healthz are read-only
+# telemetry, not the unauthenticated control surface the threat model isolates
+# (the device API and MQTT live in other packages behind their own policies), and
+# allowing the port broadly keeps the kubelet's liveness and readiness probes
+# working regardless of CNI. To tighten to Prometheus only, replace the ingress
+# `from` with a namespaceSelector on your monitoring namespace, and confirm your
+# CNI still permits node-sourced probes.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: spectrum-exporter
+  labels:
+    app.kubernetes.io/name: spectrum-exporter
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: spectrum-exporter
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - ports:
+        - {protocol: TCP, port: 9808}
+  egress:
+    # DNS only. The exporter initiates no other connections.
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}

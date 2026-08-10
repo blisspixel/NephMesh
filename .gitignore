@@ -27,9 +27,13 @@ hack/deepr-*.sh
 # Windows crash dumps
 *.stackdump
 
-# Built binaries (build with -o to a scratch dir)
+# Built binaries (build with -o to a scratch dir). Anchored to the module root
+# so an accidental in-module `go build` is ignored without also matching the
+# same-named source directories (cmd/<tool>, packages/<tool>), which a bare
+# name would swallow (and which --exclude-standard would then hide from the
+# gates).
 *.exe
-nephmeshctl
-nephmesh-mcp
-spectrum-exporter
-reconcile-demo
+/operators/meshtastic-operator/nephmeshctl
+/operators/meshtastic-operator/nephmesh-mcp
+/operators/meshtastic-operator/spectrum-exporter
+/operators/meshtastic-operator/reconcile-demo
