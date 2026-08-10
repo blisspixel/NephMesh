@@ -39,7 +39,7 @@ sudo apt-get update
 sudo apt-get install -y \
     gnuradio gnuradio-dev \
     gr-osmosdr soapysdr-tools soapysdr-module-hackrf libhackrf-dev \
-    cmake build-essential pkg-config git \
+    cmake build-essential pkg-config git python3-pip \
     libsndfile1-dev liblog4cpp5-dev libgmp-dev
 
 log "Verifying GNU Radio and the HackRF source"
@@ -64,13 +64,24 @@ done
 GR_PYVER="$("$GR_PYTHON" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
 echo "GNU Radio uses ${GR_PYTHON} (Python ${GR_PYVER})"
 
-# The pybind11 bindings need that Python's dev headers. Install them if the
-# system default differs from GNU Radio's Python and its headers are missing.
+# gr-lora_sdr needs that Python's dev headers to compile the bindings.
 if [ ! -f "/usr/include/python${GR_PYVER}/Python.h" ]; then
     log "Installing python${GR_PYVER}-dev headers (sudo)"
     sudo apt-get install -y "python${GR_PYVER}-dev" \
         || die "gr-lora_sdr needs headers for Python ${GR_PYVER} (the one GNU Radio uses); install python${GR_PYVER}-dev"
 fi
+
+# Use a pip pybind11 matched to GNU Radio's Python rather than the system
+# pybind11-dev: the apt pybind11 cmake config can hardcode the include path of
+# whatever Python was default when it was installed (e.g. a 3.11 path on a box
+# where GNU Radio uses 3.10), which then fails to configure. A pip pybind11
+# resolves the actual interpreter and library at configure time.
+log "Installing a pybind11 matched to ${GR_PYTHON}"
+"$GR_PYTHON" -m pip install --user --quiet pybind11 \
+    || die "could not pip install pybind11 for ${GR_PYTHON} (is python3-pip installed?)"
+PYBIND11_DIR="$("$GR_PYTHON" -c 'import pybind11; print(pybind11.get_cmake_dir())')" \
+    || die "pybind11 installed but not importable under ${GR_PYTHON}"
+echo "using pybind11 cmake dir: ${PYBIND11_DIR}"
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -80,14 +91,13 @@ git clone --depth 1 --branch "${GR_LORA_REF}" https://github.com/tapparelj/gr-lo
     || die "clone gr-lora_sdr failed; check the ref at https://github.com/tapparelj/gr-lora_sdr"
 mkdir -p "$WORK/gr-lora_sdr/build"
 cd "$WORK/gr-lora_sdr/build"
-# Pin the Python (both the modern and legacy cmake variables) and make pybind11
-# use FindPython, so it locates the real headers instead of a hardcoded path
-# that may point at a Python whose dev package is not installed.
+# Pin the interpreter (modern and legacy cmake variables) and point at the pip
+# pybind11 so the bindings compile against the same Python GNU Radio uses.
 cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local \
+    -DPYTHON_EXECUTABLE="$GR_PYTHON" \
     -DPython_EXECUTABLE="$GR_PYTHON" \
     -DPython3_EXECUTABLE="$GR_PYTHON" \
-    -DPYTHON_EXECUTABLE="$GR_PYTHON" \
-    -DPYBIND11_FINDPYTHON=ON >/dev/null
+    -Dpybind11_DIR="$PYBIND11_DIR" >/dev/null
 make -j"$(nproc)"
 log "Installing gr-lora_sdr (sudo)"
 sudo make install
