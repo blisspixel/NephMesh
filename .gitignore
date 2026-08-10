@@ -26,3 +26,10 @@ hack/deepr-*.sh
 
 # Windows crash dumps
 *.stackdump
+
+# Built binaries (build with -o to a scratch dir)
+*.exe
+nephmeshctl
+nephmesh-mcp
+spectrum-exporter
+reconcile-demo
