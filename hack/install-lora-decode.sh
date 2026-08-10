@@ -71,14 +71,22 @@ if [ ! -f "/usr/include/python${GR_PYVER}/Python.h" ]; then
         || die "gr-lora_sdr needs headers for Python ${GR_PYVER} (the one GNU Radio uses); install python${GR_PYVER}-dev"
 fi
 
-# Use a pip pybind11 matched to GNU Radio's Python rather than the system
-# pybind11-dev: the apt pybind11 cmake config can hardcode the include path of
-# whatever Python was default when it was installed (e.g. a 3.11 path on a box
-# where GNU Radio uses 3.10), which then fails to configure. A pip pybind11
-# resolves the actual interpreter and library at configure time.
-log "Installing a pybind11 matched to ${GR_PYTHON}"
-"$GR_PYTHON" -m pip install --user --quiet pybind11 \
-    || die "could not pip install pybind11 for ${GR_PYTHON} (is python3-pip installed?)"
+# Use a pip pybind11 rather than the system pybind11-dev, but pinned to the SAME
+# version GNU Radio was built with. Two problems it solves at once: the apt
+# pybind11 cmake config can hardcode the include path of whatever Python was
+# default when it was installed (failing to configure on a box where GNU Radio
+# uses a different Python); and pybind11's cross-module type registry is
+# version-specific, so a mismatched pybind11 makes the module install but fail to
+# import ("referenced unknown base type gr::block"). The version is read from the
+# system pybind11 headers GNU Radio uses, so this matches on any machine.
+PB_HDR="/usr/include/pybind11/detail/common.h"
+PB_VER=""
+if [ -f "$PB_HDR" ]; then
+    PB_VER="$(awk '/define PYBIND11_VERSION_MAJOR/{a=$3} /define PYBIND11_VERSION_MINOR/{b=$3} /define PYBIND11_VERSION_PATCH/{c=$3} END{if(a!="")print a"."b"."c}' "$PB_HDR")"
+fi
+log "Installing a pybind11 matched to GNU Radio's ABI${PB_VER:+ (version ${PB_VER})}"
+"$GR_PYTHON" -m pip install --user --quiet "pybind11${PB_VER:+==$PB_VER}" \
+    || die "could not pip install pybind11${PB_VER:+==$PB_VER} for ${GR_PYTHON} (is python3-pip installed?)"
 PYBIND11_DIR="$("$GR_PYTHON" -c 'import pybind11; print(pybind11.get_cmake_dir())')" \
     || die "pybind11 installed but not importable under ${GR_PYTHON}"
 echo "using pybind11 cmake dir: ${PYBIND11_DIR}"
