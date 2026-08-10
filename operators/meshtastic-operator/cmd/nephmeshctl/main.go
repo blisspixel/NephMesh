@@ -40,6 +40,7 @@ import (
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/airtime"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/meshframe"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/plan"
+	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/resilience"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/spectrum"
 )
 
@@ -76,6 +77,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runAdvise(args[1:], stdin, stdout, stderr)
 	case "decode":
 		return runDecode(args[1:], stdin, stdout, stderr)
+	case "resilience":
+		return runResilience(args[1:], stdin, stdout, stderr)
 	case "-h", "--help", "help":
 		usage(stdout)
 		return exitOK
@@ -377,6 +380,64 @@ func readInput(path string, stdin io.Reader) ([]byte, error) {
 	return os.ReadFile(path)
 }
 
+func runResilience(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("resilience", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	file := fs.String("f", "-", "delivery-probe event log (JSONL from demo/resilience/probe.py); - is stdin")
+	at := fs.Float64("at", 0, "perturbation time, Unix seconds: messages sent before it are compared against those after")
+	tolerance := fs.Float64("tolerance", 0.1, "largest before-minus-after delivery-ratio drop still counted as unchanged")
+	receiversCSV := fs.String("receivers", "", "comma-separated receiver nodes; inferred from the log when empty")
+	format := fs.String("o", "text", "output format: json or text")
+	fs.Usage = func() {
+		fprintln(stderr, "usage: nephmeshctl resilience -at UNIXTIME [-f file] [-tolerance F] [-receivers list] [-o json|text]")
+		fprintln(stderr, "  Reduce a delivery-probe log to a before/after verdict around a perturbation")
+		fprintln(stderr, "  (a killed management plane, a killed node, a congested channel). See demo/resilience.")
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return exitOK
+		}
+		return exitUsage
+	}
+	if *format != "json" && *format != "text" {
+		fprintf(stderr, "invalid -o %q: want json or text\n", *format)
+		return exitUsage
+	}
+	if *at <= 0 {
+		fprintln(stderr, "set -at to the perturbation time (Unix seconds)")
+		return exitUsage
+	}
+
+	data, err := readInput(*file, stdin)
+	if err != nil {
+		fprintf(stderr, "read probe log: %v\n", err)
+		return exitUsage
+	}
+	events, err := resilience.ParseEvents(bytes.NewReader(data))
+	if err != nil {
+		fprintf(stderr, "parse probe log: %v\n", err)
+		return exitUsage
+	}
+	var receivers []string
+	if *receiversCSV != "" {
+		receivers = splitCSV(*receiversCSV)
+	}
+	report := resilience.Reduce(events, *at, *tolerance, receivers)
+
+	if *format == "text" {
+		fprint(stdout, report.Text())
+		return exitOK
+	}
+	enc := json.NewEncoder(stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(report); err != nil {
+		fprintf(stderr, "encode: %v\n", err)
+		return exitUsage
+	}
+	return exitOK
+}
+
 func usage(w io.Writer) {
 	fprintln(w, "nephmeshctl: the NephMesh command-line interface")
 	fprintln(w, "")
@@ -385,6 +446,7 @@ func usage(w io.Writer) {
 	fprintln(w, "  nephmeshctl spectrum [-f file] [-o json|text]   reduce an SDR sweep to per-band occupancy")
 	fprintln(w, "  nephmeshctl advise [-f file] [-model M]          ask a local LLM to propose a report-only action")
 	fprintln(w, "  nephmeshctl decode [-f file]                     read Meshtastic packet headers off decoded LoRa payloads")
+	fprintln(w, "  nephmeshctl resilience -at T [-f file]           split a delivery-probe log at a perturbation, before vs after")
 	fprintln(w, "")
 	fprintln(w, "plan reads a CommunicationIntent (the same document you would apply to a")
 	fprintln(w, "cluster) and reports feasibility, the selected preset, fleet airtime, and the")
