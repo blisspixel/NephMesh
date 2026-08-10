@@ -72,19 +72,58 @@ Two gotchas the scripts encode, both learned the hard way:
 - On Git Bash, `MSYS_NO_PATHCONV=1` is required so an in-container path argument
   (`-d /var/lib/meshtasticd`) is not rewritten into a Windows path.
 
-## What this is for, and what is next
+## Control-plane independence, demonstrated
 
-This is brick one of the mission-1.0 direction: a measurement instrument, so
-"resilient" stops being asserted and starts being shown. The scenarios it unlocks,
-in order:
+The README's load-bearing claim is that NephMesh is a management layer, not a
+runtime dependency: the mesh keeps carrying traffic even when the cluster and its
+site are gone. `independence.sh` shows it with a number rather than asserting it.
 
-1. **Control-plane independence.** Configure the fleet through the operator, begin
-   measuring, then kill the management plane (the operator, then the whole cluster)
-   and show the delivery ratio is unchanged. This is the README's load-bearing claim,
-   currently asserted, not demonstrated.
-2. **Survival under degradation.** Congest or jam the channel, sense it through the
-   SDR pillar, adapt the mesh (relocate the preset), and show delivery recover, all
-   measured.
+```sh
+sh demo/resilience/independence.sh
+```
+
+It brings up the mesh, has the operator's real reconcile loop (the same `Converge`
+state machine the controller runs) configure a node over its API, measures delivery
+while destroying the management plane mid-run, and reduces the log to a before/after
+verdict with `nephmeshctl resilience`.
+
+Captured run (2026-08-10):
+
+```
+3/5 Operator configures sim1 (the management plane manages the mesh)
+  step 1  reachable=true  inSync=false rebootPending=true  ready=false  <- applied drift, device rebooting
+  step 2  reachable=true  inSync=true  rebootPending=false ready=true   <- converged
+converged: node !6e000001, config in sync, Ready=true
+
+4/5 Measure delivery, then destroy the management plane mid-run
+  perturbation at t=...: destroying the management plane (operator + its host)
+
+5/5 Verdict
+control-plane-independence report (receivers: sim2, sim3)
+  before delivery 100.0% (24/24), latency p50 277 ms, max 439 ms
+  after  delivery 100.0% (24/24), latency p50 341 ms, max 538 ms
+  verdict: mesh kept delivering across the perturbation (management plane gone, traffic unaffected)
+```
+
+The operator genuinely managed the node (it applied drift, the device rebooted, and
+it re-verified to `Ready`), and the mesh delivered 100% both before and after the
+management plane was destroyed. Honest reading: because the data plane (UDP
+multicast) never depended on the operator, this operationalizes the claim, turning
+it from asserted into shown, rather than uncovering a hidden dependency. That is
+exactly what the roadmap asks for: until it runs, "resilient" is asserted, not
+shown.
+
+The verdict logic is pure and unit-tested (`internal/resilience`, exposed as
+`nephmeshctl resilience -at <perturbation-time> -f <probe-log>`): it splits the
+probe's event log at the perturbation and reports delivery ratio and latency before
+and after, so any run, not just this one, is judged the same way.
+
+## What is next
+
+The next scenario on this substrate: **survival under degradation.** Congest or jam
+the channel, sense it through the SDR pillar, adapt the mesh (relocate the preset),
+and show delivery recover, all measured. Then the safety-kernel slice that lets that
+adaptation run with no human, which is the self-adapting fabric earned honestly.
 
 ## Honest scope
 
