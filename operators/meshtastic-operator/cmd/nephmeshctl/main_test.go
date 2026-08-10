@@ -130,6 +130,31 @@ func TestSpectrumHelpExitsZero(t *testing.T) {
 	assert.Equal(t, exitOK, code)
 }
 
+const packetHex = "ffffffff2c5f3a0c7856341263080000dead"
+
+func TestDecodeParsesPacket(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	code := run([]string{"decode", "-o", "text"}, strings.NewReader(packetHex+"\n"), &out, &errBuf)
+	require.Equal(t, exitOK, code, "stderr: %s", errBuf.String())
+	assert.Contains(t, out.String(), "from !0c3a5f2c")
+	assert.Contains(t, out.String(), "to ^all")
+}
+
+func TestDecodeToleratesPrefixAndWhitespace(t *testing.T) {
+	// Uppercase 0X prefix and tab/space separated bytes must still parse.
+	in := "0Xffffffff\t2c5f3a0c 78563412 63080000\n# a comment\n\n"
+	var out, errBuf bytes.Buffer
+	code := run([]string{"decode", "-o", "text"}, strings.NewReader(in), &out, &errBuf)
+	require.Equal(t, exitOK, code, "stderr: %s", errBuf.String())
+	assert.Contains(t, out.String(), "from !0c3a5f2c")
+}
+
+func TestDecodeNoValidPacketsIsUsageError(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	code := run([]string{"decode"}, strings.NewReader("not hex\nzz\n"), &out, &errBuf)
+	assert.Equal(t, exitUsage, code)
+}
+
 func TestHelp(t *testing.T) {
 	var out, errBuf bytes.Buffer
 	code := run([]string{"help"}, strings.NewReader(""), &out, &errBuf)

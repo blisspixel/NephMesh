@@ -75,6 +75,16 @@ func TestParseHandlesFencedAndProseWrappedJSON(t *testing.T) {
 	assert.Equal(t, ConfidenceMedium, rec.Confidence)
 }
 
+func TestParseHandlesBracesInProseBeforeJSON(t *testing.T) {
+	// The model wraps the answer in prose that itself contains braces before the
+	// real object; the extractor must skip the stray braces and find the JSON.
+	in := `The options are {change} or {hold}. My answer: {"action":"hold","rationale":"quiet","confidence":"high"}`
+	rec, err := parseRecommendation(in, nil)
+	require.NoError(t, err)
+	assert.Equal(t, ActionHold, rec.Action)
+	assert.Equal(t, ConfidenceHigh, rec.Confidence)
+}
+
 func TestChangePresetToApprovedIsKept(t *testing.T) {
 	reply := `{"action":"change_preset","targetPreset":"MEDIUM_SLOW","rationale":"reduce airtime","confidence":"medium"}`
 	rec, err := parseRecommendation(reply, []string{"LONG_FAST", "MEDIUM_SLOW"})

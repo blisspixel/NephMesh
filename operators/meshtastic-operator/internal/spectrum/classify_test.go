@@ -90,6 +90,40 @@ func TestClassifyWidebandEmission(t *testing.T) {
 	assert.GreaterOrEqual(t, em[0].BandwidthHz, 1.5e6)
 }
 
+func TestClassifyGroupsWidebandOnACoarseGrid(t *testing.T) {
+	// The same wideband emitter sampled on a 2 MHz grid must still group into one
+	// emission. A fixed 1.6 MHz adjacency ceiling would split it into single bins;
+	// the grid step is inferred from the sweep instead.
+	series := []BinSeries{
+		bin(904e6, 100, 0, 0),
+		bin(910e6, 100, 90, -25),
+		bin(912e6, 100, 90, -25),
+		bin(914e6, 100, 90, -25),
+		bin(916e6, 100, 90, -25),
+		bin(922e6, 100, 0, 0),
+	}
+	em := Classify(series, band915, DefaultClassifyOptions())
+	require.Len(t, em, 1, "the coarse-grid emitter is one emission, not four")
+	assert.Equal(t, ClassWideband, em[0].Class)
+	assert.InDelta(t, 6e6, em[0].BandwidthHz, 1)
+}
+
+func TestClassifyDetectsWidebandAgainstQuietBins(t *testing.T) {
+	// A wideband emitter over part of the band, with quiet bins remaining as a
+	// reference, is detected. (A signal covering the whole band leaves no
+	// reference and is a documented limit, not tested here.)
+	var series []BinSeries
+	for f := 903e6; f < 916e6; f += 1e6 { // ~13 contiguous bins, always on
+		series = append(series, bin(f, 100, 100, -25))
+	}
+	for f := 918e6; f < 928e6; f += 1e6 { // quiet reference bins
+		series = append(series, bin(f, 100, 0, 0))
+	}
+	em := Classify(series, band915, DefaultClassifyOptions())
+	require.NotEmpty(t, em)
+	assert.Equal(t, ClassWideband, em[0].Class)
+}
+
 func TestClassifyIdleBandHasNoEmissions(t *testing.T) {
 	series := []BinSeries{
 		bin(904e6, 100, 0, 0),

@@ -303,9 +303,16 @@ func runDecode(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	enc.SetIndent("", "  ")
 	seen := 0
 	for _, line := range strings.Split(string(data), "\n") {
-		hexStr := strings.TrimPrefix(strings.TrimSpace(line), "0x")
-		hexStr = strings.ReplaceAll(hexStr, " ", "")
-		if hexStr == "" || strings.HasPrefix(hexStr, "#") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		// Remove all internal whitespace (spaces and tabs) and an optional 0x/0X
+		// prefix, so grouped, tab-separated, or prefixed hex all parse.
+		hexStr := strings.Join(strings.Fields(trimmed), "")
+		hexStr = strings.TrimPrefix(hexStr, "0x")
+		hexStr = strings.TrimPrefix(hexStr, "0X")
+		if hexStr == "" {
 			continue
 		}
 		raw, derr := hex.DecodeString(hexStr)

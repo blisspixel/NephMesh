@@ -142,22 +142,34 @@ type binFeature struct {
 // bandwidth and duty. A band with too little data yields no emissions rather than
 // a guess.
 func Classify(series []BinSeries, band Band, opts ClassifyOptions) []Emission {
-	// Band-wide noise floor from all in-band samples: a continuous carrier reads
-	// high against the band's quiet bins, which a per-bin floor (its own level)
-	// would miss entirely because a zero-variance signal is its own baseline.
-	var all []float64
 	inBand := make([]BinSeries, 0, len(series))
 	for _, s := range series {
 		if s.FreqHz < band.LowHz || s.FreqHz >= band.HighHz || len(s.Powers) == 0 {
 			continue
 		}
 		inBand = append(inBand, s)
-		all = append(all, s.Powers...)
 	}
-	if len(all) == 0 {
+	if len(inBand) == 0 {
 		return nil
 	}
-	threshold := percentile(all, opts.NoiseFloorPercentile) + opts.ThresholdMarginDB
+
+	// Band noise floor from per-bin quiet levels: each bin's own low percentile is
+	// its quiet baseline, and a low percentile across those bins is the band's
+	// noise floor. This is robust two ways at once. A zero-variance continuous
+	// carrier is still detected, because it reads high against the quiet bins
+	// (its own per-bin floor is high, but the floor is taken across bins). And a
+	// wideband emitter covering most of the band no longer hides itself: pooling
+	// every freq-by-time sample would let a signal that is the majority of the
+	// pool raise the percentile up into the signal, but taking the quiet level
+	// across bins keeps the reference at the still-quiet bins. The one case this
+	// cannot see is a continuous emitter covering the entire band at once, which
+	// leaves no in-band quiet reference at all; relative thresholding cannot
+	// detect that, and it is a documented limit.
+	perBinFloor := make([]float64, len(inBand))
+	for i, s := range inBand {
+		perBinFloor[i] = percentile(s.Powers, opts.NoiseFloorPercentile)
+	}
+	threshold := percentile(perBinFloor, opts.NoiseFloorPercentile) + opts.ThresholdMarginDB
 
 	feats := make([]binFeature, 0, len(inBand))
 	for _, s := range inBand {
@@ -179,6 +191,7 @@ func Classify(series []BinSeries, band Band, opts ClassifyOptions) []Emission {
 			present: duty >= opts.PresentDutyPercent,
 		})
 	}
+	step := gridStep(feats)
 	// feats are already frequency-sorted (series is). Group contiguous present
 	// bins into emissions.
 	var emissions []Emission
@@ -189,7 +202,7 @@ func Classify(series []BinSeries, band Band, opts ClassifyOptions) []Emission {
 			continue
 		}
 		j := i
-		for j+1 < len(feats) && feats[j+1].present && adjacent(feats[j].freqHz, feats[j+1].freqHz) {
+		for j+1 < len(feats) && feats[j+1].present && feats[j+1].freqHz-feats[j].freqHz <= 1.5*step {
 			j++
 		}
 		emissions = append(emissions, buildEmission(feats[i:j+1], opts))
@@ -198,14 +211,23 @@ func Classify(series []BinSeries, band Band, opts ClassifyOptions) []Emission {
 	return emissions
 }
 
-// adjacent reports whether two bin centers are neighbours in the sweep grid.
-// hackrf_sweep bins are evenly spaced; a gap wider than ~1.5 bin widths breaks a
-// run. The grid step is inferred from the two centers themselves.
-func adjacent(a, b float64) bool {
-	gap := math.Abs(b - a)
-	// Treat bins within 1.6 MHz as contiguous at the 1 MHz default grid; scale
-	// tolerates finer grids since it is an absolute ceiling, not a fixed step.
-	return gap <= 1_600_000
+// gridStep infers the sweep's bin spacing from the smallest positive gap between
+// consecutive in-band bins, so run-grouping works at any sweep resolution rather
+// than assuming a fixed 1 MHz grid (a coarser grid would otherwise break every
+// run into single bins). A lone bin has no spacing; default to 1 MHz. Runs are
+// then extended across bins within 1.5 grid steps, which tolerates one missing
+// bin but breaks on a real frequency gap.
+func gridStep(feats []binFeature) float64 {
+	step := math.MaxFloat64
+	for i := 1; i < len(feats); i++ {
+		if g := feats[i].freqHz - feats[i-1].freqHz; g > 0 && g < step {
+			step = g
+		}
+	}
+	if step == math.MaxFloat64 {
+		return 1_000_000
+	}
+	return step
 }
 
 func buildEmission(run []binFeature, opts ClassifyOptions) Emission {

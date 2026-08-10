@@ -175,13 +175,26 @@ func parseRecommendation(raw string, approved []string) (Recommendation, error) 
 	return rec, nil
 }
 
-// extractJSONObject returns the first balanced {...} run in s, tolerating code
-// fences and surrounding prose.
+// extractJSONObject returns the first balanced {...} run in s that is valid JSON,
+// tolerating code fences and surrounding prose, including prose that itself
+// contains braces before the real object (a model might write "either {a} or
+// {b}: {...}"). It tries each opening brace in turn and returns the first run
+// that parses, so stray braces do not shadow the real object.
 func extractJSONObject(s string) string {
-	start := strings.IndexByte(s, '{')
-	if start < 0 {
-		return ""
+	for start := 0; start < len(s); start++ {
+		if s[start] != '{' {
+			continue
+		}
+		if run := balancedFrom(s, start); run != "" && json.Valid([]byte(run)) {
+			return run
+		}
 	}
+	return ""
+}
+
+// balancedFrom returns the substring from start through the matching close brace,
+// ignoring braces inside strings and honoring escapes, or "" if unbalanced.
+func balancedFrom(s string, start int) string {
 	depth := 0
 	inStr := false
 	esc := false
