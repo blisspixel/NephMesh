@@ -110,6 +110,27 @@ Research-only for now (track, do not build yet):
 
 The pattern is consistent with the project's posture: lead with deterministic logic over data you already have, add the cheapest independent physical signal next, and treat the probabilistic physical-layer methods as corroborators that raise or lower confidence rather than as authenticators.
 
+## Hardware attempt log: over-the-air Meshtastic decode (2026-08, partial, parked)
+
+This section records an actual hardware attempt honestly, as a partial and mostly negative result, so the finding is resumable and not overstated. It does not change the ordering above: full frame decode remains item 3, behind the two cheap logic detectors, exactly as this document already recommended.
+
+What was built and is proven (CI-green, in the tree behind tests):
+
+- A Meshtastic clear-text packet-header parser (`internal/meshframe`, 100 percent covered) and a `nephmeshctl decode` subcommand that reads payload hex into who-sent-what-to-whom. Verified against a known node id.
+- A portable receive-only decode toolchain: `hack/install-lora-decode.sh` builds GNU Radio, the HackRF source, and `gr-lora_sdr` for whatever Python GNU Radio actually uses, and `hack/lora-decode.py` is a receive-only `gr-lora_sdr` RX flowgraph parameterized entirely by flags (so an RTL-SDR works as well as a HackRF). Three real portability bugs were found and fixed along the way (Python selection, pybind11 ABI pinning, scheduler buffering). The module imports and the flowgraph runs clean on the Jetson.
+- The SDR already witnesses the mesh at the energy and occupancy layer on real hardware: the sensed peak tracked a commanded preset change and the airtime model agreed across three independent measurements. That is the honest, shipped form of "the SDR as an independent witness." It reads that a transmission happened, not its contents.
+
+What did not land: over-the-air `gr-lora_sdr` frame lock on the live Meshtastic signal. After confirming the PHY parameters against firmware (SF11, BW 250 kHz, CR 4/5, explicit header, CRC on, preamble 16, sync word 0x2b, which `gr-lora_sdr` maps to net-id symbols [16, 88]) and confirming the flowgraph is structurally correct, the likely root cause is a carrier-frequency offset beyond the receiver's capture range. `frame_sync` corrects CFO only within roughly plus or minus BW/2 (about 125 kHz), but the signal was consistently measured at about 907.206 MHz while the decoder was tuned to the computed LONG_FAST default of 906.875 MHz, an offset of about 331 kHz. That is larger than the capture range and larger than plausible crystal error, so preamble energy is present but lock never occurs, which is consistent with every sync-word and preamble variant failing identically.
+
+Resume recipe, if this is ever picked up (kept so the time already spent is not lost):
+
+1. Wire a lock indicator first. Put a `blocks.tag_debug` (or a counting sink) on the `frame_sync` to `fft_demod` link and set `header_decoder(print_header=True)`, so "no lock" is distinguished from "no decode" instead of conflated.
+2. Remove the frequency offset. Tune to the measured center (about 907.2 MHz) rather than the theoretical default, or tune slightly off and recenter digitally to also move the HackRF DC spike out of band. Sweep a small residual-CFO range if needed.
+3. Simplify the rate path. Sample at 2 MHz and use `os_factor=8` (8 times 250 kHz) with no resampler, rather than decimating to 1 MHz with `os_factor=4`.
+4. Bisect with a loopback and a cross-check oracle. Feed `gr-lora_sdr`'s own TX flowgraph output into this RX to prove the instantiation; and decode the same recorded IQ with SDRangel's ChirpChat demod (scriptable via its REST API) as an independent confirmation that the capture is decodable.
+
+Why it is parked rather than finished: it is off every committed path (it maps only to item 3 here, which this document already places behind the cheap detectors), it does not move the project's load-bearing unproven claim (control-plane independence), and a live retry needs coordinated two-machine transmit-and-capture over a remote link, which is high-variance work for a corroborating witness. The energy-layer witness is the real, shipped result; decode-layer witness is an open research fork, honestly negative so far. No user-facing feature depends on the parser or toolchain, so they stay as research artifacts and are not claimed in the README.
+
 ## How a detection would surface
 
 A detection is evidence, not an action. Concretely:
