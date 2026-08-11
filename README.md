@@ -44,7 +44,7 @@ Since 0.2.1 (unreleased, pre-alpha): the operator gained an intent layer above p
 |---|---|
 | [Roadmap](docs/roadmap.md) | Phased plan in dependency order, the version path to 1.0, and how much runs with zero hardware (most of it) |
 | [Design doctrine](docs/design/doctrine.md) | The design direction (mostly not built): intent as an outcome envelope, `MeshtasticNode` as a compiled artifact, airtime as a commons, and the honest boundaries. Read as a north star, not a feature list |
-| [North star](docs/design/north-star.md) and [road to safe autonomy](docs/design/road-to-safe-autonomy.md) | What the project could honestly become (a runnable safety case for resilient autonomy), and the gated, evidence-first build order that gets there without over-scoping |
+| [North star](docs/design/north-star.md) and [road to safe autonomy](docs/design/road-to-safe-autonomy.md) | What the project could honestly become (a runnable safety case for resilient autonomy), and the gated, evidence-first build order that gets there without over-scoping. See also [10x creative thinking](docs/design/10x-creative-thinking.md) for the first-principles framing (the surprise economy: shrink the demand, do not only ration it) |
 | [Decision records](docs/adr/) | The significant, hard-to-reverse decisions and why, in Context/Decision/Consequences form |
 | [FAQ](docs/faq.md) | The north star (a self-adapting multi-transport fabric), why Meshtastic first, secure private channels, power and autonomy, PACE/DIL, legality |
 | [Architecture](docs/architecture.md) | Components, the radio-driver seam, planned CRDs, data flows, design principles |
