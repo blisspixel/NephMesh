@@ -2,6 +2,8 @@
 
 Status: design direction only, gated by [ADR 0002](../adr/0002-signed-autonomy-and-rejoin-before-closed-loop.md), not shipped. Nothing described here is built; this document explores a shape and an order, so the eventual closed loop cannot be reduced to unguarded knob-turning.
 
+This note is the full design space. For the sequenced, gated build order and the decisive split between the minimal viable safety core (the veto, hard invariants, a minimal signed capsule, the typed action) and the research frontier (COSE/CBOR, Biscuit, the full five-state lease, rejoin, heavy formal machinery), read [`../design/road-to-safe-autonomy.md`](../design/road-to-safe-autonomy.md). Two corrections it makes to this note: build the kernel first against an in-memory struct (the wire format is last, not first, so a signed capsule never precedes the thing that reads it), and treat control barrier functions (section 5) as framing only, since there is no continuous LoRa-delivery model to write a barrier over; the real artifact is a discrete inductive invariant.
+
 This note develops five pieces named in the [design doctrine](../design/doctrine.md) and required by ADR 0002: the signed Intent Capsule, the degrading lease, the deterministic site steward, the independent Simplex-style safety kernel, and risk-tiered autonomy L0 to L4. It leans on outside precedent where precedent exists, and it tries to be honest about which precedents are mature and which parts of them would be overkill for tens to low hundreds of LoRa nodes.
 
 ## 1. Why signed autonomy and a safety kernel come before any closed loop

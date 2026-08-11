@@ -50,8 +50,18 @@ first:
   classification of local divergence, staged change plans, queue drainage under
   budget, and a new signed epoch that revokes the old one.
 
-The authority and rejoin state machine is a candidate for a small TLA+ or PlusCal
-model before implementation.
+The authority and lease state machine is not merely a candidate for a small TLA+ or
+PlusCal model; that model is a named precondition for enabling any autonomous L2
+action (see the gated build order in
+[`../design/road-to-safe-autonomy.md`](../design/road-to-safe-autonomy.md)). The
+kernel ships first as a pure `Decide` function against an in-memory struct, proven by
+an exhaustive bad-action battery; the model-checking gate proves the invariants
+(authority monotonicity, no ascent without a fresh capsule, hard invariants in every
+reachable state, kernel forward-invariance, non-blocking, epoch integrity) before L2
+turns on. Two design corrections carry into implementation: the kernel re-parses the
+capsule from raw signed bytes independently of the planner (a shared parse bug
+defeats Simplex separation), and the constitutional "never" invariants are provisioned
+constants outside the capsule, holding even when the capsule is absent or corrupt.
 
 ## Consequences
 
@@ -63,8 +73,17 @@ model before implementation.
   (domain-wide channel switch, credential rotation, steward election).
 - Learning, if it is ever added, starts in shadow mode and cannot expand its own
   authorization envelope or define a hard constraint.
-- This ADR is Proposed. It becomes Accepted when the capsule format and the safety
-  kernel ship, before any autonomous L2 action is enabled.
+- This ADR is Proposed. It becomes Accepted when the safety kernel ships as a pure,
+  fail-closed `Decide` function and the model-checking gate passes its invariants,
+  before any autonomous L2 action is enabled. Note the reordering: the kernel and its
+  proof come first; the signed wire format (COSE/CBOR) is deferred behind an explicit
+  unlock condition (capsules refreshing over the air), because a signed capsule with no
+  kernel to read it is dead weight. The evidence the kernel acts on is itself an attack
+  surface: model-checking secures authority, lease, epoch, and action-set integrity but
+  cannot vouch for evidence classification, so the safety claim is conditional, "given
+  faithful evidence, the kernel is safe," and the independent corroborator against the
+  RF-adjacent adversary is the envelope-authenticated delivery ratio, not the RF-derived
+  airtime or SDR signals.
 
 ## Alternatives considered
 

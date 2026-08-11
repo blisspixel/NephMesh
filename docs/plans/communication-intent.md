@@ -7,6 +7,19 @@ feasibility, emits proposed `MeshtasticNode`s and a `ChangePlan`, reports
 `IntentInfeasible` when it must, and never actuates a radio. The schema below is
 illustrative and explicitly not final.
 
+Honesty note on what shipped versus this plan: the report-only compiler that exists
+today renders and reports a feasibility verdict, but the shipped
+`CommunicationIntentSpec` carries region, approved presets, channels, expected
+traffic, and nodes, and has no `objectives` field. So the current `Feasible` means
+"renderable" (a known preset, at least one node), not "objectives achievable", and
+the stronger `IntentInfeasible` this plan describes (physics forbids an objective) is
+not yet computed. Closing that gap is small and closes the assurance loop in one move:
+add `objectives` (minDeliveryRatio, maxMessageAge) here, and a measured
+`IntentInfeasible` becomes a comparison of those against the delivery ratio and
+latency the resilience harness already measures. See
+[`../design/road-to-safe-autonomy.md`](../design/road-to-safe-autonomy.md) sections
+2 and 5.2.
+
 ## 1. The reframe: why `MeshtasticNode` becomes a compiled artifact
 
 The operator shipped in 0.2.0 reconciles a device to a fixed desired
