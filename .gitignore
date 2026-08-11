@@ -37,3 +37,7 @@ hack/deepr-*.sh
 /operators/meshtastic-operator/nephmesh-mcp
 /operators/meshtastic-operator/spectrum-exporter
 /operators/meshtastic-operator/reconcile-demo
+
+# Python bytecode
+__pycache__/
+*.pyc

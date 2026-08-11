@@ -67,13 +67,41 @@ def main():
     run_id = uuid.uuid4().hex[:8]
     prefix = "probe-%s-" % run_id
 
-    lock = threading.Lock()
-    got = {}      # (seq, node) -> t_recv
-    events = []   # ordered event log
+    # Parse and validate the send schedule before opening any interface, so a
+    # malformed --schedule fails fast. It is either the single --count/--interval,
+    # or a multi-segment --schedule "interval:count,..." that changes the offered
+    # rate mid-run (baseline, degraded, adapted); each transition prints a BOUNDARY
+    # line with the wall-clock time for `nephmeshctl resilience -phases`.
+    schedule = []
+    try:
+        if args.schedule:
+            for seg in args.schedule.split(","):
+                iv, sep, ct = seg.partition(":")
+                if sep != ":" or not iv.strip() or not ct.strip():
+                    raise ValueError('segment %r must be "interval:count"' % seg)
+                schedule.append((float(iv), int(ct)))
+        else:
+            schedule.append((args.interval, args.count))
+    except ValueError as exc:
+        sys.stderr.write("invalid --schedule: %s\n" % exc)
+        return 2
 
-    # Attribute each receipt to the interface it arrived on. The Meshtastic
-    # pubsub is process-global, so every subscribed callback fires for every
-    # interface; mapping id(interface) -> node keeps per-receiver counts honest.
+    lock = threading.Lock()      # guards got/sent
+    out_lock = threading.Lock()  # serializes stdout so lines never interleave
+    got = {}   # (seq, node) -> earliest receipt time
+    sent = {}  # seq -> send time
+
+    # Emit each event as it happens rather than buffering to the end, so a
+    # truncated or killed probe still leaves the events measured so far on disk.
+    def emit(ev):
+        line = "EVENT " + json.dumps(ev) + "\n"
+        with out_lock:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+
+    # Attribute each receipt to the interface it arrived on. The Meshtastic pubsub
+    # is process-global, so every subscribed callback fires for every interface;
+    # mapping id(interface) -> node keeps per-receiver counts honest.
     iface_of = {}
 
     def on_receive(packet, interface):
@@ -92,54 +120,51 @@ def main():
             return
         now = time.time()
         with lock:
-            if (seq, node) not in got:
-                got[(seq, node)] = now
-                events.append({"ev": "recv", "seq": seq, "node": node, "t": now})
+            if (seq, node) in got:
+                return
+            got[(seq, node)] = now
+        emit({"ev": "recv", "seq": seq, "node": node, "t": now})
 
     pub.subscribe(on_receive, "meshtastic.receive")
 
     open_ifaces = []
-    for node in receivers:
-        iface = meshtastic.tcp_interface.TCPInterface(hostname=node)
-        iface_of[id(iface)] = node
-        open_ifaces.append(iface)
-    sender = meshtastic.tcp_interface.TCPInterface(hostname=args.sender)
-    open_ifaces.append(sender)
-    # The UDP transport and the interfaces need a moment before the first send is
-    # reliably carried; sending too early silently drops (learned empirically).
-    time.sleep(args.warmup)
+    try:
+        for node in receivers:
+            iface = meshtastic.tcp_interface.TCPInterface(hostname=node)
+            iface_of[id(iface)] = node
+            open_ifaces.append(iface)
+        sender = meshtastic.tcp_interface.TCPInterface(hostname=args.sender)
+        open_ifaces.append(sender)
+        # The UDP transport and interfaces need a moment before the first send is
+        # reliably carried; sending too early silently drops (learned empirically).
+        time.sleep(args.warmup)
 
-    # The send schedule is either the single --count/--interval, or a multi-segment
-    # --schedule "interval:count,..." that changes the offered rate mid-run to
-    # drive the mesh over its airtime budget and back. Each segment transition
-    # prints a BOUNDARY line with the wall-clock time for `nephmeshctl resilience
-    # -phases`; the reducer ignores non-EVENT lines.
-    schedule = []
-    if args.schedule:
-        for seg in args.schedule.split(","):
-            iv, _, ct = seg.partition(":")
-            schedule.append((float(iv), int(ct)))
-    else:
-        schedule.append((args.interval, args.count))
+        seq = 0
+        for si, (interval, count) in enumerate(schedule):
+            if si > 0:
+                with out_lock:
+                    sys.stdout.write("BOUNDARY %f\n" % time.time())
+                    sys.stdout.flush()
+            for _ in range(count):
+                sender.sendText("%s%d" % (prefix, seq))
+                now = time.time()
+                with lock:
+                    sent[seq] = now
+                emit({"ev": "sent", "seq": seq, "node": args.sender, "t": now})
+                seq += 1
+                time.sleep(interval)
+        time.sleep(4.0)  # let the last in-flight messages land
+    finally:
+        for iface in open_ifaces:
+            try:
+                iface.close()
+            except Exception:
+                pass
 
-    sent = {}
-    seq = 0
-    for si, (interval, count) in enumerate(schedule):
-        if si > 0:
-            sys.stdout.write("BOUNDARY %f\n" % time.time())
-            sys.stdout.flush()
-        for _ in range(count):
-            sender.sendText("%s%d" % (prefix, seq))
-            now = time.time()
-            sent[seq] = now
-            events.append({"ev": "sent", "seq": seq, "node": args.sender, "t": now})
-            seq += 1
-            time.sleep(interval)
-    time.sleep(4.0)  # let the last in-flight messages land
-
-    expected = len(sent) * len(receivers)
-    delivered = len(got)
-    latencies = sorted(got[(s, n)] - sent[s] for (s, n) in got if s in sent)
+    with lock:
+        expected = len(sent) * len(receivers)
+        delivered = len(got)
+        latencies = sorted(got[(s, n)] - sent[s] for (s, n) in got if s in sent)
     summary = {
         "sender": args.sender,
         "receivers": receivers,
@@ -150,18 +175,11 @@ def main():
         "latency_ms_p50": round(latencies[len(latencies) // 2] * 1000, 1) if latencies else None,
         "latency_ms_max": round(latencies[-1] * 1000, 1) if latencies else None,
     }
-
-    for e in events:
-        sys.stdout.write("EVENT " + json.dumps(e) + "\n")
-    sys.stdout.write("SUMMARY " + json.dumps(summary) + "\n")
-    sys.stdout.flush()
-
-    for iface in open_ifaces:
-        try:
-            iface.close()
-        except Exception:
-            pass
+    with out_lock:
+        sys.stdout.write("SUMMARY " + json.dumps(summary) + "\n")
+        sys.stdout.flush()
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

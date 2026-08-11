@@ -17,6 +17,7 @@ limitations under the License.
 package resilience
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -276,7 +277,65 @@ func TestReducePhasesInvalidInputs(t *testing.T) {
 	// non-ascending boundaries.
 	desc := ReducePhases(evs, []float64{15, 5}, []string{"a", "b", "c"}, 0.1, recv)
 	assert.False(t, desc.Valid)
+	// duplicate boundaries are not strictly ascending.
+	dup := ReducePhases(evs, []float64{5, 5}, []string{"a", "b", "c"}, 0.1, recv)
+	assert.False(t, dup.Valid, "duplicate boundary values are rejected")
 	// a phase with no traffic cannot be judged.
 	empty := ReducePhases(phased(recv, 0, 0, true), []float64{5}, []string{"a", "b"}, 0.1, recv)
 	assert.False(t, empty.Valid, "phase b has no sends")
+}
+
+// A PhaseReport must marshal to JSON: open phase bounds are null, not the Inf
+// value that encoding/json rejects (regression for the -o json phases path).
+func TestPhaseReportJSONEncodable(t *testing.T) {
+	recv := []string{"sim2", "sim3"}
+	r := ReducePhases(events(6, recv, 200), []float64{2, 4}, []string{"baseline", "degraded", "adapted"}, 0.1, recv)
+	out, err := json.Marshal(r)
+	require.NoError(t, err, "PhaseReport must not contain Inf/NaN")
+	assert.Contains(t, string(out), `"startT":null`, "the first phase opens at null")
+	assert.Contains(t, string(out), `"endT":null`, "the last phase ends at null")
+}
+
+// A run that never delivered is not "held up": a zero baseline is not success.
+func TestReduceZeroBaselineNotHeldUp(t *testing.T) {
+	recv := []string{"sim2"}
+	// Sends only, no receipts, on both sides of the split.
+	evs := []Event{
+		{Ev: "sent", Seq: 0, Node: "sim1", T: 0},
+		{Ev: "sent", Seq: 1, Node: "sim1", T: 10},
+	}
+	r := Reduce(evs, 5, 0.1, recv)
+	assert.InDelta(t, 0.0, r.After.DeliveryRatio, 1e-9)
+	assert.False(t, r.HeldUp, "zero delivery must not read as held up")
+	assert.Contains(t, r.Text(), "not healthy")
+}
+
+func TestReducePhasesZeroBaselineNotSurvived(t *testing.T) {
+	recv := []string{"sim2"}
+	// Baseline never delivers; a later phase does. Without a baseline to fall
+	// from, this is not survival.
+	var evs []Event
+	for _, e := range [][]Event{
+		phased(recv, 0, 0, false), phased(recv, 1, 1, false), // baseline 0%
+		phased(recv, 2, 10, false), phased(recv, 3, 11, false), // degraded 0%
+		phased(recv, 4, 20, true), phased(recv, 5, 21, true), // "adapted" 100%
+	} {
+		evs = append(evs, e...)
+	}
+	r := ReducePhases(evs, []float64{5, 15}, []string{"baseline", "degraded", "adapted"}, 0.1, recv)
+	assert.False(t, r.Survived, "no healthy baseline means nothing survived")
+	assert.Contains(t, r.Text(), "baseline delivery was not healthy")
+}
+
+// ParseEvents takes the marker only as a line prefix, so a log line that merely
+// contains "EVENT " mid-string is not ingested as an event.
+func TestParseEventsPrefixOnly(t *testing.T) {
+	in := strings.Join([]string{
+		`log: the EVENT {"ev": "sent", "seq": 7, "node": "x", "t": 1} was noted`, // mid-line, ignored
+		`EVENT {"ev": "sent", "seq": 0, "node": "sim1", "t": 1}`,                  // real
+	}, "\n")
+	evs, err := ParseEvents(strings.NewReader(in))
+	require.NoError(t, err)
+	require.Len(t, evs, 1)
+	assert.Equal(t, 0, evs[0].Seq)
 }

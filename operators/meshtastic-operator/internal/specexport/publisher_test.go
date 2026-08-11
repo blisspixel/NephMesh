@@ -87,9 +87,9 @@ func TestMetricsAreExposedInTextFormat(t *testing.T) {
 	joined := strings.Join(names, ",")
 	for _, want := range []string{
 		"nephmesh_spectrum_occupancy_percent",
-		"nephmesh_spectrum_peak_dbm",
+		"nephmesh_spectrum_peak_db",
 		"nephmesh_spectrum_peak_frequency_hz",
-		"nephmesh_spectrum_noise_floor_dbm",
+		"nephmesh_spectrum_noise_floor_db",
 		"nephmesh_spectrum_sweeps_total",
 	} {
 		assert.Contains(t, joined, want)

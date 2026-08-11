@@ -30,10 +30,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math"
 	"sort"
 	"strings"
 )
+
+// minHealthyDelivery is the delivery ratio a window must reach before a "held
+// up" or "survived" verdict is asserted. It stops the reducer from calling a run
+// that never delivered a success: a zero (or near-zero) baseline has nothing to
+// hold up and nothing to recover to.
+const minHealthyDelivery = 0.5
 
 // Event is one probe event: a broadcast originated by the sender ("sent") or a
 // receipt of that broadcast on a receiver node ("recv"). T is Unix seconds.
@@ -55,12 +60,11 @@ func ParseEvents(r io.Reader) ([]Event, error) {
 	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	for sc.Scan() {
 		line := sc.Text()
-		i := strings.Index(line, marker)
-		if i < 0 {
+		if !strings.HasPrefix(line, marker) {
 			continue
 		}
 		var e Event
-		if err := json.Unmarshal([]byte(line[i+len(marker):]), &e); err != nil {
+		if err := json.Unmarshal([]byte(line[len(marker):]), &e); err != nil {
 			continue
 		}
 		if e.Ev == "sent" || e.Ev == "recv" {
@@ -129,7 +133,9 @@ func Reduce(events []Event, perturbationT, tolerance float64, receivers []string
 		Before:        before,
 		After:         after,
 		Tolerance:     tolerance,
-		HeldUp:        after.Sent > 0 && drop <= tolerance,
+		// "Held up" requires delivery to actually be healthy after the
+		// perturbation, not merely no worse than a baseline that never delivered.
+		HeldUp: after.Sent > 0 && after.DeliveryRatio >= minHealthyDelivery && drop <= tolerance,
 	}
 }
 
@@ -191,10 +197,13 @@ func index(events []Event, receivers []string) (sentT map[int]float64,
 // adapted). A receipt is credited to the phase of its own send, never the phase
 // it arrives in, so a late receipt never crosses a boundary.
 type Phase struct {
-	Label  string  `json:"label"`
-	StartT float64 `json:"startT"`
-	EndT   float64 `json:"endT"`
-	Window Window  `json:"window"`
+	Label string `json:"label"`
+	// StartT and EndT bound the phase's half-open span; nil means open (the first
+	// phase starts at the beginning, the last ends at the end). Pointers, not an
+	// infinity, so the report marshals to JSON (encoding/json rejects Inf/NaN).
+	StartT *float64 `json:"startT"`
+	EndT   *float64 `json:"endT"`
+	Window Window   `json:"window"`
 	// DropVsBaseline is phase[0].DeliveryRatio minus this phase's ratio (0 for the
 	// baseline itself). Degraded is DropVsBaseline greater than Tolerance.
 	DropVsBaseline float64 `json:"dropVsBaseline"`
@@ -231,8 +240,8 @@ func ReducePhases(events []Event, boundaries []float64, labels []string,
 		return rep
 	}
 	for i := 1; i < len(boundaries); i++ {
-		if boundaries[i] < boundaries[i-1] {
-			return rep
+		if boundaries[i] <= boundaries[i-1] {
+			return rep // boundaries must be strictly ascending
 		}
 	}
 
@@ -257,12 +266,12 @@ func ReducePhases(events []Event, boundaries []float64, labels []string,
 	rep.Phases = make([]Phase, n)
 	for i := range windows {
 		finalize(&windows[i], lats[i])
-		start, end := math.Inf(-1), math.Inf(1)
+		var start, end *float64
 		if i > 0 {
-			start = boundaries[i-1]
+			start = &boundaries[i-1]
 		}
 		if i < len(boundaries) {
-			end = boundaries[i]
+			end = &boundaries[i]
 		}
 		p := Phase{Label: labels[i], StartT: start, EndT: end, Window: windows[i]}
 		if i > 0 {
@@ -281,7 +290,10 @@ func ReducePhases(events []Event, boundaries []float64, labels []string,
 			anyDegraded = true
 		}
 	}
-	rep.Survived = rep.Valid && anyDegraded && !rep.Phases[n-1].Degraded
+	// Survival requires a healthy baseline to fall from and recover to: a run that
+	// never delivered has nothing to survive.
+	rep.Survived = rep.Valid && anyDegraded && !rep.Phases[n-1].Degraded &&
+		rep.Phases[0].Window.DeliveryRatio >= minHealthyDelivery
 	return rep
 }
 
@@ -311,12 +323,16 @@ func (r PhaseReport) Text() string {
 		fmt.Fprintf(&b, "  %-9s delivery %5.1f%% (%d/%d), latency p50 %.0f ms%s\n",
 			p.Label, p.Window.DeliveryRatio*100, p.Window.Delivered, p.Window.Expected, p.Window.LatencyMsP50, note)
 	}
-	verdict := "delivery held across all phases (no degradation to recover from)"
+	var verdict string
 	switch {
 	case r.Survived:
 		verdict = "delivery fell under load and recovered after the adaptation"
+	case r.Phases[0].Window.DeliveryRatio < minHealthyDelivery:
+		verdict = "baseline delivery was not healthy; nothing to judge"
 	case anyDegraded:
 		verdict = "delivery fell under load and did not recover"
+	default:
+		verdict = "delivery held across all phases (no degradation to recover from)"
 	}
 	fmt.Fprintf(&b, "  verdict: %s\n", verdict)
 	return b.String()
@@ -344,8 +360,13 @@ func (r Report) Text() string {
 	}
 	line("before", r.Before)
 	line("after", r.After)
-	verdict := "mesh kept delivering across the perturbation (management plane gone, traffic unaffected)"
-	if !r.HeldUp {
+	var verdict string
+	switch {
+	case r.HeldUp:
+		verdict = "mesh kept delivering across the perturbation (management plane gone, traffic unaffected)"
+	case r.After.DeliveryRatio < minHealthyDelivery:
+		verdict = "delivery was not healthy after the perturbation"
+	default:
 		verdict = "delivery fell after the perturbation"
 	}
 	fmt.Fprintf(&b, "  verdict: %s\n", verdict)
