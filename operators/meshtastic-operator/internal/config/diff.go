@@ -59,8 +59,14 @@ var writeOnlyPaths = [][]string{
 // full desired, write-only keys included, is still what gets applied to the
 // device; this affects only the comparison. Because the write-only field is
 // dropped from the compare, it is applied whenever any other field drifts (which
-// covers initial provisioning); changing only a write-only field on an otherwise
-// converged node is a separate, hash-based concern (see the channel path).
+// covers initial provisioning).
+//
+// Known gap: rotating ONLY a write-only field on an otherwise-converged node is
+// not detected today. Channel PSKs escape this because the device echoes a channel
+// hash, so a hash compare catches a rotation; the MQTT password is never echoed by
+// the device, so a password-only rotation on an already-Ready node is currently a
+// no-op. Closing it needs a stored last-applied-password hash compared each
+// reconcile (mirroring the channel path), tracked as day-2-rotation work.
 func ForComparison(desired map[string]any) map[string]any {
 	out := copyNestedMaps(desired)
 	for _, path := range writeOnlyPaths {

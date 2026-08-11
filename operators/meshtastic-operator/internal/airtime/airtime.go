@@ -69,10 +69,12 @@ func TimeOnAir(p Params, payloadBytes, preambleSymbols int, explicitHeader, crc 
 	// Symbol time in seconds.
 	tSym := math.Exp2(sf) / float64(p.BandwidthHz)
 
-	// Low-data-rate optimization is mandated when a symbol lasts longer than
-	// 16 ms, which happens at the highest spreading factors and narrow bands.
+	// Low-data-rate optimization is mandated when a symbol lasts at least 16 ms,
+	// which happens at the highest spreading factors and narrow bands. RadioLib
+	// enables it at >= 16 ms; the boundary is immaterial for the eight Meshtastic
+	// presets (none sits exactly at 16 ms) but matters for custom params.
 	de := 0.0
-	if tSym > 0.016 {
+	if tSym >= 0.016 {
 		de = 1.0
 	}
 	ih := 0.0

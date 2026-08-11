@@ -145,6 +145,14 @@ func (r *MeshtasticNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if outcome.Reachable {
 		applyChannelsInSync(&node, desiredChannels.Compare, outcome.LiveChannels, node.Generation)
 		applyAirtimeBudget(&node, outcome.CurrentModemPreset, outcome.Info, node.Generation)
+	} else {
+		// No current view of the device this step: drop the channel- and
+		// telemetry-derived conditions rather than leaving a stale ChannelsInSync or
+		// AirtimeBudget verdict from a prior reachable step for the whole outage.
+		// (AirtimeHealthy already self-clears via applyOutcome, and the Prometheus
+		// gauges are cleared on nil.)
+		meta.RemoveStatusCondition(&node.Status.Conditions, meshv1alpha1.ConditionChannelsInSync)
+		meta.RemoveStatusCondition(&node.Status.Conditions, meshv1alpha1.ConditionAirtimeBudget)
 	}
 
 	// Log and emit Events on the meaningful transitions this step, so a rollout or
@@ -209,6 +217,12 @@ func (r *MeshtasticNodeReconciler) resolveMQTTPassword(ctx context.Context, node
 	data, ok := s.Data[ref.Key]
 	if !ok {
 		return secret.Value{}, fmt.Errorf("mqtt password secret %q has no key %q", ref.Name, ref.Key)
+	}
+	if len(data) == 0 {
+		// An empty value would be dropped by BuildDesired and silently configure the
+		// broker connection with no password, the same silent downgrade the channel
+		// path refuses. Fail loudly instead of degrading auth without notice.
+		return secret.Value{}, fmt.Errorf("mqtt password secret %q key %q is empty; refusing to configure MQTT with no password", ref.Name, ref.Key)
 	}
 	return secret.New(string(data)), nil
 }
@@ -378,10 +392,19 @@ func applyAirtimeHealth(node *meshv1alpha1.MeshtasticNode, info device.Info, gen
 		meta.RemoveStatusCondition(&node.Status.Conditions, meshv1alpha1.ConditionAirtimeHealthy)
 		return
 	}
-	ch, tx := valueOr(info.ChannelUtilization), valueOr(info.AirUtilTx)
+	// Evaluate only the metrics the device actually reported. An absent metric is
+	// neither healthy nor unhealthy; substituting 0.0 (as a plain valueOr would)
+	// falsely reads as an idle transmitter and could mask a saturated node.
+	healthy := true
+	if v := info.ChannelUtilization; v != nil && *v > airtime.RecommendedChannelUtilizationPercent {
+		healthy = false
+	}
+	if v := info.AirUtilTx; v != nil && *v > airtime.RecommendedAirUtilTxPercent {
+		healthy = false
+	}
 	status := metav1.ConditionTrue
 	reason := meshv1alpha1.ReasonAirtimeHealthy
-	if !airtime.Healthy(ch, tx) {
+	if !healthy {
 		status = metav1.ConditionFalse
 		reason = meshv1alpha1.ReasonAirtimeHigh
 	}
@@ -390,15 +413,17 @@ func applyAirtimeHealth(node *meshv1alpha1.MeshtasticNode, info device.Info, gen
 		Status:             status,
 		Reason:             reason,
 		ObservedGeneration: gen,
-		Message:            fmt.Sprintf("channelUtilization %.1f%%, airUtilTx %.1f%%", ch, tx),
+		Message:            fmt.Sprintf("channelUtilization %s, airUtilTx %s", pctOrNA(info.ChannelUtilization), pctOrNA(info.AirUtilTx)),
 	})
 }
 
-func valueOr(v *float64) float64 {
+// pctOrNA formats an optional telemetry percent, or "not reported" when the device
+// did not include it, so an absent metric is never displayed as a measured 0.
+func pctOrNA(v *float64) string {
 	if v == nil {
-		return 0
+		return "not reported"
 	}
-	return *v
+	return fmt.Sprintf("%.1f%%", *v)
 }
 
 // applyAirtimeBudget predicts the airtime effect of a declared modem-preset

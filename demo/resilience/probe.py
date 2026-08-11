@@ -79,7 +79,10 @@ def main():
                 iv, sep, ct = seg.partition(":")
                 if sep != ":" or not iv.strip() or not ct.strip():
                     raise ValueError('segment %r must be "interval:count"' % seg)
-                schedule.append((float(iv), int(ct)))
+                interval_v, count_v = float(iv), int(ct)
+                if interval_v < 0 or count_v < 0:
+                    raise ValueError('segment %r must have a non-negative interval and count' % seg)
+                schedule.append((interval_v, count_v))
         else:
             schedule.append((args.interval, args.count))
     except ValueError as exc:

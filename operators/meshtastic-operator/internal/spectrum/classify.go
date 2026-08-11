@@ -211,23 +211,28 @@ func Classify(series []BinSeries, band Band, opts ClassifyOptions) []Emission {
 	return emissions
 }
 
-// gridStep infers the sweep's bin spacing from the smallest positive gap between
+// gridStep infers the sweep's bin spacing from the median positive gap between
 // consecutive in-band bins, so run-grouping works at any sweep resolution rather
 // than assuming a fixed 1 MHz grid (a coarser grid would otherwise break every
-// run into single bins). A lone bin has no spacing; default to 1 MHz. Runs are
-// then extended across bins within 1.5 grid steps, which tolerates one missing
-// bin but breaks on a real frequency gap.
+// run into single bins). The median, not the minimum, is used deliberately: a
+// single sub-grid gap (overlapping or mis-tiled hackrf_sweep segments, a
+// fractional final tile, or two rows with different bin widths) would otherwise
+// shrink the step and collapse every run into single bins, misreading one
+// wideband emitter as many narrow ones. A lone bin has no spacing; default to
+// 1 MHz. Runs are then extended across bins within 1.5 grid steps, so a real
+// frequency gap or an intervening below-duty bin ends the run.
 func gridStep(feats []binFeature) float64 {
-	step := math.MaxFloat64
+	gaps := make([]float64, 0, len(feats))
 	for i := 1; i < len(feats); i++ {
-		if g := feats[i].freqHz - feats[i-1].freqHz; g > 0 && g < step {
-			step = g
+		if g := feats[i].freqHz - feats[i-1].freqHz; g > 0 {
+			gaps = append(gaps, g)
 		}
 	}
-	if step == math.MaxFloat64 {
+	if len(gaps) == 0 {
 		return 1_000_000
 	}
-	return step
+	sort.Float64s(gaps)
+	return gaps[len(gaps)/2]
 }
 
 func buildEmission(run []binFeature, opts ClassifyOptions) Emission {

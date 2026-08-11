@@ -190,6 +190,19 @@ func TestAlreadyConvergedIsReadyWithoutApply(t *testing.T) {
 	assert.Equal(t, 0, dev.Applies, "a converged device must not be written")
 }
 
+func TestConvergedWithBlankIdentityIsNotReady(t *testing.T) {
+	// Config is converged, but neither the export nor the --info fallback carried a
+	// node id (a partial or rate-limited read). Converge must not report a Ready
+	// state built on no identity; it requeues as if mid-reboot.
+	dev := device.NewFake(desiredUS(), 0) // converged from desired US
+	dev.SetInfo(device.Info{NodeID: ""})  // the --info fallback also carries no identity
+	out, err := Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, State{})
+	require.NoError(t, err)
+	assert.False(t, out.Ready, "no identity must not read as Ready")
+	assert.False(t, out.Reachable)
+	assert.Empty(t, out.Info.NodeID)
+}
+
 func TestConvergedResetsApplyAttempts(t *testing.T) {
 	dev := device.NewFake(desiredUS(), 0)
 	out, err := Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, State{ApplyAttempts: 3})

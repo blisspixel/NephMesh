@@ -108,6 +108,25 @@ func TestClassifyGroupsWidebandOnACoarseGrid(t *testing.T) {
 	assert.InDelta(t, 6e6, em[0].BandwidthHz, 1)
 }
 
+func TestClassifyWidebandSurvivesSubGridGap(t *testing.T) {
+	// A single sub-grid gap (two mis-tiled bins 0.5 MHz apart, from overlapping
+	// hackrf_sweep segments) must not collapse run-grouping. With a minimum-gap
+	// step it would shrink to 0.5 MHz and split the emitter into single bins; the
+	// median grid step keeps the wideband emitter as one emission.
+	series := []BinSeries{
+		bin(904.0e6, 100, 0, 0), // two quiet bins 0.5 MHz apart: the sub-grid gap
+		bin(904.5e6, 100, 0, 0),
+		bin(910e6, 100, 90, -25), // a genuine wideband emitter on a 1 MHz grid
+		bin(911e6, 100, 90, -25),
+		bin(912e6, 100, 90, -25),
+		bin(913e6, 100, 90, -25),
+		bin(920e6, 100, 0, 0),
+	}
+	em := Classify(series, band915, DefaultClassifyOptions())
+	require.Len(t, em, 1, "the sub-grid gap must not split the wideband emitter")
+	assert.Equal(t, ClassWideband, em[0].Class)
+}
+
 func TestClassifyDetectsWidebandAgainstQuietBins(t *testing.T) {
 	// A wideband emitter over part of the band, with quiet bins remaining as a
 	// reference, is detected. (A signal covering the whole band leaves no
