@@ -17,7 +17,7 @@
 # (see the propose/approve flow in docs/guides/porch-registration.md) before
 # it is pushed to the site cluster. Replace repository names to match your
 # registered repositories (porchctl repo get -A).
-apiVersion: config.porch.kpt.dev/v1alpha2
+apiVersion: config.porch.kpt.dev/v1alpha1
 kind: PackageVariant
 metadata:
   name: mesh-gateway-site1

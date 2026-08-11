@@ -215,6 +215,16 @@ it can be made correct, and most of this is hardware-free.
 11. A signed, content-addressed Intent Capsule the edge can act on with no connectivity,
     with a degrading lease (expiry only ever narrows authority) and clock-uncertainty
     behavior. Design: [signed autonomy and the safety kernel](plans/signed-autonomy-and-safety-kernel.md), which also covers stages 12 to 14.
+    The precise, gated order of this autonomy stack (stages 11 to 16) is refined by the
+    build plan in [road to safe autonomy](design/road-to-safe-autonomy.md); where that
+    plan and this queue differ on order, the plan is the more current. Its refinements:
+    build the safety kernel (stage 13) first, as a pure fail-closed `Decide` function
+    against an in-memory struct, so the signed wire format comes last rather than first
+    and a signed capsule never precedes the thing that reads it; make the model-check
+    (stage 16) a gate before enabling any L2 action rather than a final step; and add a
+    report-only assurance loop, objectives on the CRD plus a typed Evidence-Carrying
+    Action and a predicted-minus-measured residual, as the first frontier rung between
+    stages 10 and 11.
 12. A site steward, a small deterministic state machine, running L1 non-disruptive
     actions only (shed telemetry, aggregate reports, prioritize queues, enter a declared
     quiet mode).

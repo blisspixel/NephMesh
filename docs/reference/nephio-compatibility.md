@@ -31,6 +31,46 @@ Findings from `nephio-project/api`:
   at `v0.18.5`. These are worth re-checking before any direct-import work, since they
   move.
 
+## Re-verified 2026-08-10
+
+A fresh check against upstream (by fetching raw files and repository pages; treat
+release-date specifics as lower confidence). The conclusion is that the interop
+boundary is stable and a future integration would work, with one served-version fix
+already applied and a few tag-hygiene notes.
+
+- Boundary stable. API groups are still `X.nephio.org` at `v1alpha1` only (cfg, common,
+  infra, nf_requirements, nf_topology, references, workload); no new groups and no
+  version bumps. `condkptsdk` is still the specializer SDK pattern
+  (`nephio-project/nephio/krm-functions/lib/condkptsdk`).
+- The `nephio-project/api` go.mod has not moved since 2026-08-07: still `go 1.25.6`,
+  `k8s.io v0.30.1`, `controller-runtime v0.18.5`. NephMesh's forward skew to
+  `k8s v0.34.10` / `controller-runtime v0.22.5` (go.mod directive `go 1.25.0`) is
+  therefore unchanged and, at the data boundary, still costs nothing.
+- Porch has moved to the kptdev org. Its canonical Go module is now
+  `github.com/kptdev/porch` (the `nephio-project/porch` path still resolves).
+  `PackageVariant` and `PackageVariantSet` are still served under `config.porch.kpt.dev`,
+  with `PackageVariant` at `v1alpha1` and `PackageVariantSet` at `v1alpha2`. One concrete
+  fix from this check: the `packages/examples/packagevariant-site1.yaml` example declared
+  `PackageVariant` at `v1alpha2` by mistake and is corrected to `v1alpha1` so it would
+  apply to a real Porch. The exact served versions should still be pinned against the
+  specific Porch release targeted when the Porch gate (Phase 3) is closed.
+- The KRM function catalog registry path (`ghcr.io/kptdev/krm-functions-catalog/<fn>`) is
+  unchanged, but the tags have advanced: `set-namespace` is at `v0.4.6` and `set-labels`
+  at `v0.2.5` upstream, while the Kptfiles here pin the older `v0.4.1` and `v0.2.0`.
+  Pinned older tags are immutable and still render, so this is hygiene, not a break; bump
+  and re-render (`make check-packages`) when convenient.
+- Current release baseline is Nephio R6 (v6.0.0), a stability and security maintenance
+  release with no change to the KRM/kpt/Porch data-and-packaging boundary. Its supported
+  Kubernetes range is min v1.26, max v1.32.0, and it pins Porch v1.5.6. NephMesh's k8s
+  v0.34 client is ahead of that max server, which is fine for data-boundary interop
+  (NephMesh does not run inside a Nephio cluster and imports no Nephio Go types) and would
+  need reconciling only if the operator were ever run directly against a Nephio R6 API
+  server.
+
+Net: nothing at the interop boundary breaks a future integration. The one concrete fix
+was the `PackageVariant` served version; the rest is version-tag hygiene and a forward
+library skew that only matters if NephMesh ever imports Nephio Go types.
+
 ## Where NephMesh already aligns
 
 - **A separate `api` Go module.** NephMesh keeps its CRDs and types in a standalone
@@ -61,8 +101,9 @@ Findings from `nephio-project/api`:
   with Nephio, so it does not put resources in the `nephio.org` group. The `.io` group
   is provisional and kept at `v1alpha1` so a later rename stays cheap.
 - **Newer Kubernetes libraries.** NephMesh tracks the latest GA line
-  (`k8s.io v0.34.x`, `controller-runtime v0.22.x`, `go 1.25.12`), which is ahead of the
-  upstream `api` module's `v0.30.1` / `v0.18.5` at the check date. This is a forward
+  (`k8s.io v0.34.x`, `controller-runtime v0.22.x`, `go 1.25.x`), which is ahead of the
+  upstream `api` module's `v0.30.1` / `v0.18.5` and of Nephio R6's supported Kubernetes
+  ceiling (max v1.32.0). This is a forward
   skew, not a lag. It is fine because NephMesh interops at the KRM and package boundary,
   not by importing Nephio's Go types.
 
