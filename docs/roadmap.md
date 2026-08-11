@@ -70,7 +70,11 @@ Held frozen until the above lands: actuation from `CommunicationIntent`, the aut
 
 There is a larger shape this project could grow into, written up in full in the
 [design doctrine](design/doctrine.md) and recorded as decisions in
-[docs/adr/](adr/). It is a direction, not a plan with dates, and almost none of it is
+[docs/adr/](adr/). For the sequenced, gated build order from what exists today to
+safe autonomy, with the decisive split between the minimal viable safety core and
+the research frontier, see [`design/road-to-safe-autonomy.md`](design/road-to-safe-autonomy.md);
+it turns this direction into an order of operations with explicit gates. It is a
+direction, not a plan with dates, and almost none of it is
 built. It is here so that later work does not quietly collapse the idea back into
 automatic knob-turning, and so the ordering stays honest.
 
