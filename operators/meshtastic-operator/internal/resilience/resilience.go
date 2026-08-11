@@ -30,6 +30,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"sort"
 	"strings"
 )
@@ -102,7 +103,44 @@ type Report struct {
 // always compared against its own send, never split across the boundary. A node
 // is credited at most once per message, so delivered never exceeds expected.
 func Reduce(events []Event, perturbationT, tolerance float64, receivers []string) Report {
-	if len(receivers) == 0 {
+	sentT, recvBySeq, resolved := index(events, receivers)
+
+	var beforeLat, afterLat []float64
+	var before, after Window
+	for seq, ts := range sentT {
+		w, lat := &before, &beforeLat
+		if ts >= perturbationT {
+			w, lat = &after, &afterLat
+		}
+		w.Sent++
+		w.Expected += len(resolved)
+		for _, tr := range recvBySeq[seq] {
+			w.Delivered++
+			*lat = append(*lat, (tr-ts)*1000)
+		}
+	}
+	finalize(&before, beforeLat)
+	finalize(&after, afterLat)
+
+	drop := before.DeliveryRatio - after.DeliveryRatio
+	return Report{
+		Receivers:     resolved,
+		PerturbationT: perturbationT,
+		Before:        before,
+		After:         after,
+		Tolerance:     tolerance,
+		HeldUp:        after.Sent > 0 && drop <= tolerance,
+	}
+}
+
+// index builds the per-message send times and the per-seq, per-receiver earliest
+// receipt map, resolving the receiver set (inferred from receipts when receivers
+// is nil). Reduce and ReducePhases share it, so the crediting rules (one credit
+// per node per message; receipts on out-of-scope nodes ignored) live in one place.
+func index(events []Event, receivers []string) (sentT map[int]float64,
+	recvBySeq map[int]map[string]float64, resolved []string) {
+	resolved = receivers
+	if len(resolved) == 0 {
 		set := map[string]struct{}{}
 		for _, e := range events {
 			if e.Ev == "recv" {
@@ -110,16 +148,16 @@ func Reduce(events []Event, perturbationT, tolerance float64, receivers []string
 			}
 		}
 		for n := range set {
-			receivers = append(receivers, n)
+			resolved = append(resolved, n)
 		}
-		sort.Strings(receivers)
+		sort.Strings(resolved)
 	}
-	inScope := make(map[string]struct{}, len(receivers))
-	for _, n := range receivers {
+	inScope := make(map[string]struct{}, len(resolved))
+	for _, n := range resolved {
 		inScope[n] = struct{}{}
 	}
 
-	sentT := map[int]float64{}
+	sentT = map[int]float64{}
 	for _, e := range events {
 		if e.Ev != "sent" {
 			continue
@@ -128,8 +166,7 @@ func Reduce(events []Event, perturbationT, tolerance float64, receivers []string
 			sentT[e.Seq] = e.T
 		}
 	}
-	// seq -> node -> earliest receipt time, restricted to in-scope receivers.
-	recvBySeq := map[int]map[string]float64{}
+	recvBySeq = map[int]map[string]float64{}
 	for _, e := range events {
 		if e.Ev != "recv" {
 			continue
@@ -146,33 +183,143 @@ func Reduce(events []Event, perturbationT, tolerance float64, receivers []string
 			m[e.Node] = e.T
 		}
 	}
+	return sentT, recvBySeq, resolved
+}
 
-	var beforeLat, afterLat []float64
-	var before, after Window
+// Phase is the delivery outcome for the messages ORIGINATED within one labeled,
+// half-open span [StartT, EndT) of the timeline (for example baseline, degraded,
+// adapted). A receipt is credited to the phase of its own send, never the phase
+// it arrives in, so a late receipt never crosses a boundary.
+type Phase struct {
+	Label  string  `json:"label"`
+	StartT float64 `json:"startT"`
+	EndT   float64 `json:"endT"`
+	Window Window  `json:"window"`
+	// DropVsBaseline is phase[0].DeliveryRatio minus this phase's ratio (0 for the
+	// baseline itself). Degraded is DropVsBaseline greater than Tolerance.
+	DropVsBaseline float64 `json:"dropVsBaseline"`
+	Degraded       bool    `json:"degraded"`
+}
+
+// PhaseReport is the N-phase generalization of Report: a labeled delivery
+// timeline and a machine-checkable survival verdict measured against the first
+// (baseline) phase.
+type PhaseReport struct {
+	Receivers  []string  `json:"receivers"`
+	Boundaries []float64 `json:"boundaries"`
+	Phases     []Phase   `json:"phases"`
+	Tolerance  float64   `json:"tolerance"`
+	// Valid is false when the inputs are ill-formed (labels count is not
+	// boundaries+1, boundaries are not ascending, or a phase has no originated
+	// traffic to judge); a pure report, never a panic.
+	Valid bool `json:"valid"`
+	// Survived is the verdict: some non-baseline phase Degraded AND the final
+	// phase is not Degraded (delivery fell under load, then recovered to within
+	// Tolerance of baseline). This is the "held up" for a multi-phase timeline.
+	Survived bool `json:"survived"`
+}
+
+// ReducePhases buckets events into len(labels) phases split by the ascending
+// boundary times, computes each phase's Window and its delivery drop versus the
+// baseline (first) phase, and derives the Survived verdict. len(labels) must be
+// len(boundaries)+1 and boundaries must be ascending; a malformed call returns
+// Valid=false rather than panicking. receivers nil is inferred from receipts.
+func ReducePhases(events []Event, boundaries []float64, labels []string,
+	tolerance float64, receivers []string) PhaseReport {
+	rep := PhaseReport{Boundaries: boundaries, Tolerance: tolerance}
+	if len(labels) != len(boundaries)+1 {
+		return rep
+	}
+	for i := 1; i < len(boundaries); i++ {
+		if boundaries[i] < boundaries[i-1] {
+			return rep
+		}
+	}
+
+	sentT, recvBySeq, resolved := index(events, receivers)
+	rep.Receivers = resolved
+	n := len(labels)
+	windows := make([]Window, n)
+	lats := make([][]float64, n)
 	for seq, ts := range sentT {
-		w, lat := &before, &beforeLat
-		if ts >= perturbationT {
-			w, lat = &after, &afterLat
-		}
-		w.Sent++
-		w.Expected += len(receivers)
+		// Phase index = number of boundaries at or below ts (inclusive phase
+		// start): a message sent exactly at boundary Tk belongs to the later phase.
+		i := sort.Search(len(boundaries), func(k int) bool { return boundaries[k] > ts })
+		windows[i].Sent++
+		windows[i].Expected += len(resolved)
 		for _, tr := range recvBySeq[seq] {
-			w.Delivered++
-			*lat = append(*lat, (tr-ts)*1000)
+			windows[i].Delivered++
+			lats[i] = append(lats[i], (tr-ts)*1000)
 		}
 	}
-	finalize(&before, beforeLat)
-	finalize(&after, afterLat)
 
-	drop := before.DeliveryRatio - after.DeliveryRatio
-	return Report{
-		Receivers:     receivers,
-		PerturbationT: perturbationT,
-		Before:        before,
-		After:         after,
-		Tolerance:     tolerance,
-		HeldUp:        after.Sent > 0 && drop <= tolerance,
+	rep.Valid = true
+	rep.Phases = make([]Phase, n)
+	for i := range windows {
+		finalize(&windows[i], lats[i])
+		start, end := math.Inf(-1), math.Inf(1)
+		if i > 0 {
+			start = boundaries[i-1]
+		}
+		if i < len(boundaries) {
+			end = boundaries[i]
+		}
+		p := Phase{Label: labels[i], StartT: start, EndT: end, Window: windows[i]}
+		if i > 0 {
+			p.DropVsBaseline = windows[0].DeliveryRatio - windows[i].DeliveryRatio
+			p.Degraded = p.DropVsBaseline > tolerance
+		}
+		rep.Phases[i] = p
+		if windows[i].Sent == 0 {
+			rep.Valid = false // a phase with no traffic cannot be judged
+		}
 	}
+
+	anyDegraded := false
+	for i := 1; i < n; i++ {
+		if rep.Phases[i].Degraded {
+			anyDegraded = true
+		}
+	}
+	rep.Survived = rep.Valid && anyDegraded && !rep.Phases[n-1].Degraded
+	return rep
+}
+
+// Text renders the labeled delivery timeline and the survival verdict.
+func (r PhaseReport) Text() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "airtime-commons survival report (receivers: %s)\n", strings.Join(r.Receivers, ", "))
+	if !r.Valid {
+		fmt.Fprintln(&b, "  invalid: phase labels/boundaries mismatch, or a phase had no traffic")
+		return b.String()
+	}
+	n := len(r.Phases)
+	anyDegraded := false
+	for i := 1; i < n; i++ {
+		if r.Phases[i].Degraded {
+			anyDegraded = true
+		}
+	}
+	for i, p := range r.Phases {
+		note := ""
+		switch {
+		case p.Degraded:
+			note = fmt.Sprintf("  (down %.1f pts vs baseline)", p.DropVsBaseline*100)
+		case i == n-1 && anyDegraded:
+			note = "  (recovered)"
+		}
+		fmt.Fprintf(&b, "  %-9s delivery %5.1f%% (%d/%d), latency p50 %.0f ms%s\n",
+			p.Label, p.Window.DeliveryRatio*100, p.Window.Delivered, p.Window.Expected, p.Window.LatencyMsP50, note)
+	}
+	verdict := "delivery held across all phases (no degradation to recover from)"
+	switch {
+	case r.Survived:
+		verdict = "delivery fell under load and recovered after the adaptation"
+	case anyDegraded:
+		verdict = "delivery fell under load and did not recover"
+	}
+	fmt.Fprintf(&b, "  verdict: %s\n", verdict)
+	return b.String()
 }
 
 // finalize computes the derived fields of a window from its raw latency samples.

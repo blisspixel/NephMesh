@@ -34,6 +34,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/advisor"
@@ -384,14 +385,16 @@ func runResilience(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 	fs := flag.NewFlagSet("resilience", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	file := fs.String("f", "-", "delivery-probe event log (JSONL from demo/resilience/probe.py); - is stdin")
-	at := fs.Float64("at", 0, "perturbation time, Unix seconds: messages sent before it are compared against those after")
-	tolerance := fs.Float64("tolerance", 0.1, "largest before-minus-after delivery-ratio drop still counted as unchanged")
+	at := fs.Float64("at", 0, "perturbation time, Unix seconds: before/after mode (messages before it vs after)")
+	phasesCSV := fs.String("phases", "", "multi-phase mode: comma-separated boundary times (Unix seconds), ascending; used with -labels")
+	labelsCSV := fs.String("labels", "baseline,degraded,adapted", "phase labels for -phases; count must be len(phases)+1")
+	tolerance := fs.Float64("tolerance", 0.1, "largest delivery-ratio drop from baseline still counted as unchanged")
 	receiversCSV := fs.String("receivers", "", "comma-separated receiver nodes; inferred from the log when empty")
 	format := fs.String("o", "text", "output format: json or text")
 	fs.Usage = func() {
-		fprintln(stderr, "usage: nephmeshctl resilience -at UNIXTIME [-f file] [-tolerance F] [-receivers list] [-o json|text]")
-		fprintln(stderr, "  Reduce a delivery-probe log to a before/after verdict around a perturbation")
-		fprintln(stderr, "  (a killed management plane, a killed node, a congested channel). See demo/resilience.")
+		fprintln(stderr, "usage: nephmeshctl resilience (-at UNIXTIME | -phases T1,T2 -labels a,b,c) [-f file] [-tolerance F] [-receivers list] [-o json|text]")
+		fprintln(stderr, "  Reduce a delivery-probe log to a verdict around a perturbation: -at for a")
+		fprintln(stderr, "  before/after split, -phases for a baseline/degraded/adapted timeline. See demo/resilience.")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -404,8 +407,13 @@ func runResilience(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 		fprintf(stderr, "invalid -o %q: want json or text\n", *format)
 		return exitUsage
 	}
-	if *at <= 0 {
-		fprintln(stderr, "set -at to the perturbation time (Unix seconds)")
+	usePhases := *phasesCSV != ""
+	if usePhases && *at > 0 {
+		fprintln(stderr, "use -at (before/after) or -phases (multi-phase), not both")
+		return exitUsage
+	}
+	if !usePhases && *at <= 0 {
+		fprintln(stderr, "set -at (before/after) or -phases (multi-phase timeline)")
 		return exitUsage
 	}
 
@@ -423,15 +431,33 @@ func runResilience(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 	if *receiversCSV != "" {
 		receivers = splitCSV(*receiversCSV)
 	}
-	report := resilience.Reduce(events, *at, *tolerance, receivers)
+
+	var payload any
+	var text string
+	if usePhases {
+		boundaries := make([]float64, 0)
+		for _, s := range splitCSV(*phasesCSV) {
+			v, perr := strconv.ParseFloat(s, 64)
+			if perr != nil {
+				fprintf(stderr, "invalid -phases value %q: %v\n", s, perr)
+				return exitUsage
+			}
+			boundaries = append(boundaries, v)
+		}
+		report := resilience.ReducePhases(events, boundaries, splitCSV(*labelsCSV), *tolerance, receivers)
+		payload, text = report, report.Text()
+	} else {
+		report := resilience.Reduce(events, *at, *tolerance, receivers)
+		payload, text = report, report.Text()
+	}
 
 	if *format == "text" {
-		fprint(stdout, report.Text())
+		fprint(stdout, text)
 		return exitOK
 	}
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(report); err != nil {
+	if err := enc.Encode(payload); err != nil {
 		fprintf(stderr, "encode: %v\n", err)
 		return exitUsage
 	}

@@ -118,12 +118,59 @@ The verdict logic is pure and unit-tested (`internal/resilience`, exposed as
 probe's event log at the perturbation and reports delivery ratio and latency before
 and after, so any run, not just this one, is judged the same way.
 
+## Survival under congestion, demonstrated (the airtime commons, measured)
+
+`survival.sh` shows, with numbers, that the shared channel has a finite airtime
+budget: offering traffic beyond it collapses delivery, and admission control
+(pacing offered load back within the budget) restores it. This grounds the
+project's airtime-as-a-commons claim, and the intent layer's fleet airtime budget,
+in measured delivery.
+
+```sh
+sh demo/resilience/survival.sh
+```
+
+One continuous probe run over three offered-load phases, reduced to a per-phase
+verdict by `nephmeshctl resilience -phases`:
+
+Captured run (2026-08-10):
+
+```
+airtime-commons survival report (receivers: sim2, sim3)
+  baseline  delivery 100.0% (20/20), latency p50 305 ms
+  degraded  delivery  50.0% (20/40), latency p50 186 ms  (down 50.0 pts vs baseline)
+  adapted   delivery  90.0% (18/20), latency p50 248 ms  (recovered)
+  verdict: delivery fell under load and recovered after the adaptation
+```
+
+Baseline offers 1 msg/3s (within budget), degraded offers 1 msg/1s (over budget),
+adapted paces back to 1 msg/3s. The airtime model predicts exactly this: at
+LONG_FAST (~559 ms time-on-air) 1 msg/3s is ~19% channel utilization (under the
+25% ceiling) while 1 msg/1s is ~56% (over it). The measured collapse confirms the
+model's over-budget verdict is authoritative, which is precisely how the airtime
+doctrine already describes it (a conservative floor whose over-budget verdict is
+certain). The verdict logic is the pure, unit-tested `internal/resilience`
+(`ReducePhases`/`PhaseReport`), so any run is judged the same way.
+
+An honest finding from building this: the recovery lever is **admission control**
+(pacing offered load to the budget), not a modem-preset change. We measured that a
+faster preset does not recover delivery in this sim, delivery is capped at a fixed
+per-node broadcast cadence (a firmware timing, not the PHY airtime), so a
+lower-time-on-air preset does not raise the per-node send rate. Pacing the offered
+load is therefore the honest recovery here; on real RF a preset change also
+relocates the channel frequency (a different lever the closed-loop hardware PoC
+shows), which this UDP substrate cannot model.
+
+Scope, restated: the mesh is flat, UDP multicast stands in for the LoRa RF link
+(the sim firmware models time-on-air, which is why offered load maps to real
+delivery), the sense in sim is the app-layer delivery/airtime signal while on
+hardware the SDR senses the RF cause, and nothing transmits over the air.
+
 ## What is next
 
-The next scenario on this substrate: **survival under degradation.** Congest or jam
-the channel, sense it through the SDR pillar, adapt the mesh (relocate the preset),
-and show delivery recover, all measured. Then the safety-kernel slice that lets that
-adaptation run with no human, which is the self-adapting fabric earned honestly.
+The safety-kernel slice (ADR 0002) that lets an adaptation like this run with no
+human inside a signed envelope, the self-adapting fabric earned honestly. Until
+then, every adaptation here is report-only and human-gated.
 
 ## Honest scope
 

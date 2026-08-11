@@ -54,6 +54,7 @@ def main():
     # watch delivery fall: that is the airtime commons made visible, not a bug.
     ap.add_argument("--interval", type=float, default=3.0, help="seconds between originated messages")
     ap.add_argument("--warmup", type=float, default=5.0, help="seconds to let interfaces settle before sending")
+    ap.add_argument("--schedule", default="", help='offered-rate schedule "interval:count,..." overriding --count/--interval, to vary load across phases (baseline, degraded, adapted); each segment change prints a BOUNDARY line')
     args = ap.parse_args()
 
     receivers = [r for r in args.receivers.split(",") if r]
@@ -108,13 +109,32 @@ def main():
     # reliably carried; sending too early silently drops (learned empirically).
     time.sleep(args.warmup)
 
+    # The send schedule is either the single --count/--interval, or a multi-segment
+    # --schedule "interval:count,..." that changes the offered rate mid-run to
+    # drive the mesh over its airtime budget and back. Each segment transition
+    # prints a BOUNDARY line with the wall-clock time for `nephmeshctl resilience
+    # -phases`; the reducer ignores non-EVENT lines.
+    schedule = []
+    if args.schedule:
+        for seg in args.schedule.split(","):
+            iv, _, ct = seg.partition(":")
+            schedule.append((float(iv), int(ct)))
+    else:
+        schedule.append((args.interval, args.count))
+
     sent = {}
-    for i in range(args.count):
-        sender.sendText("%s%d" % (prefix, i))
-        now = time.time()
-        sent[i] = now
-        events.append({"ev": "sent", "seq": i, "node": args.sender, "t": now})
-        time.sleep(args.interval)
+    seq = 0
+    for si, (interval, count) in enumerate(schedule):
+        if si > 0:
+            sys.stdout.write("BOUNDARY %f\n" % time.time())
+            sys.stdout.flush()
+        for _ in range(count):
+            sender.sendText("%s%d" % (prefix, seq))
+            now = time.time()
+            sent[seq] = now
+            events.append({"ev": "sent", "seq": seq, "node": args.sender, "t": now})
+            seq += 1
+            time.sleep(interval)
     time.sleep(4.0)  # let the last in-flight messages land
 
     expected = len(sent) * len(receivers)

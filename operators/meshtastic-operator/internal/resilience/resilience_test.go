@@ -153,3 +153,130 @@ func TestReportText(t *testing.T) {
 	assert.Contains(t, txt, "after")
 	assert.Contains(t, txt, "kept delivering")
 }
+
+// phased builds a sent event at ts (from sim1) plus, when deliver, a receipt on
+// each receiver latencyMs later.
+func phased(recv []string, seq int, ts float64, deliver bool) []Event {
+	out := []Event{{Ev: "sent", Seq: seq, Node: "sim1", T: ts}}
+	if deliver {
+		for _, r := range recv {
+			out = append(out, Event{Ev: "recv", Seq: seq, Node: r, T: ts + 0.2})
+		}
+	}
+	return out
+}
+
+func TestReducePhasesThreePhaseSurvival(t *testing.T) {
+	recv := []string{"sim2", "sim3"}
+	var evs []Event
+	for _, e := range [][]Event{
+		phased(recv, 0, 0, true), phased(recv, 1, 1, true), phased(recv, 2, 2, true), // baseline
+		phased(recv, 3, 10, false), phased(recv, 4, 11, false), phased(recv, 5, 12, false), // degraded
+		phased(recv, 6, 20, true), phased(recv, 7, 21, true), phased(recv, 8, 22, true), // adapted
+	} {
+		evs = append(evs, e...)
+	}
+	r := ReducePhases(evs, []float64{5, 15}, []string{"baseline", "degraded", "adapted"}, 0.1, recv)
+	require.True(t, r.Valid)
+	assert.InDelta(t, 1.0, r.Phases[0].Window.DeliveryRatio, 1e-9)
+	assert.InDelta(t, 0.0, r.Phases[1].Window.DeliveryRatio, 1e-9)
+	assert.True(t, r.Phases[1].Degraded)
+	assert.InDelta(t, 1.0, r.Phases[2].Window.DeliveryRatio, 1e-9)
+	assert.False(t, r.Phases[2].Degraded)
+	assert.True(t, r.Survived)
+	txt := r.Text()
+	assert.Contains(t, txt, "recovered")
+	assert.Contains(t, txt, "degraded")
+}
+
+func TestReducePhasesNoRecovery(t *testing.T) {
+	recv := []string{"sim2"}
+	var evs []Event
+	for _, e := range [][]Event{
+		phased(recv, 0, 0, true), phased(recv, 1, 1, true), // baseline 100%
+		phased(recv, 2, 10, false), phased(recv, 3, 11, false), // degraded
+		phased(recv, 4, 20, false), phased(recv, 5, 21, false), // still degraded
+	} {
+		evs = append(evs, e...)
+	}
+	r := ReducePhases(evs, []float64{5, 15}, []string{"baseline", "degraded", "adapted"}, 0.1, recv)
+	require.True(t, r.Valid)
+	assert.True(t, r.Phases[1].Degraded)
+	assert.True(t, r.Phases[2].Degraded)
+	assert.False(t, r.Survived)
+	assert.Contains(t, r.Text(), "did not recover")
+}
+
+func TestReducePhasesAllHealthy(t *testing.T) {
+	recv := []string{"sim2"}
+	var evs []Event
+	for i := 0; i < 6; i++ {
+		evs = append(evs, phased(recv, i, float64(i*4), true)...) // spaced, all deliver
+	}
+	r := ReducePhases(evs, []float64{6, 14}, []string{"baseline", "degraded", "adapted"}, 0.1, recv)
+	require.True(t, r.Valid)
+	assert.False(t, r.Survived, "nothing degraded means nothing to survive")
+	assert.Contains(t, r.Text(), "held across all phases")
+}
+
+func TestReducePhasesCustodyAcrossBoundary(t *testing.T) {
+	recv := []string{"sim2"}
+	// Sent at 4.9 (phase 0), receipts land at 5.1 (after the boundary at 5): the
+	// message is still credited to phase 0, and delivered there.
+	evs := []Event{
+		{Ev: "sent", Seq: 0, Node: "sim1", T: 4.9},
+		{Ev: "recv", Seq: 0, Node: "sim2", T: 5.1},
+		{Ev: "sent", Seq: 1, Node: "sim1", T: 6},
+		{Ev: "recv", Seq: 1, Node: "sim2", T: 6.2},
+	}
+	r := ReducePhases(evs, []float64{5}, []string{"before", "after"}, 0.1, recv)
+	require.True(t, r.Valid)
+	assert.Equal(t, 1, r.Phases[0].Window.Sent, "the 4.9 send belongs to phase 0")
+	assert.Equal(t, 1, r.Phases[0].Window.Delivered, "its late receipt still counts in phase 0")
+	assert.Equal(t, 1, r.Phases[1].Window.Sent)
+}
+
+func TestReducePhasesBoundaryInclusiveStart(t *testing.T) {
+	recv := []string{"sim2"}
+	// A message sent exactly at boundary 5 belongs to the later phase [5, +inf).
+	evs := []Event{
+		{Ev: "sent", Seq: 0, Node: "sim1", T: 1},
+		{Ev: "recv", Seq: 0, Node: "sim2", T: 1.2},
+		{Ev: "sent", Seq: 1, Node: "sim1", T: 5},
+		{Ev: "recv", Seq: 1, Node: "sim2", T: 5.2},
+	}
+	r := ReducePhases(evs, []float64{5}, []string{"a", "b"}, 0.1, recv)
+	require.True(t, r.Valid)
+	assert.Equal(t, 1, r.Phases[0].Window.Sent)
+	assert.Equal(t, 1, r.Phases[1].Window.Sent, "T==boundary lands in the later phase")
+}
+
+func TestReducePhasesInfersReceivers(t *testing.T) {
+	recv := []string{"sim2", "sim3"}
+	var evs []Event
+	for _, e := range [][]Event{
+		phased(recv, 0, 0, true), phased(recv, 1, 1, true),
+		phased(recv, 2, 10, false), phased(recv, 3, 11, false),
+		phased(recv, 4, 20, true), phased(recv, 5, 21, true),
+	} {
+		evs = append(evs, e...)
+	}
+	r := ReducePhases(evs, []float64{5, 15}, []string{"baseline", "degraded", "adapted"}, 0.1, nil)
+	assert.Equal(t, []string{"sim2", "sim3"}, r.Receivers)
+	assert.True(t, r.Survived)
+}
+
+func TestReducePhasesInvalidInputs(t *testing.T) {
+	recv := []string{"sim2"}
+	evs := phased(recv, 0, 0, true)
+	// labels count must be boundaries+1.
+	bad := ReducePhases(evs, []float64{5, 15}, []string{"a", "b"}, 0.1, recv)
+	assert.False(t, bad.Valid)
+	assert.Contains(t, bad.Text(), "invalid")
+	// non-ascending boundaries.
+	desc := ReducePhases(evs, []float64{15, 5}, []string{"a", "b", "c"}, 0.1, recv)
+	assert.False(t, desc.Valid)
+	// a phase with no traffic cannot be judged.
+	empty := ReducePhases(phased(recv, 0, 0, true), []float64{5}, []string{"a", "b"}, 0.1, recv)
+	assert.False(t, empty.Valid, "phase b has no sends")
+}
