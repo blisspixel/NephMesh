@@ -167,6 +167,7 @@ const (
 	ReasonNoApprovedSet = "NoApprovedModemPresets"
 	ReasonUnknownPreset = "UnknownModemPreset"
 	ReasonNoTargetNodes = "NoTargetNodes"
+	ReasonDuplicateNode = "DuplicateNodeName"
 )
 
 // Airtime-budget condition and reasons. This is the fleet-wide airtime check the

@@ -30,9 +30,9 @@ func TestParseEventsTakesMarkedLinesOnly(t *testing.T) {
 		"lora-decode: starting",                                  // noise
 		`EVENT {"ev": "sent", "seq": 0, "node": "sim1", "t": 1}`, // event
 		`EVENT {"ev": "recv", "seq": 0, "node": "sim2", "t": 1.2}`,
-		`EVENT {"ev": "bogus", "seq": 9, "node": "x", "t": 5}`,    // wrong ev, dropped
-		`EVENT {not json}`,                                        // malformed, skipped
-		`SUMMARY {"sent": 1, "delivered": 1}`,                    // summary ignored
+		`EVENT {"ev": "bogus", "seq": 9, "node": "x", "t": 5}`, // wrong ev, dropped
+		`EVENT {not json}`,                                     // malformed, skipped
+		`SUMMARY {"sent": 1, "delivered": 1}`,                  // summary ignored
 	}, "\n")
 	evs, err := ParseEvents(strings.NewReader(in))
 	require.NoError(t, err)
@@ -310,6 +310,22 @@ func TestReduceZeroBaselineNotHeldUp(t *testing.T) {
 	assert.Contains(t, r.Text(), "not healthy")
 }
 
+// A dead baseline that then delivers fully after the perturbation is NOT "held
+// up": there was no delivery to preserve. The healthy floor is on the baseline,
+// consistent with ReducePhases, not on the after window.
+func TestReduceZeroBaselineFullAfterNotHeldUp(t *testing.T) {
+	recv := []string{"sim2", "sim3"}
+	evs := []Event{
+		{Ev: "sent", Seq: 0, Node: "sim1", T: 0}, // baseline: no receipts
+		{Ev: "sent", Seq: 1, Node: "sim1", T: 10}, {Ev: "recv", Seq: 1, Node: "sim2", T: 10.2}, {Ev: "recv", Seq: 1, Node: "sim3", T: 10.2},
+	}
+	r := Reduce(evs, 5, 0.1, recv)
+	assert.InDelta(t, 0.0, r.Before.DeliveryRatio, 1e-9)
+	assert.InDelta(t, 1.0, r.After.DeliveryRatio, 1e-9)
+	assert.False(t, r.HeldUp, "a dead baseline has nothing to hold up")
+	assert.Contains(t, r.Text(), "baseline delivery was not healthy")
+}
+
 func TestReducePhasesZeroBaselineNotSurvived(t *testing.T) {
 	recv := []string{"sim2"}
 	// Baseline never delivers; a later phase does. Without a baseline to fall
@@ -332,7 +348,7 @@ func TestReducePhasesZeroBaselineNotSurvived(t *testing.T) {
 func TestParseEventsPrefixOnly(t *testing.T) {
 	in := strings.Join([]string{
 		`log: the EVENT {"ev": "sent", "seq": 7, "node": "x", "t": 1} was noted`, // mid-line, ignored
-		`EVENT {"ev": "sent", "seq": 0, "node": "sim1", "t": 1}`,                  // real
+		`EVENT {"ev": "sent", "seq": 0, "node": "sim1", "t": 1}`,                 // real
 	}, "\n")
 	evs, err := ParseEvents(strings.NewReader(in))
 	require.NoError(t, err)

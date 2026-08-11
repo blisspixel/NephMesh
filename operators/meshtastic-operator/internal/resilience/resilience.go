@@ -133,9 +133,11 @@ func Reduce(events []Event, perturbationT, tolerance float64, receivers []string
 		Before:        before,
 		After:         after,
 		Tolerance:     tolerance,
-		// "Held up" requires delivery to actually be healthy after the
-		// perturbation, not merely no worse than a baseline that never delivered.
-		HeldUp: after.Sent > 0 && after.DeliveryRatio >= minHealthyDelivery && drop <= tolerance,
+		// "Held up" requires a healthy baseline to hold up (a run that never
+		// delivered has nothing to preserve) and delivery no worse than that
+		// baseline beyond the tolerance. This mirrors the baseline-healthy check
+		// ReducePhases applies to its first phase, so the two reducers agree.
+		HeldUp: before.DeliveryRatio >= minHealthyDelivery && after.Sent > 0 && drop <= tolerance,
 	}
 }
 
@@ -364,8 +366,8 @@ func (r Report) Text() string {
 	switch {
 	case r.HeldUp:
 		verdict = "mesh kept delivering across the perturbation (management plane gone, traffic unaffected)"
-	case r.After.DeliveryRatio < minHealthyDelivery:
-		verdict = "delivery was not healthy after the perturbation"
+	case r.Before.DeliveryRatio < minHealthyDelivery:
+		verdict = "baseline delivery was not healthy; nothing to judge"
 	default:
 		verdict = "delivery fell after the perturbation"
 	}

@@ -94,6 +94,23 @@ func TestCompileInfeasibleNoNodes(t *testing.T) {
 	assert.Equal(t, intentv1alpha1.ReasonNoTargetNodes, r.Reason)
 }
 
+func TestCompileInfeasibleDuplicateNodeName(t *testing.T) {
+	// The offline/CLI path lacks the CRD's list-map-key admission check, so the
+	// compiler must reject duplicate node names itself rather than render two
+	// colliding MeshtasticNode specs and inflate the node count.
+	r := Compile(intentv1alpha1.CommunicationIntentSpec{
+		Region:               "US",
+		ApprovedModemPresets: []string{"LONG_FAST"},
+		Nodes: []intentv1alpha1.NodeTarget{
+			{Name: "n1", Connection: tcp("10.0.0.1")},
+			{Name: "n1", Connection: tcp("10.0.0.2")},
+		},
+	})
+	assert.False(t, r.Feasible)
+	assert.Equal(t, intentv1alpha1.ReasonDuplicateNode, r.Reason)
+	assert.Empty(t, r.Proposed)
+}
+
 func TestCompileAirtimeNotEvaluatedWithoutTraffic(t *testing.T) {
 	r := Compile(intentv1alpha1.CommunicationIntentSpec{
 		Region:               "US",

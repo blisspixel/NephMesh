@@ -71,6 +71,20 @@ func Compile(spec intentv1alpha1.CommunicationIntentSpec) Result {
 	if len(spec.Nodes) == 0 {
 		return Result{Reason: intentv1alpha1.ReasonNoTargetNodes, Message: "no target nodes to render"}
 	}
+	// The CRD enforces unique node names via a list-map key, but this pure path
+	// also runs offline via the CLI where that admission check has not applied.
+	// Reject duplicates here so two targets never render to one colliding
+	// MeshtasticNode and never inflate the node count and the airtime floor.
+	seen := make(map[string]struct{}, len(spec.Nodes))
+	for _, n := range spec.Nodes {
+		if _, dup := seen[n.Name]; dup {
+			return Result{
+				Reason:  intentv1alpha1.ReasonDuplicateNode,
+				Message: fmt.Sprintf("duplicate node name %q: two targets cannot render to the same MeshtasticNode", n.Name),
+			}
+		}
+		seen[n.Name] = struct{}{}
+	}
 	if len(spec.ApprovedModemPresets) == 0 {
 		return Result{Reason: intentv1alpha1.ReasonNoApprovedSet, Message: "approvedModemPresets is empty; no preset to render"}
 	}

@@ -163,6 +163,15 @@ func ParseSweep(r io.Reader) ([]Bin, error) {
 // margin, and occupancy is the fraction of bins above the threshold. A band with
 // no bins in the sweep is returned with a zero BinCount so a caller can see it
 // was not covered rather than mistaking it for idle.
+//
+// Valid range, stated honestly: the percentile-based floor assumes the band is not
+// saturated. Once more than (100 minus NoiseFloorPercentile) percent of bins are
+// busy, the percentile sample itself lands inside the signal, the floor is
+// estimated as a signal level, and occupancy collapses toward zero for a fully-busy
+// or jammed band. This is inherent to an uncalibrated relative-power floor (with no
+// quiet reference there is nothing to measure against). For a saturated band watch
+// the peak power (MaxDB), not occupancy; the two together disambiguate a busy band
+// from an idle one.
 func Analyze(bins []Bin, bands []Band, opts Options) []BandStats {
 	out := make([]BandStats, 0, len(bands))
 	for _, band := range bands {

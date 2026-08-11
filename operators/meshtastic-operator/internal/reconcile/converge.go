@@ -159,6 +159,19 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 	allDrift := append(append([]string{}, scalarDrift...), channelDrift...)
 
 	if scalarConverged && channelsConverged {
+		if info.NodeID == "" {
+			// Config is converged but neither the export nor the --info fallback
+			// carried a node id (parseInfo never errors, so an empty read reaches
+			// here). Do not report a Ready state on no identity, and do not let the
+			// controller blank a previously-good status node id: requeue for a fresh
+			// read as if mid-reboot. This only guards the Ready path; the apply and
+			// reboot flow below runs regardless of identity.
+			reason := meshv1alpha1.ReasonConnectFailed
+			if prior.RebootPending {
+				reason = meshv1alpha1.ReasonConfigApplied
+			}
+			return Outcome{Reachable: false, RebootPending: prior.RebootPending, ApplyAttempts: prior.ApplyAttempts, Reason: reason, Requeue: ReconnectBackoff}, nil
+		}
 		return Outcome{
 			Reachable: true, ConfigInSync: true, Ready: true,
 			Reason: meshv1alpha1.ReasonInSync, Info: info, Requeue: DriftCheckInterval,
