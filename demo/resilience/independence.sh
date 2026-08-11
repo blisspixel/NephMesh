@@ -67,24 +67,40 @@ docker cp "$WORK/reconcile-demo" operator:/reconcile-demo >/dev/null
 # Apply a benign owner change (no preset change, so it does not disturb the
 # channel) through the operator's real reconcile loop: export, diff, apply drift,
 # reboot, re-verify. sim1 reboots once here, before measurement starts.
-docker exec operator /reconcile-demo -host sim1 -bin meshtastic \
-    -owner "NephMesh Field 01" -owner-short NF01 2>&1 | grep -E 'reconcile-demo|step|converged' | tail -6 || true
+# Capture the reconcile output so a failure is surfaced, not laundered.
+recon="$(docker exec operator /reconcile-demo -host sim1 -bin meshtastic \
+    -owner "NephMesh Field 01" -owner-short NF01 2>&1)"
+echo "$recon" | grep -E 'step|converged' | tail -6
+echo "$recon" | grep -q 'converged' || {
+    echo "  the operator did not converge sim1 (see above); aborting"; exit 1; }
 echo "  waiting for sim1 to settle after its reboot..."
 sleep 14
 
 log "4/5 Measure delivery, then destroy the management plane mid-run"
-# Start the probe in the surviving monitor (meshcli), writing its event log.
+# The probe runs in the surviving monitor (meshcli) and writes its event log
+# incrementally, so even a truncated run leaves usable data.
 docker exec -d meshcli sh -c 'python /probe.py --sender sim1 --receivers sim2,sim3 --count 24 --interval 3 > /probe.jsonl 2>/dev/null'
 echo "  probe running; measuring baseline..."
 sleep 40
-KILL_T="$(date +%s)"
+# Perturbation time from the SAME (container) clock the probe timestamps with, so
+# a host/VM clock skew cannot misattribute messages to before or after.
+KILL_T="$(docker exec meshcli python3 -c 'import time; print(time.time())' 2>/dev/null)"
 echo "  perturbation at t=${KILL_T}: destroying the management plane (operator + its host)"
 docker rm -f operator >/dev/null 2>&1 || true
-echo "  mesh continues; measuring after..."
-sleep 45  # let the probe finish its run and settle
+echo "  mesh continues; waiting for the probe run to finish..."
+# Poll for the probe's SUMMARY rather than a fixed sleep, so a slightly slow run
+# is not truncated to an empty log (which would misread as a delivery failure).
+_n=0
+while [ "$_n" -lt 45 ]; do
+    docker exec meshcli grep -q '^SUMMARY' /probe.jsonl 2>/dev/null && break
+    _n=$((_n + 1))
+    sleep 2
+done
 
 log "5/5 Verdict"
 docker cp meshcli:/probe.jsonl "$WORK/probe.jsonl" >/dev/null
+grep -q '^EVENT' "$WORK/probe.jsonl" || {
+    echo "  the probe produced no events (it may have failed to reach the nodes); cannot judge"; exit 1; }
 "$WORK/nephmeshctl.exe" resilience -at "$KILL_T" -f "$WORK/probe.jsonl" -o text
 echo
-echo "Tear down with: sh demo/resilience/down.sh  (and: docker rm -f operator)"
+echo "Tear down with: sh demo/resilience/down.sh"

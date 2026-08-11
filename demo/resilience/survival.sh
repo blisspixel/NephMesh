@@ -62,9 +62,13 @@ log "3/4 Run one probe across three offered-load phases"
 docker exec meshcli sh -c \
   'python /probe.py --sender sim1 --receivers sim2,sim3 --schedule "3:10,1:20,3:10" > /survival.jsonl 2>/dev/null'
 docker cp meshcli:/survival.jsonl "$WORK/survival.jsonl" >/dev/null
+grep -q '^EVENT' "$WORK/survival.jsonl" || {
+    echo "  the probe produced no events (it may have failed to reach the nodes); cannot judge"; exit 1; }
 
 # The two BOUNDARY timestamps split the run into baseline / degraded / adapted.
 BOUNDS="$(grep '^BOUNDARY' "$WORK/survival.jsonl" | awk '{print $2}' | paste -sd, -)"
+[ -n "$BOUNDS" ] || {
+    echo "  no phase boundaries in the probe log; the schedule did not run as expected"; exit 1; }
 echo "  phase boundaries (Unix seconds): ${BOUNDS}"
 
 log "4/4 Verdict: baseline vs degraded vs adapted delivery"

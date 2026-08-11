@@ -21,9 +21,10 @@ set -eu
 NET="${MESH_NET:-meshsim}"
 export MSYS_NO_PATHCONV=1
 
-# Remove every node container attached to the network, the helper, and any
-# leftover sim* containers/volumes regardless of how many nodes were started.
-docker rm -f meshcli >/dev/null 2>&1 || true
+# Remove every node container attached to the network, the helper, the operator
+# (created by independence.sh), and any leftover sim* containers/volumes
+# regardless of how many nodes were started.
+docker rm -f meshcli operator >/dev/null 2>&1 || true
 for c in $(docker ps -a --filter "name=^sim[0-9]" --format '{{.Names}}'); do
     docker rm -f "$c" >/dev/null 2>&1 || true
 done

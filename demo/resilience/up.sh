@@ -43,6 +43,15 @@ log() { printf '\n>>> %s\n' "$1"; }
 log "Network ${NET}"
 docker network inspect "$NET" >/dev/null 2>&1 || docker network create "$NET" >/dev/null
 
+# Clear nodes/volumes from any previous, possibly larger, run so stale sim
+# containers do not keep transmitting on the shared channel and skew results.
+for c in $(docker ps -a --filter 'name=^sim[0-9]' --format '{{.Names}}'); do
+    docker rm -f "$c" >/dev/null 2>&1 || true
+done
+for v in $(docker volume ls --filter 'name=^mesh[0-9]' --format '{{.Name}}'); do
+    docker volume rm "$v" >/dev/null 2>&1 || true
+done
+
 log "Starting ${NODES} simulated nodes"
 i=1
 while [ "$i" -le "$NODES" ]; do
@@ -59,8 +68,7 @@ while [ "$i" -le "$NODES" ]; do
     echo "  ${name} (hwid ${hwid})"
     i=$((i + 1))
 done
-echo "  booting..."
-sleep 12
+echo "  started; the helper waits for each API before configuring it"
 
 log "Helper container (Meshtastic CLI for setup and the probe)"
 docker rm -f meshcli >/dev/null 2>&1 || true
@@ -77,17 +85,39 @@ if [ -f "$probe_dir/probe.py" ]; then
         echo "  (could not copy probe.py into the helper; copy it in manually)"
 fi
 
+# Wait for a node's API to answer (up to ~60s); non-zero on timeout. Polling
+# instead of a fixed sleep so a slow boot on a loaded host is not a silent race.
+wait_api() {
+    _n=0
+    while [ "$_n" -lt 30 ]; do
+        docker exec meshcli meshtastic --host "$1" --info >/dev/null 2>&1 && return 0
+        _n=$((_n + 1))
+        sleep 2
+    done
+    return 1
+}
+
 log "Enabling the UDP multicast transport on each node (reboots them)"
-# enabled_protocols bit 0x1 = UDP_BROADCAST. The setting persists in the node's
-# volume, so it survives the reboots the harness induces later.
+# Wait for each node's API before configuring it: a config change reboots the
+# node, so a blind --set against a not-yet-booted API silently no-ops and leaves
+# that node off the mesh. enabled_protocols bit 0x1 = UDP_BROADCAST; the setting
+# persists in the node's volume. Both the enable and the reboot are verified.
 i=1
 while [ "$i" -le "$NODES" ]; do
-    docker exec meshcli meshtastic --host "sim$i" --set network.enabled_protocols 1 >/dev/null 2>&1 || true
+    wait_api "sim$i" || { echo "  sim$i: API never came up; aborting"; exit 1; }
+    docker exec meshcli meshtastic --host "sim$i" --set network.enabled_protocols 1 >/dev/null 2>&1 \
+        || { echo "  sim$i: failed to enable UDP; aborting"; exit 1; }
     echo "  sim$i: UDP enabled"
     i=$((i + 1))
 done
-echo "  rebooting..."
-sleep 14
+
+echo "  waiting for reboots to settle..."
+sleep 4
+i=1
+while [ "$i" -le "$NODES" ]; do
+    wait_api "sim$i" || { echo "  sim$i: did not return after its reboot; aborting"; exit 1; }
+    i=$((i + 1))
+done
 
 log "Mesh up: ${NODES} nodes on ${NET}, helper 'meshcli' ready"
 echo "Measure delivery ratio, e.g.:"

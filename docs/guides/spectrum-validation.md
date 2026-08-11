@@ -148,9 +148,9 @@ curl -s localhost:9808/metrics | grep nephmesh_spectrum
 
 It builds from `operators/meshtastic-operator/cmd/spectrum-exporter` (cross-compile
 for the sensor's architecture, for example `GOOS=linux GOARCH=arm64`). Key series:
-`nephmesh_spectrum_occupancy_percent`, `nephmesh_spectrum_peak_dbm`,
-`nephmesh_spectrum_peak_frequency_hz`, and `nephmesh_spectrum_noise_floor_dbm`,
-each labelled by band. Watch `peak_dbm` to see a transmitter come and go;
+`nephmesh_spectrum_occupancy_percent`, `nephmesh_spectrum_peak_db`,
+`nephmesh_spectrum_peak_frequency_hz`, and `nephmesh_spectrum_noise_floor_db`,
+each labelled by band. Watch `peak_db` to see a transmitter come and go;
 `occupancy_percent` for how busy the whole band is. A band the sweep did not
 cover reports `bins=0` and no occupancy value, so a gap is never a false zero.
 

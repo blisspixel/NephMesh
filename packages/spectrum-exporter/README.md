@@ -65,9 +65,9 @@ All gauges are per band (`ism-433`, `ism-868-eu`, `ism-915-us`), aggregates only
 so cardinality stays bounded no matter how wide the sweep:
 
 - `nephmesh_spectrum_occupancy_percent` how busy the band is.
-- `nephmesh_spectrum_peak_dbm`, `nephmesh_spectrum_peak_frequency_hz` the
+- `nephmesh_spectrum_peak_db`, `nephmesh_spectrum_peak_frequency_hz` the
   strongest bin and where it is.
-- `nephmesh_spectrum_noise_floor_dbm` the estimated per-band noise floor.
+- `nephmesh_spectrum_noise_floor_db` the estimated per-band noise floor.
 - `nephmesh_spectrum_bins` bins observed (0 means the band was not covered).
 - `nephmesh_spectrum_sweeps_total`, `nephmesh_spectrum_sweep_errors_total`,
   `nephmesh_spectrum_last_sweep_timestamp_seconds` sensor liveness.

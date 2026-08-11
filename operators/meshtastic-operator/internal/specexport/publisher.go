@@ -55,16 +55,16 @@ func New(reg prometheus.Registerer) *Publisher {
 			Help: "Fraction of a band's bins above its noise-floor-relative threshold, percent. How busy the whole band is.",
 		}, []string{"band"}),
 		peakDBM: prometheus.NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: ns, Subsystem: sub, Name: "peak_dbm",
-			Help: "Strongest bin power in the band (relative dB). The sensitive signal for a single active transmitter.",
+			Namespace: ns, Subsystem: sub, Name: "peak_db",
+			Help: "Strongest bin power in the band, relative dB (uncalibrated, not dBm). The sensitive signal for a single active transmitter.",
 		}, []string{"band"}),
 		peakFreqHz: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: ns, Subsystem: sub, Name: "peak_frequency_hz",
 			Help: "Frequency of the strongest bin in the band, Hz.",
 		}, []string{"band"}),
 		noiseDBM: prometheus.NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: ns, Subsystem: sub, Name: "noise_floor_dbm",
-			Help: "Estimated per-band noise floor (relative dB), the percentile the occupancy threshold is measured against.",
+			Namespace: ns, Subsystem: sub, Name: "noise_floor_db",
+			Help: "Estimated per-band noise floor, relative dB (uncalibrated, not dBm), the percentile the occupancy threshold is measured against.",
 		}, []string{"band"}),
 		bins: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: ns, Subsystem: sub, Name: "bins",

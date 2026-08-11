@@ -444,7 +444,13 @@ func runResilience(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 			}
 			boundaries = append(boundaries, v)
 		}
-		report := resilience.ReducePhases(events, boundaries, splitCSV(*labelsCSV), *tolerance, receivers)
+		labels := splitCSV(*labelsCSV)
+		if len(labels) != len(boundaries)+1 {
+			fprintf(stderr, "-labels has %d entries but -phases has %d boundaries; -labels must have %d (one per phase). Pass -labels to match.\n",
+				len(labels), len(boundaries), len(boundaries)+1)
+			return exitUsage
+		}
+		report := resilience.ReducePhases(events, boundaries, labels, *tolerance, receivers)
 		payload, text = report, report.Text()
 	} else {
 		report := resilience.Reduce(events, *at, *tolerance, receivers)
