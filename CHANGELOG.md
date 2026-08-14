@@ -4,6 +4,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+### Fixed
+
+- CI `govulncheck` pin moved from Go 1.25.12 to 1.25.13 (stdlib fixes for `net/url`, `crypto/tls`, `net/http`, `encoding/asn1`).
+
 ### Added
 
 - Local operator image build path (`hack/build-operator-image.sh`). A local build produced `nephmesh-meshtastic-operator:local`, non-root, helpers and CLI present. Not pushed, not signed, not an SBOM. The `ghcr.io/...:v0.4.0` package tag remains a placeholder.
