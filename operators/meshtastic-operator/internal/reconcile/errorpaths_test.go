@@ -73,6 +73,58 @@ func TestApplyUnexpectedErrorPropagates(t *testing.T) {
 	assert.ErrorIs(t, err, boom)
 }
 
+func TestExportDeadlineExceededIsUnreachableNotError(t *testing.T) {
+	// A hung CLI killed by the client timeout must requeue as unreachable, not
+	// return a hard error the controller would retry immediately.
+	out, err := Converge(context.Background(), stubClient{exportErr: context.DeadlineExceeded}, desiredUS(), DesiredChannels{}, State{})
+	require.NoError(t, err)
+	assert.False(t, out.Reachable)
+	assert.Equal(t, ReconnectBackoff, out.Requeue)
+}
+
+func TestApplyDeadlineExceededCountsAsApply(t *testing.T) {
+	// Apply wrote, then the session hung until the deadline. Count it toward
+	// the apply bound and wait for reboot, the same as ErrUnreachable.
+	dev := stubClient{live: map[string]any{}, applyErr: context.DeadlineExceeded}
+	out, err := Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, State{})
+	require.NoError(t, err)
+	assert.True(t, out.RebootPending)
+	assert.Equal(t, int32(1), out.ApplyAttempts)
+	assert.Equal(t, RebootWait, out.Requeue)
+}
+
+func TestCanceledContextStillPropagates(t *testing.T) {
+	_, err := Converge(context.Background(), stubClient{exportErr: context.Canceled}, desiredUS(), DesiredChannels{}, State{})
+	assert.ErrorIs(t, err, context.Canceled, "shutdown must not be rewritten as a requeue")
+}
+
+func TestApplyUnreachableDoesNotCommitPasswordHash(t *testing.T) {
+	// Password-only drift: echoed MQTT fields already match. Apply drops
+	// before the write is confirmed. Committing the hash would make the next
+	// reachable export look Ready with the password never on the radio.
+	desired := map[string]any{
+		"config": map[string]any{"lora": map[string]any{"region": "US"}},
+		"module_config": map[string]any{"mqtt": map[string]any{
+			"enabled": true, "address": "10.0.0.5", "password": "never-landed",
+		}},
+	}
+	live := map[string]any{
+		"config":        map[string]any{"lora": map[string]any{"region": "US"}},
+		"module_config": map[string]any{"mqtt": map[string]any{"enabled": true, "address": "10.0.0.5"}},
+	}
+	out, err := Converge(context.Background(), stubClient{live: live, applyErr: device.ErrUnreachable}, desired, DesiredChannels{}, State{})
+	require.NoError(t, err)
+	assert.True(t, out.RebootPending)
+	assert.Empty(t, out.MQTTPasswordHash, "an unconfirmed write must not commit the password hash")
+
+	// Reachable again with that prior hash: still drifted, must apply, not Ready.
+	dev := device.NewFake(live, 0)
+	out2, err := Converge(context.Background(), dev, desired, DesiredChannels{}, State{MQTTPasswordHash: out.MQTTPasswordHash})
+	require.NoError(t, err)
+	assert.False(t, out2.Ready)
+	assert.Equal(t, 1, dev.Applies, "the password must still be written once a session holds")
+}
+
 func TestApplyUnreachableIsRequeueNotError(t *testing.T) {
 	dev := stubClient{live: map[string]any{}, applyErr: device.ErrUnreachable} // drifted, apply hits reboot
 	out, err := Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, State{})

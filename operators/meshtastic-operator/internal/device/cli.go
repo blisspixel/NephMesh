@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -99,7 +100,15 @@ func looksUnreachable(output string, serial bool) bool {
 	if strings.Contains(o, "timed out") ||
 		strings.Contains(o, "connection refused") ||
 		strings.Contains(o, "error connecting") ||
-		strings.Contains(o, "no route to host") {
+		strings.Contains(o, "no route to host") ||
+		strings.Contains(o, "connection reset") ||
+		strings.Contains(o, "broken pipe") ||
+		strings.Contains(o, "connection aborted") ||
+		strings.Contains(o, "connection closed") ||
+		strings.Contains(o, "i/o timeout") ||
+		strings.Contains(o, "network is unreachable") ||
+		strings.Contains(o, "host is unreachable") ||
+		strings.Contains(o, "transport endpoint is not connected") {
 		return true
 	}
 	if !serial {
@@ -113,6 +122,26 @@ func looksUnreachable(output string, serial bool) bool {
 		strings.Contains(o, "access is denied") ||
 		strings.Contains(o, "no such file or directory") ||
 		strings.Contains(o, "device disconnected")
+}
+
+// execErrorUnreachable reports whether a failed CLI/helper invocation is a
+// transient device drop (requeue) rather than a hard failure. A hung apply that
+// is killed by our deadline, or a TCP RST as the radio reboots, must count as
+// unreachable: treating them as unexpected would re-apply immediately and
+// reboot-loop. A canceled parent context is not mapped (shutdown should
+// surface), and serial-only path phrases are never read from err.Error()
+// (a missing binary is "no such file", not a reboot).
+func execErrorUnreachable(ctx context.Context, output string, err error, serial bool) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return true
+	}
+	if looksUnreachable(output, serial) {
+		return true
+	}
+	return looksUnreachable(err.Error(), false)
 }
 
 // connArgs is the CLI connection flag for the configured transport: --port for
@@ -154,7 +183,7 @@ func (c *CLIClient) execRun(ctx context.Context, args ...string) (string, error)
 	cmd := exec.CommandContext(ctx, c.bin(), full...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		if looksUnreachable(string(out), c.Serial != "") {
+		if execErrorUnreachable(ctx, string(out), err, c.Serial != "") {
 			return string(out), ErrUnreachable
 		}
 		return string(out), fmt.Errorf("%s %s: %w: %s", c.bin(), strings.Join(full, " "), err, strings.TrimSpace(redactCLISecrets(string(out))))
@@ -173,18 +202,24 @@ func (c *CLIClient) runExporter(ctx context.Context) (string, error) {
 	args := append(append([]string(nil), c.Exporter[1:]...), conn, value)
 	ctx, cancel := withExecTimeout(ctx, c.execTimeout())
 	defer cancel()
+	var (
+		out string
+		err error
+	)
 	if c.execFn != nil {
-		return c.execFn(ctx, c.Exporter[0], args...)
+		out, err = c.execFn(ctx, c.Exporter[0], args...)
+	} else {
+		cmd := exec.CommandContext(ctx, c.Exporter[0], args...)
+		b, e := cmd.CombinedOutput()
+		out, err = string(b), e
 	}
-	cmd := exec.CommandContext(ctx, c.Exporter[0], args...)
-	out, err := cmd.CombinedOutput()
 	if err != nil {
-		if looksUnreachable(string(out), c.Serial != "") {
-			return string(out), ErrUnreachable
+		if execErrorUnreachable(ctx, out, err, c.Serial != "") {
+			return out, ErrUnreachable
 		}
-		return string(out), fmt.Errorf("%s: %w: %s", c.Exporter[0], err, strings.TrimSpace(string(out)))
+		return out, fmt.Errorf("%s: %w: %s", c.Exporter[0], err, strings.TrimSpace(redactCLISecrets(out)))
 	}
-	return string(out), nil
+	return out, nil
 }
 
 // parseExportConfig extracts the YAML configuration document from CLI output,
@@ -337,10 +372,10 @@ func (c *CLIClient) runApplier(ctx context.Context, channelsFile string) error {
 		out, err = string(b), e
 	}
 	if err != nil {
-		if looksUnreachable(out, c.Serial != "") {
+		if execErrorUnreachable(ctx, out, err, c.Serial != "") {
 			return ErrUnreachable
 		}
-		return fmt.Errorf("%s: applying channels: %w: %s", c.Applier[0], err, strings.TrimSpace(out))
+		return fmt.Errorf("%s: applying channels: %w: %s", c.Applier[0], err, strings.TrimSpace(redactCLISecrets(out)))
 	}
 	return nil
 }

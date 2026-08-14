@@ -210,6 +210,27 @@ func TestPasswordOnlyRotationApplies(t *testing.T) {
 	assert.Equal(t, 0, dev2.Applies, "an unchanged password is not reapplied")
 }
 
+func TestUnobservedIsNotDegradedByLeftoverAttempts(t *testing.T) {
+	chans := DesiredChannels{
+		Compare: []config.ChannelState{{Index: 1, Name: "ops", PSKHash: "abc"}},
+		Write:   []device.ChannelWrite{{Index: 1, Name: "ops"}},
+	}
+	out, err := Converge(context.Background(), stubClient{live: desiredUS()}, desiredUS(), chans, State{ApplyAttempts: MaxApplyAttempts})
+	require.NoError(t, err)
+	assert.True(t, out.ChannelsUnobserved)
+	assert.False(t, out.Degraded, "unobserved is not an apply and must not inherit the apply bound")
+}
+
+func TestDegradedChannelDriftIsNotConfigInSync(t *testing.T) {
+	live := desiredUS()
+	live["channels"] = []any{} // present but empty: declared channels are missing
+	chans := DesiredChannels{Compare: []config.ChannelState{{Index: 1, Name: "ops", PSKHash: "abc"}}}
+	out, err := Converge(context.Background(), stubClient{live: live}, desiredUS(), chans, State{ApplyAttempts: MaxApplyAttempts})
+	require.NoError(t, err)
+	assert.True(t, out.Degraded)
+	assert.False(t, out.ConfigInSync, "channel-only never-converge must not report config in sync")
+}
+
 func TestMissingChannelSetDoesNotApply(t *testing.T) {
 	// Stock --export-config has no discrete channels key. Declared channels
 	// must not be treated as missing (that reboot-looped). Scalar config can

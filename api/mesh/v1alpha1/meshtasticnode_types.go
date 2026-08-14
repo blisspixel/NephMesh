@@ -233,6 +233,13 @@ type MeshtasticNodeStatus struct {
 	// how a Secret-only rotation is detected. It is a hash, not the password.
 	// +optional
 	LastAppliedMQTTPasswordHash string `json:"lastAppliedMQTTPasswordHash,omitempty"`
+	// lastBoundSecretsHash is a fingerprint of the resolved Secret-backed
+	// desired state (MQTT password and channel PSKs) last evaluated. Secret
+	// data is not part of metadata.generation, so this is how a Secret-only
+	// change resets the apply bound on a Degraded node. It is a hash, not
+	// secret material.
+	// +optional
+	LastBoundSecretsHash string `json:"lastBoundSecretsHash,omitempty"`
 }
 
 // +kubebuilder:object:root=true

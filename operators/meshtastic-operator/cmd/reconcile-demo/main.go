@@ -148,10 +148,18 @@ func main() {
 			}
 			dev.Applier = strings.Fields(*applier)
 			var key secret.Value
-			raw := []byte{0x01} // the device default key
+			raw := config.DefaultPSKShorthand
 			if *channelKey != "" {
-				key = secret.New(*channelKey)
 				raw = []byte(*channelKey)
+				if err := config.ValidChannelPSK(raw); err != nil {
+					fmt.Fprintf(os.Stderr, "channel key: %v\n", err)
+					os.Exit(2)
+				}
+				if config.IsDefaultPSK(raw) {
+					raw = config.DefaultPSKShorthand
+				} else {
+					key = secret.New(*channelKey)
+				}
 			}
 			chans = reconcile.DesiredChannels{
 				Compare: []config.ChannelState{{Index: int32(*channelIndex), Name: *channelName, PSKHash: config.PSKHash(raw)}},

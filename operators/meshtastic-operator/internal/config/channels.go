@@ -98,6 +98,22 @@ func NormalizePSK(raw []byte) []byte {
 	return raw
 }
 
+// ValidChannelPSK reports whether raw is a key Meshtastic will store as
+// declared: the public default (0x01 or its 16-byte expansion), or a 16- or
+// 32-byte explicit key. Other lengths are accepted by some CLI paths then
+// silently truncated or rejected, which looks like permanent channel drift.
+func ValidChannelPSK(raw []byte) error {
+	if IsDefaultPSK(raw) {
+		return nil
+	}
+	switch len(raw) {
+	case 16, 32:
+		return nil
+	default:
+		return fmt.Errorf("channel PSK is %d bytes; Meshtastic keys are 16 or 32 bytes", len(raw))
+	}
+}
+
 // PSKHash returns the hex SHA-256 of a raw pre-shared key. An empty key yields
 // the empty string, so "no declared key" and "no key on the device" compare
 // equal rather than reading as drift. The public default is hashed as the 0x01
@@ -112,6 +128,22 @@ func rawPSKHash(raw []byte) string {
 	}
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
+}
+
+// SecretsFingerprint is a stable hash of the resolved Secret-backed desired
+// state (MQTT password hash plus declared channels). Secret edits do not bump
+// metadata.generation; the controller compares this to status to know the
+// apply bound must be reset. It hashes hashes, never raw keys or passwords.
+func SecretsFingerprint(passwordHash string, chans []ChannelState) string {
+	h := sha256.New()
+	_, _ = h.Write([]byte(passwordHash))
+	_, _ = h.Write([]byte{0})
+	sorted := append([]ChannelState(nil), chans...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Index < sorted[j].Index })
+	for _, ch := range sorted {
+		_, _ = fmt.Fprintf(h, "%d\n%s\n%s\n%t\n%t\n", ch.Index, ch.Name, ch.PSKHash, ch.UplinkEnabled, ch.DownlinkEnabled)
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // ChannelSetPresent reports whether the export carried a channels list (even

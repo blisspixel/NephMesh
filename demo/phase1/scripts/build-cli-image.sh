@@ -14,8 +14,9 @@
 # limitations under the License.
 
 # Builds the pinned Meshtastic CLI image the demo uses, and loads it into
-# the local cluster so no pod pulls from PyPI at runtime. Detects kind and
-# k3s; for other setups, build and make the image available yourself.
+# the local cluster so no pod pulls from PyPI at runtime. Detects kind,
+# k3d, and k3s. A cluster that cannot be loaded is a hard failure: the
+# demo Job would otherwise ImagePullBackOff on a host-only tag.
 
 set -eu
 
@@ -32,13 +33,19 @@ case "$ctx" in
         echo "loading $IMAGE into kind cluster '$cluster'"
         kind load docker-image "$IMAGE" --name "$cluster"
         ;;
+    k3d-*)
+        cluster=${ctx#k3d-}
+        echo "loading $IMAGE into k3d cluster '$cluster'"
+        k3d image import "$IMAGE" -c "$cluster"
+        ;;
     *)
         if command -v k3s >/dev/null 2>&1; then
             echo "importing $IMAGE into k3s containerd"
             docker save "$IMAGE" | sudo k3s ctr images import -
         else
-            echo "context '$ctx' is not kind and k3s was not found."
-            echo "Make $IMAGE available to your cluster's nodes, then run the demo."
+            echo "context '$ctx' is not kind/k3d and k3s was not found."
+            echo "Load $IMAGE into the cluster yourself, or point kubectl at kind/k3d/k3s."
+            exit 1
         fi
         ;;
 esac

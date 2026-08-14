@@ -41,7 +41,14 @@ patterns='hackrf_transfer[^|]*-[tc]|SOAPY_SDR_TX|writeStream|--set-ham|--transmi
 
 # Scan compiled-language sources and build files too, so a TX call in a Dockerfile
 # RUN, a Makefile, or C/C++/Rust is not invisible to the gate.
-files=$(git ls-files -- '*.go' '*.sh' '*.py' '*.yaml' '*.yml' '*.c' '*.cc' '*.cpp' '*.cxx' '*.h' '*.rs' '*Dockerfile*' '*Makefile*' 2>/dev/null || true)
+# Tracked plus not-yet-committed files, matching check-manifests, so a new
+# unmarked transmit path fails locally before git add.
+files=$(
+    {
+        git ls-files -- '*.go' '*.sh' '*.py' '*.yaml' '*.yml' '*.c' '*.cc' '*.cpp' '*.cxx' '*.h' '*.rs' '*Dockerfile*' '*Makefile*'
+        git ls-files --others --exclude-standard -- '*.go' '*.sh' '*.py' '*.yaml' '*.yml' '*.c' '*.cc' '*.cpp' '*.cxx' '*.h' '*.rs' '*Dockerfile*' '*Makefile*'
+    } | sort -u
+)
 [ -z "$files" ] && { echo "check-transmit: no source yet, OK"; exit 0; }
 
 fail=0

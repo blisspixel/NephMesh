@@ -132,15 +132,16 @@ func (r *MeshtasticNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	desired := config.BuildDesired(node.Spec, r.resolveBroker(ctx, &node), mqttPassword)
+	secretsHash := config.SecretsFingerprint(config.WriteOnlyPasswordHash(desired), desiredChannels.Compare)
 	prior := reconcile.State{
 		RebootPending:    meta.IsStatusConditionTrue(node.Status.Conditions, meshv1alpha1.ConditionRebootPending),
 		ApplyAttempts:    node.Status.ApplyAttempts,
 		MQTTPasswordHash: node.Status.LastAppliedMQTTPasswordHash,
 	}
-	// A new spec generation is a new desired state: reset the apply bound so a
-	// Degraded node is retried after the user fixes the field that would not
-	// converge, instead of staying Degraded forever.
-	if node.Generation != node.Status.ObservedGeneration {
+	// A new spec generation or a Secret-only change is a new desired state:
+	// reset the apply bound so a Degraded node is retried after the user
+	// fixes the field or Secret that would not converge.
+	if node.Generation != node.Status.ObservedGeneration || secretsHash != node.Status.LastBoundSecretsHash {
 		prior.ApplyAttempts = 0
 	}
 	priorDegraded := meta.IsStatusConditionTrue(node.Status.Conditions, meshv1alpha1.ConditionDegraded)
@@ -149,10 +150,14 @@ func (r *MeshtasticNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	outcome, err := reconcile.Converge(ctx, dev, desired, desiredChannels, prior)
 	if err != nil {
 		log.Error(err, "convergence step failed")
-		return ctrl.Result{}, err // rate-limited retry for unexpected failures
+		// Surface the failure on the object. Leaving last-good Ready=True while
+		// the worker retries a helper crash or parse error hid the outage the
+		// same way a missing Secret used to.
+		return r.deviceFailure(ctx, &node, err)
 	}
 
 	applyOutcome(&node, outcome)
+	node.Status.LastBoundSecretsHash = secretsHash
 	if outcome.ChannelsUnobserved {
 		meta.SetStatusCondition(&node.Status.Conditions, metav1.Condition{
 			Type:               meshv1alpha1.ConditionChannelsInSync,
@@ -285,6 +290,11 @@ func (r *MeshtasticNodeReconciler) buildDesiredChannels(ctx context.Context, nod
 				// world-readable. Surface it instead of silently downgrading.
 				return reconcile.DesiredChannels{}, fmt.Errorf("channel %d psk secret %q key %q is empty; refusing to fall back to the public default key", ch.Index, ch.PSKSecretRef.Name, ch.PSKSecretRef.Key)
 			}
+			if err := config.ValidChannelPSK(data); err != nil {
+				// A 15-byte or base64-text key would apply then never echo back
+				// as declared, rebooting until the apply bound. Fail here.
+				return reconcile.DesiredChannels{}, fmt.Errorf("channel %d psk secret %q key %q: %w", ch.Index, ch.PSKSecretRef.Name, ch.PSKSecretRef.Key, err)
+			}
 			key = secret.New(string(data))
 		}
 		// The compare hash: an explicit key hashes its raw bytes, a default (no
@@ -371,6 +381,34 @@ func (r *MeshtasticNodeReconciler) secretFailure(ctx context.Context, node *mesh
 		Message: cause.Error(),
 	})
 	r.event(node, corev1.EventTypeWarning, meshv1alpha1.ReasonSecretMissing, cause.Error())
+	metrics.Record(metrics.Sample{
+		Namespace: node.Namespace, Name: node.Name,
+		Ready: false, Reachable: false, ApplyAttempts: node.Status.ApplyAttempts,
+	})
+	if statusErr := r.Status().Update(ctx, node); statusErr != nil {
+		return ctrl.Result{}, statusErr
+	}
+	return ctrl.Result{}, cause
+}
+
+// deviceFailure surfaces an unexpected device-client error (export parse, a
+// helper crash) so the object is not left Ready from the last good step while
+// the worker retries. It is not Degraded: that reason is reserved for the
+// bounded apply loop. ApplyAttempts and the last-applied password hash are
+// left as-is.
+func (r *MeshtasticNodeReconciler) deviceFailure(ctx context.Context, node *meshv1alpha1.MeshtasticNode, cause error) (ctrl.Result, error) {
+	meta.RemoveStatusCondition(&node.Status.Conditions, meshv1alpha1.ConditionReachable)
+	meta.RemoveStatusCondition(&node.Status.Conditions, meshv1alpha1.ConditionConfigInSync)
+	meta.RemoveStatusCondition(&node.Status.Conditions, meshv1alpha1.ConditionChannelsInSync)
+	meta.RemoveStatusCondition(&node.Status.Conditions, meshv1alpha1.ConditionAirtimeHealthy)
+	meta.RemoveStatusCondition(&node.Status.Conditions, meshv1alpha1.ConditionAirtimeBudget)
+	meta.RemoveStatusCondition(&node.Status.Conditions, meshv1alpha1.ConditionRebootPending)
+	meta.SetStatusCondition(&node.Status.Conditions, metav1.Condition{
+		Type: meshv1alpha1.ConditionReady, Status: metav1.ConditionFalse,
+		Reason: meshv1alpha1.ReasonDeviceError, ObservedGeneration: node.Generation,
+		Message: cause.Error(),
+	})
+	r.event(node, corev1.EventTypeWarning, meshv1alpha1.ReasonDeviceError, cause.Error())
 	metrics.Record(metrics.Sample{
 		Namespace: node.Namespace, Name: node.Name,
 		Ready: false, Reachable: false, ApplyAttempts: node.Status.ApplyAttempts,
