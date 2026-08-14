@@ -32,7 +32,7 @@ nephmeshctl advise -f sweep.csv -model qwen2.5:14b -ollama-url http://localhost:
 ```
 
 `-num-gpu 0` forces CPU inference so a capable model runs in system RAM on a
-memory-tight edge host (a Jetson shares RAM between CPU and GPU, so a model that
+memory-tight edge host (some SBCs share RAM between CPU and GPU, so a model that
 will not fit the GPU alongside the SDR still fits on the CPU).
 
 ## Captured runs
@@ -52,8 +52,8 @@ That is the correct, honest call for a single ambiguous reading: it noted the
 occupancy over the ceiling, referenced the classified wideband emission, treated
 it skeptically, and held.
 
-Edge-resident model (tinyllama on the Jetson itself, the only model that fits
-alongside the SDR in 7.4 GB of shared memory):
+Edge-resident model (a tiny local model on the sensor host, the only size that
+fits alongside the SDR in shared memory):
 
 ```
 recommendation: hold (confidence low)

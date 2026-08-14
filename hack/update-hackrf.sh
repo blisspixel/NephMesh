@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Build and install the latest HackRF host tools from source on a sensor host
-# (for example a Jetson Orin Nano), so a HackRF Pro runs natively instead of the
+# (for example an arm64 Linux USB host), so a HackRF Pro runs natively instead of the
 # legacy HackRF-One-compatible mode the distro package provides.
 #
 # Why: Ubuntu's apt "hackrf" is years old (2021.03) and predates HackRF Pro

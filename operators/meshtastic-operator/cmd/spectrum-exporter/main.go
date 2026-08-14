@@ -21,7 +21,7 @@ limitations under the License.
 // spectrum on the same observability plane as the operator's node health. It
 // never transmits: hackrf_sweep only receives.
 //
-// Run it on the host the SDR is attached to (a sensor host such as a Jetson):
+// Run it on the host the SDR is attached to (the Linux USB host):
 //
 //	spectrum-exporter -bind :9808 -freq-min 902 -freq-max 928 -interval 15s
 //	curl -s localhost:9808/metrics | grep nephmesh_spectrum

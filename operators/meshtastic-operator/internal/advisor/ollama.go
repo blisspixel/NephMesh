@@ -36,7 +36,7 @@ type OllamaClient struct {
 	HTTP    *http.Client
 	// NumGPU, when non-negative, sets how many layers Ollama offloads to the GPU.
 	// 0 forces CPU inference, which lets a capable model run in system RAM on a
-	// memory-constrained edge device (a Jetson shares RAM between CPU and GPU, so
+	// memory-constrained edge device (some SBCs share RAM between CPU and GPU, so
 	// a model that will not fit the GPU alongside an SDR still fits on the CPU).
 	// A negative value leaves the decision to Ollama.
 	NumGPU int

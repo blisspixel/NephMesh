@@ -1,11 +1,11 @@
 # Research: Prior art, gap analysis, and the minimal-cost lab path
 
-Researched 2026-08-04. Prices are observed street prices and fluctuate.
+Researched 2026-08-04, Meshtastic/K8s cousin refreshed 2026-08-13. Prices are observed street prices and fluctuate.
 
 ## Prior art map
 
 - **LoRaWAN + K8s:** ChirpStack has community Helm charts and a production EKS deployment guide ([Helium's](https://docs.helium.com/iot/run-an-lns/kubernetes/)) - but LoRaWAN is a star topology whose *centralized network server* is what runs on K8s; dumb gateways backhaul to it. Meshtastic is a decentralized peer-to-peer mesh with **no network server at all**, so managing it from K8s is a different problem: gateway/bridge nodes, MQTT topology, and radio-config intents rather than an LNS.
-- **Meshtastic + K8s:** no operator exists (absence-of-evidence from multiple targeted searches). Closest: [MeshMonitor](https://meshmonitor.org/) (dashboard with Helm chart), the [official Meshtastic MQTT broker](https://github.com/meshtastic/mqtt) (Docker, no chart).
+- **Meshtastic + K8s:** no CRD operator (continuous observe-diff-reconcile of node config) found as of 2026-08-13. Closest: [MeshMonitor](https://meshmonitor.org/) (live dashboard, Helm, remote admin, automation, MeshCore alongside Meshtastic). That is imperative fleet UI, not Git-declared desired state, not an airtime admission gate, and not a spectrum witness. Also: the [official Meshtastic MQTT broker](https://github.com/meshtastic/mqtt) (Docker, no chart).
 - **Disaster/resilience mesh:** active academic thread - Meshtastic resilience analysis ([arXiv:2605.17063](https://arxiv.org/abs/2605.17063)), Wi-Fi HaLow post-disaster architectures ([arXiv:2507.07841](https://arxiv.org/abs/2507.07841)), solar LoRa mesh papers - plus practitioner EMCOMM communities (Placer County ARES, community mesh build guides). All imperative and hand-configured; **no orchestration layer**.
 - **Nephio extensions:** [nephio-experimental](https://github.com/nephio-experimental) org (PoCs explicitly not TSC-endorsed - a natural eventual home or model for this work); **[INA-Infra](https://arxiv.org/html/2410.09765)** - research framework built on Nephio with OAI + USRP SDRs and E2E slicing. INA-Infra is NephMesh's closest neighbor: it validates the "Nephio + SDR" architecture at ~100× the hardware cost, with no mesh or disaster layer.
 - **Intent-driven spectrum:** O-RAN RIC xApps/rApps for dynamic spectrum sharing ([O-DSS](https://arxiv.org/html/2601.02571), [AdapShare](https://arxiv.org/html/2408.16842v1), ChARM, ProSAS, SPARC) - all assume O-RAN E2 interfaces and licensed spectrum. DARPA SC2's durable legacy is the [Colosseum](https://arxiv.org/pdf/2110.10617) emulator at Northeastern.
@@ -13,11 +13,13 @@ Researched 2026-08-04. Prices are observed street prices and fluctuate.
 
 ### The gap
 
-Every pairwise combination exists; the three-way intersection doesn't:
+Every pairwise combination exists; this intersection does not:
 
-> **No project applies declarative intent (KRM packages, GitOps, Configuration-as-Data) to a decentralized LoRa mesh with co-located commodity-SDR spectrum sensing as the feedback loop, targeted at disaster-resilient hybrid (mesh + cellular) infrastructure.**
+> **Desired-state KRM for a decentralized ISM mesh, plus commodity-SDR evidence that is not the mesh talking about itself, plus an airtime quota, with the cluster optional at runtime.**
 
-Specifically novel: (1) no Meshtastic K8s operator exists at all; (2) intent-driven spectrum work has never targeted ISM-band mesh with $30 sensors; (3) Nephio's ecosystem has never touched sub-GHz unlicensed infrastructure.
+Cousins, one cell each: OpenAirInterface (Nephio catalog pattern, 5G NFs that die with the cluster); [INA-Infra](https://arxiv.org/html/2410.09765) (Nephio plus USRP-class SDR, licensed cellular); MeshMonitor (live Meshtastic fleet UI); Reticulum (crypto mesh, no Kubernetes); Electrosense (commodity sensing, cloud backend); ClusterDuck (disaster firmware, no GitOps). The empty cell is the sentence above, not "fleet management does not exist."
+
+Still true, scoped: (1) no Meshtastic CRD operator; (2) intent-driven spectrum work has not targeted ISM-band mesh with cheap sensors; (3) Nephio's published catalogs have not touched sub-GHz unlicensed infrastructure.
 
 ## Lab tiers (verified pricing, 2025–2026)
 

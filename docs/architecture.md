@@ -13,7 +13,7 @@ NephMesh adds nothing to that machinery. It supplies **new blueprints, CRDs, and
 The project is about radio systems in general, not one product. The intent model treats a radio as a **driver**: a CRD plus an operator that knows how to reconcile one kind of control surface. Meshtastic is the first driver because its control surface is the most complete (a scriptable API, config round-trip, simulation mode), and the `MeshtasticNode` operator doubles as the reference for what a driver looks like. The seam is meant to widen:
 
 - **Wider LoRa:** LoRaWAN (for example ChirpStack, whose network server is already cloud-native) and other mesh firmwares can become additional drivers behind the same propose-approve-reconcile flow.
-- **SDR as a co-equal pillar:** spectrum sensing is a first-class workload today (a `SpectrumScan` driver over SoapySDR, hardware-agnostic by design), with a larger SDR possibility space later, not a mesh accessory.
+- **SDR as a co-equal pillar:** spectrum sensing is first-class today as a receive-only sweep reducer and Prometheus exporter (hardware-agnostic CSV in, SoapySDR-class device strings later), with a `SpectrumScan` CR still planned, not a mesh accessory.
 - **Multi-transport adaptation:** the longer arc is a fabric that keeps secure comms alive across whatever transport is currently available (cloud and cellular and satellite backhaul when present, mesh when not), adapting channels, keys, and routing as conditions change. The north star and its honest status are in `docs/faq.md`; the building blocks (PACE tiers, the closed loop, control-plane-independent nodes) are on the roadmap.
 
 A new radio earns inclusion by having a control surface worth reconciling; analog services with no digital control (for example CB voice) stay out of scope as managed transports, though the SDR side can still monitor them.
@@ -21,6 +21,8 @@ A new radio earns inclusion by having a control surface worth reconciling; analo
 Current lab shape, not a required topology: a Windows (or other) dev PC holds a USB handheld; a Linux USB host holds the HackRF and a CH341 `meshtasticd` gateway (device API on localhost, reached by SSH tunnel). That pair has exchanged LoRa text. See `docs/plans/meshtoad-gateway-bench.md`. The Linux host may also run unrelated services; do not treat it as a disposable box.
 
 ## Topology
+
+Target shape, not the deployed tree. What exists today is a single-cluster kind path, TCP reconcile against `meshtasticd` (sim or a USB-SPI gateway on a Linux host), `reconcile-demo` for serial, and a replay-first `spectrum-exporter` package. Porch, Config Sync, in-cluster USB, and a `spectrum-sensor` pod are still open.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -48,29 +50,33 @@ Current lab shape, not a required topology: a Windows (or other) dev PC holds a 
 
 | Package | Contents |
 |---|---|
-| `mesh-gateway` blueprint | meshtasticd Deployment (official image), config PVC, Service on TCP 4403, `MeshtasticNode` intent CR, placeholder `WorkloadCluster` for injection |
-| `meshtastic-operator` | The operator (Phase 4), deployed per-cluster via PVS - free5gc-operator pattern |
-| `spectrum-sensor` blueprint | soapy_power scanner + CSV→metrics exporter sidecar, device-plugin resource request |
-| `mqtt-bridge` | Mosquitto (or the official Meshtastic packet-aware broker) + bridge config |
-| `demo/*` | PackageVariant/PVS examples, sandbox scripts |
+| `mesh-gateway` blueprint | meshtasticd Deployment (official image), config PVC, Service on TCP 4403, placeholder `WorkloadCluster` for injection |
+| `mqtt-bridge` | Mosquitto plus bridge config |
+| `meshtastic-operator` | CRDs, RBAC, Deployment. Image tag is a placeholder until publish |
+| `spectrum-exporter` | Replay-first Prometheus exporter (no USB). Live SDR stays host-side |
+| `packages/examples/` | `PackageVariant` / `PackageVariantSet` examples |
+
+There is no `packages/spectrum-sensor`. Device-plugin USB is still an open Phase 2 item.
 
 ### CRDs
 
-- **`MeshtasticNode`** (implemented; `api/mesh/v1alpha1`) - desired radio state: region, modem preset, role, channels (PSKs referenced from Secrets), MQTT module config, owner. Reconciled over the TCP 4403 device API by export → diff → apply-only-drift (config applies reboot the node per section, so minimal diffs matter). Can target remote radio-only nodes through a gateway via Meshtastic remote admin. Region, modem preset, role, MQTT, owner, and channels (PSKs read from Secrets, applied through a distinct path and validated against `meshtasticd --sim`) are reconciled today, the full declared config surface, with modem-preset apply now also confirmed on a physical board.
-- **`CommunicationIntent`** (implemented, report-only; `api/intent/v1alpha1`) - the intent layer above `MeshtasticNode` (ADR 0001): an outcome (region, an approved set of modem presets, channels, target nodes) that a pure compiler lowers into the proposed `MeshtasticNode` specs that satisfy it, reporting a feasibility verdict, the selected preset, and a fleet-wide airtime-budget verdict on status. It never actuates: report-only is enforced by RBAC (no create or write on `MeshtasticNode`) and an envtest admission suite. The same compiler is exposed to agents offline through a `nephmeshctl` CLI and a `nephmesh-mcp` Model Context Protocol server. Actuation from intent is future work gated behind the safety kernel (ADR 0002).
-- **`SpectrumScan`** (planned CR; the sensing behind it is built) - band(s) to sweep, bin width, interval, output, which SDR. The receive-only reduction (`internal/spectrum`: rtl_power/hackrf_sweep CSV to per-band occupancy, peak, and noise floor) and a Prometheus exporter (`cmd/spectrum-exporter`) exist and are validated against a real HackRF Pro; the CR is the declarative wrapper that would schedule and configure it in-cluster.
+- **`MeshtasticNode`** (implemented; `api/mesh/v1alpha1`) - desired radio state: region, modem preset, role, channels (PSKs referenced from Secrets), MQTT module config, owner. The in-cluster operator reconciles over TCP 4403 (export, diff, apply only drift). Serial works through `reconcile-demo` on a directly attached board. `viaGateway` (Meshtastic remote admin) is a CRD field whose device client is still the unsupported stub. Config apply reboots the node, so minimal diffs matter.
+- **`CommunicationIntent`** (implemented, report-only; `api/intent/v1alpha1`) - a region, an approved preset set, channels, expected traffic, and target nodes. A pure compiler copies those into proposed `MeshtasticNode` specs and reports `Feasible` (renderable) plus a fleet airtime-budget floor. It has no `objectives` field yet, so it does not mean "mission outcomes are achievable." It never actuates: RBAC grants no create/write on `MeshtasticNode`. Same compiler offline via `nephmeshctl plan` and `nephmesh-mcp`. Actuation stays behind ADR 0002.
+- **`SpectrumScan`** (planned CR; the sensing behind it is built) - the receive-only reduction (`internal/spectrum`) and `cmd/spectrum-exporter` exist. There is no CR that schedules a sweep in-cluster.
 - Later: a policy CR closing the loop (occupancy threshold → channel-change intent). The mechanism has a hand-driven bench proof of concept (`demo/closed-loop/`); the CR and its safety envelope are the remaining work.
 
 ### Device access
 
-USB radios (RTL-SDR `0bda:2838`, HackRF `1d50:6089`, CH341 LoRa sticks) are exposed to pods with `squat/generic-device-plugin` - advertised as named resources (`nephmesh.io/rtlsdr: 1`), no privileged pods. Host prep (documented per phase): udev rules, `dvb_usb_rtl28xxu` blacklist for RTL-SDR, group permissions. Akri is the upgrade path if dynamic discovery/scheduling becomes a feature. Escape hatch: SoapySDRServer/`sdr-server` on the host, sensing pods connect over TCP.
+Today: USB radios stay on a Linux host. The operator reaches a `meshtasticd` gateway at localhost 4403 (SSH tunnel from the dev PC). Serial handhelds are driven by `reconcile-demo`, not by an in-cluster serial transport. The SDR exporter either replays a recorded sweep in-cluster or runs on the host against `hackrf_sweep`.
+
+Still open: `squat/generic-device-plugin` advertising USB vendor:product IDs so a pod can mount the radio without privilege. Host prep (udev, RTL-SDR blacklist) is documented with that item. Escape hatch if it fails: SoapySDRServer on the host, sensing pods over TCP.
 
 ### Data flow
 
 1. **Intent down:** Git commit → Porch package revision → PV/PVS specialization (WorkloadCluster injection) → GitOps sync → operator reconciles radios.
 2. **Mesh traffic up:** LoRa mesh → gateway node → MQTT module → private broker (`msh/REGION/2/e/...` protobuf ServiceEnvelope; JSON topics for convenience - note JSON is lossy and unsupported on nRF52 nodes). Consumers dedupe on packet `id` (multiple gateways duplicate).
-3. **Spectrum up:** SDR → soapy_power sweep CSV → exporter → Prometheus (per-band aggregates) / MQTT (full spectra).
-4. **Closed loop (Phase 6):** policy controller reads spectrum metrics → commits intent changes → flow 1 repeats. Humans stay in the loop via Porch's propose/approve lifecycle.
+3. **Spectrum up:** SDR → `hackrf_sweep` or `rtl_power` CSV → `internal/spectrum` → Prometheus gauges (occupancy, peak, noise floor). No MQTT full-spectra path. Replay mode publishes the same series with no radio.
+4. **Closed loop (Phase 6, not built):** a policy controller would read those gauges and propose a channel change through Porch. A hand-driven bench proof exists (`demo/closed-loop/`). Unattended actuation is gated by ADR 0002.
 
 ## Design principles
 

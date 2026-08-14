@@ -1,6 +1,6 @@
 # ADR 0001: Intent is an outcome envelope; `MeshtasticNode` is a compiled artifact
 
-- Status: Proposed
+- Status: Proposed (report-only compiler shipped; Accepted waits on `ChangePlan` plus `objectives`)
 - Date: 2026-08-07
 - Context doc: [design doctrine](../design/doctrine.md)
 
@@ -66,8 +66,11 @@ Concretely:
 - The project gains a clear test for scope creep: if a proposed change turns
   `MeshtasticNode` into an outcome API or gives two layers write access to one field,
   it violates this ADR.
-- This ADR is Proposed. It becomes Accepted when the first `CommunicationIntent`
-  compiler ships in report-only mode.
+- This ADR is still Proposed. The first report-only compiler shipped (2026-08-08):
+  it renders proposed `MeshtasticNode` specs and a renderability verdict. It does
+  not yet compile outcomes (`objectives` is not on the CRD) and it does not emit
+  a `ChangePlan`. Accepted waits on those two, matching the roadmap, not on
+  actuation (actuation is ADR 0002).
 
 ## Alternatives considered
 

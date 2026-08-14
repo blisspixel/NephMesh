@@ -4,7 +4,7 @@ Framing questions that come up when explaining this project. Sourced claims live
 
 ## What is this in one sentence?
 
-Intent-driven desired state configuration for communications: you declare the comms system you want (mesh gateways, channels, encryption, spectrum monitoring, cellular where available) and the system continuously makes reality match, so that secure communication survives even when there is no carrier.
+A research experiment in treating radios as declared desired state: you write the mesh you want (gateways, channels, encryption, receive-only spectrum monitoring) and a Kubernetes operator tries to keep each radio there. The mesh is meant to keep carrying traffic if the cluster is gone. That last claim is measured in simulation and still open on two real clusters.
 
 ## Why Kubernetes? Why is that such a big deal here?
 
@@ -18,7 +18,14 @@ No. Nephio supports Kubernetes cluster lifecycle, 5G core network functions (fre
 
 ## Will the Nephio community care?
 
-Realistically: core contributors focused on carrier-grade 5G production will mostly not, and that is fine. The project does not need their adoption to be useful. The plausible audiences are different: the `nephio-experimental` org exists precisely for PoCs that test the platform's limits; researchers in intent-driven networking get a reproducible testbed that costs two orders of magnitude less than USRP-based ones; and the resilience, emergency-comms, and private-network communities get fleet management that does not exist today. The strongest standalone artifact, a Meshtastic operator, is valuable to the Meshtastic community regardless of what anyone in telecom thinks.
+Realistically: core contributors focused on carrier-grade 5G production will mostly not, and that is fine. The project does not need their adoption to be useful. The plausible audiences are different: the `nephio-experimental` org exists precisely for PoCs that test the platform's limits; researchers in intent-driven networking get a reproducible testbed that costs two orders of magnitude less than USRP-based ones; and the resilience, emergency-comms, and private-network communities get Git-declared observe-diff-reconcile for a mesh, which the live dashboards do not do. The strongest standalone artifact, a Meshtastic operator, is valuable to the Meshtastic community regardless of what anyone in telecom thinks.
+
+## What is this not?
+
+- Not [MeshMonitor](https://meshmonitor.org/). That is the live Meshtastic (and MeshCore) dashboard: Helm, remote admin, automation. NephMesh does not replace it. The gap is declared desired state, an airtime quota, and an independent SDR witness.
+- Not [Reticulum](https://reticulum.network). That already is a crypto-native mesh. It is a candidate later driver, not a competitor.
+- Not OpenAirInterface or [INA-Infra](https://arxiv.org/html/2410.09765). Those copy the Nephio catalog pattern onto 5G network functions (and USRP-class SDR). Those radios die with the cluster. The mesh is not supposed to.
+- Not an airtime-unlimited mesh. Physics is tens to low hundreds of nodes carrying low-bandwidth contingency traffic.
 
 ## Is this only for rare, dramatic scenarios?
 

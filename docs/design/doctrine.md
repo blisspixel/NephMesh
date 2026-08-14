@@ -7,12 +7,15 @@ star and a set of invariants, not a feature list.
 
 Status, stated plainly so nothing here is mistaken for a claim:
 
-- What exists today (0.2.0): a `MeshtasticNode` operator that reconciles a device to
-  a fixed desired configuration (region, modem preset, role, owner, MQTT with a
-  Secret-backed password), a reboot-aware minimal-diff apply loop validated against
-  a simulated device in CI and a physical T-Deck over USB, an airtime time-on-air
-  model, a Prometheus metrics layer, and assume-breach tests. That is device-level
-  reconciliation. It is the foundation, not the thesis.
+- What exists today (0.2.1 plus Unreleased): a `MeshtasticNode` operator that
+  reconciles a device to a fixed desired configuration (region, modem preset, role,
+  owner, MQTT with a Secret-backed password, channels with Secret-backed PSKs), a
+  reboot-aware minimal-diff apply loop validated against `meshtasticd --sim` in CI
+  and on owned hardware (TCP gateway and USB handheld), a report-only
+  `CommunicationIntent` compiler (renderable, not objectives), an airtime model, a
+  receive-only spectrum reducer, a Prometheus metrics layer, a measured UDP-sim
+  resilience harness, and assume-breach tests. That is device-level reconciliation
+  plus a named slot for intent. It is the foundation, not the thesis.
 - What this document describes: almost none of it is built. It is the shape the
   project would take if the foundation earns the right to grow, and the order in
   which the pieces should arrive. Every section that names a resource or a behavior

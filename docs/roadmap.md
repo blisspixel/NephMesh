@@ -54,19 +54,23 @@ Phases 6 and 7 are not 1.0 gates: the closed loop and the cellular leg are resea
 
 ## What comes next (recommended order, reviewed 2026-08-13)
 
+This list is the source of "what do I do tomorrow." The longer Order of operations below is the lifetime spine. When the two disagree, this list wins. Stages already done (channels on hardware) stay checked there; they are not next.
+
 The flagship config surface is proven on sim and on owned hardware (TCP gateway radio and USB handheld: region, role, channels, two-way LoRa text). The engineering is still ahead of installability. The next work is to make what exists reproducible for a stranger, not to add radios or autonomy. Lab hostnames, addresses, and device ids stay out of the repo; scripts take environment variables.
+
+Items 1 and 2 are **installability** (a stranger can run what exists). Items 3 and 4 are **uniqueness** (the claims MeshMonitor and a Nephio 5G package cannot copy). Item 5 is hygiene.
 
 In order:
 
-1. **Publish the operator image**, signed and digest-pinned, with an SBOM (the Phase 4 release step and a named 1.0 gap). A local image build already works (`hack/build-operator-image.sh`). Until a digest is on a registry, every install is "build it yourself." Land trivy/hadolint/pip-audit, SBOM, signing, and digest-pinned bases with the publish.
-2. **Close the 0.3 Porch gate** end to end (register, propose, approve, pull, apply). Hardware-free. This is the credibility proof that Nephio-native is real rather than aspirational.
-3. **Two-cluster control-plane independence.** `demo/resilience` already showed 100% delivery after destroying the management plane on a UDP-multicast sim mesh. The load-bearing remainder is two kind (or kind plus an SBC) clusters: delete the management cluster, MDR unchanged.
-4. **One scripted three-witness capture** from the repo: intent change, reconcile, SDR peak move, with the airtime model, radio telemetry, and sweep agreeing. The substance ran by hand; the gap is a stranger-runnable script with no baked-in lab addresses.
+1. **Publish the operator image** (installability), signed and digest-pinned, with an SBOM (the Phase 4 release step and a named 1.0 gap). A local image build already works (`hack/build-operator-image.sh`). Until a digest is on a registry, every install is "build it yourself." Land trivy/hadolint/pip-audit, SBOM, signing, and digest-pinned bases with the publish.
+2. **Close the 0.3 Porch gate** (installability) end to end (register, propose, approve, pull, apply). Hardware-free. This is the credibility proof that Nephio-native is real rather than a rendered Kptfile.
+3. **Two-cluster control-plane independence** (uniqueness). `demo/resilience` already showed 100% delivery after destroying the management plane on a UDP-multicast sim mesh. The load-bearing remainder is two kind (or kind plus an SBC) clusters: delete the management cluster, MDR unchanged. This is the claim a 5G NF package cannot make.
+4. **One scripted three-witness capture** (uniqueness) from the repo: intent change, reconcile, SDR peak move, with the airtime model, radio telemetry, and sweep agreeing. The substance ran by hand on 2026-08-09 (peak moved 906.5 to 903.5 MHz, then restored). The gap is a stranger-runnable script with no baked-in lab addresses.
 5. **Hygiene that belongs in the core, not the frontier:** detect day-2 MQTT-password-only rotation (stored hash, like channels); do not reboot-loop if someone uses stock `--export-config` without the bundled exporter; pair server-side apply for status with the planned k8s / controller-runtime bump.
 
-Parallel, not next: in-cluster USB device-plugin; Agent Plugins is already a directory wrap (`agent-plugin/`).
+Parallel, not next: in-cluster USB device-plugin; Agent Plugins is already a directory wrap (`agent-plugin/`). An enforceable `ChannelBudget` (refuse an oversubscribed fleet) is the distinctive airtime seam; it stays report-only until this list's installability items are closed, then it is the first uniqueness increment that does not need a radio.
 
-Held frozen: `CommunicationIntent` actuation, the autonomy stack, an enforceable `ChannelBudget`, a second radio driver, Phases 6 and 7. When that unfreezes, [`design/road-to-safe-autonomy.md`](design/road-to-safe-autonomy.md) is the order, not a new radio.
+Held frozen: `CommunicationIntent` actuation, the autonomy stack, a second radio driver, Phases 6 and 7. When that unfreezes, [`design/road-to-safe-autonomy.md`](design/road-to-safe-autonomy.md) is the order, not a new radio.
 
 ## Design direction: intent as an outcome envelope (research frontier, gated behind the core)
 
@@ -90,16 +94,15 @@ configuration layer. The direction is to add an intent layer above it, so that
 rather than the source of truth (ADR 0001), and to define signed-autonomy and rejoin
 semantics before the Phase 6 closed loop rather than after (ADR 0002).
 
-This changes nothing about what comes next. It sharpens why the core comes first. The
-rock-solid core, the thing that has to be exceptional before any of the frontier earns
-its complexity, is a tight list: complete channel and PSK support on real hardware
-(the last flagship config surface, Phase 4), multi-site packaging and fan-out
-(Phase 5), day-2 key and channel rotation, and reproducible sim-plus-physical demos
-that make the operational win visible. Ship that before expanding surface area. The
-honest boundaries are stated plainly in the doctrine: physics caps the useful envelope
-at tens to low hundreds of nodes for contingency traffic, the audience is
-organized-operator resilience rather than hobby use, and over-scoping is the main way
-this fails.
+This changes nothing about what comes next (the list above). It sharpens why
+installability and the two uniqueness proofs come first. Channel and PSK support
+on real hardware is done. The remaining core is: a published image, a Porch e2e
+run, two-cluster control-plane independence, a stranger-runnable three-witness
+script, then day-2 rotation and an enforced `ChannelBudget`. Ship that before
+expanding surface area. The honest boundaries are stated plainly in the doctrine:
+physics caps the useful envelope at tens to low hundreds of nodes for contingency
+traffic, the audience is organized-operator resilience rather than hobby use, and
+over-scoping is the main way this fails.
 
 When the core is solid, the frontier arrives in this disciplined order (each step
 elaborated in the doctrine), report-only before anything actuates, safety before
@@ -129,8 +132,12 @@ core first, is the Order of operations directly below.
 
 ## Order of operations
 
-One dependency-ordered build queue, from where the project is now (0.2.0 plus the
-observability, airtime-model, and doctrine work just landed) to the research frontier.
+One dependency-ordered lifetime queue, from where the project is now (0.2.1 plus
+Unreleased: intent report-only, SDR, MeshToad bench, resilience numbers) to the
+research frontier. For "what do I implement next," use **What comes next** above.
+Stage 1 (channels on hardware) is done. Stages 2 (mission conditions), 3 (fleet
+rotation), and 6 (`ChannelBudget` enforcement) stay on this spine; they are not
+the next sitting unless they unlock installability.
 No dates and no effort estimates: an item is ready when the items it depends on are
 done, and done when its check passes. The spine below is ordered; the parallel tracks
 at the end have no dependency on the spine and can be built whenever there is attention
@@ -291,7 +298,7 @@ when the phases that touch them produce data.
 
 - **Message delivery ratio (MDR) during a simulated outage:** with the carrier path killed, the fraction of messages sent that are received across the mesh. The failover demos report a number, not "it worked."
 - **Time to failover:** wall-clock from carrier loss to the first message delivered over the mesh path.
-- **Control-plane independence:** the mesh's MDR must not change when the Kubernetes control plane is killed. This is the load-bearing claim, that the control plane provisions but is not a runtime dependency, and it gets its own validation: bring up a configured mesh, delete the entire management cluster, and show messages keep delivering. Until that test passes, "resilient" is unproven. A first hardware-free demonstration landed 2026-08-10 (`demo/resilience/independence.sh`, MDR unchanged across a killed management plane); see "What comes next" item 2.
+- **Control-plane independence:** the mesh's MDR must not change when the Kubernetes control plane is killed. This is the load-bearing claim, that the control plane provisions but is not a runtime dependency, and it gets its own validation: bring up a configured mesh, delete the entire management cluster, and show messages keep delivering. Until that test passes, "resilient" is unproven. A first hardware-free demonstration landed 2026-08-10 (`demo/resilience/independence.sh`, MDR unchanged across a killed management plane); see "What comes next" item 3.
 - **Airtime-commons survival:** the shared channel has a finite airtime budget; offering traffic beyond it collapses MDR, and admission control (pacing offered load back within the budget) restores it. Demonstrated hardware-free 2026-08-10 (`demo/resilience/survival.sh`): baseline (within budget) 100%, degraded (over budget) 50%, adapted (paced back) recovered, reduced to a per-phase verdict by the pure, tested `internal/resilience.ReducePhases`. It grounds the airtime model against measured delivery (the over-budget verdict is authoritative) and records the honest finding that the recovery lever in the sim is admission control, not a preset change (the per-node send rate is capped by a firmware broadcast cadence, not the PHY airtime).
 
 These metrics become gate criteria for Phases 6 and 7 and appear in the 1.0 definition below.
@@ -338,8 +345,8 @@ Goal: the same pipeline drives physical RF, and the mesh is visible in the sense
 
 - [x] Attach the owned radios. Handheld on the dev PC (USB serial: owner, modemPreset, channels). MeshToad-class stick on the Linux USB host as a `meshtasticd` USB-SPI radio (`1a86:5512`), not a COM port. Bench: `docs/plans/meshtoad-gateway-bench.md`.
 - [ ] USB device access on k3s via `squat/generic-device-plugin` (advertise devices by USB vendor:product ID, no privileged pods); document host prep (udev rules)
-- [ ] Spectrum sensor container using the HackRF Pro, receive-only: `hackrf_sweep` or `soapy_power` sweeping 902 to 928 MHz (SoapySDR keeps the container hardware-agnostic for future RTL-SDR sites). Capture path built and validated on real hardware (2026-08-09): a receive-only capture helper (`hack/spectrum-sweep.sh`, integrating several seconds of `hackrf_sweep` passes) and its analysis ran end to end against a HackRF on a Jetson Orin Nano over SSH, the 915 band reading a stable ~32 to 34 percent occupancy; runbook at `docs/guides/spectrum-validation.md`. Remaining: package it as a container with `squat/generic-device-plugin` USB access (still needs an in-cluster device host) rather than the current host-tools-over-SSH form
-- [x] Exporter: parse sweep CSV into per-band aggregate Prometheus gauges (occupancy percent, peak/noise dB, not per-bin series). Research found no existing exporter for sweep data; this is novel glue. Built and validated on real hardware (2026-08-09): `cmd/spectrum-exporter` runs `hackrf_sweep` on a loop, reduces via `internal/spectrum`, and serves `nephmesh_spectrum_*` gauges (occupancy, peak dBm, peak freq, noise floor) on `/metrics`; cross-compiled for arm64 and run on the Jetson against the HackRF Pro, `curl /metrics` returned live per-band values with uncovered bands correctly absent. In-cluster wiring landed (2026-08-10): `packages/spectrum-exporter` is a hardened, receive-only kpt package with a Deployment, a `ServiceMonitor` so the Prometheus Operator scrapes it, and a report-only `PrometheusRule` (no-sensor, stale-sweep, sweep-error, band-congested). It is simulation-first, like the mesh-gateway node: the Deployment runs with a new exporter `-replay` flag over a bundled sample sweep, so it publishes the same `nephmesh_spectrum_*` series with no radio, proves the Prometheus integration hardware-free in `kind`, and passes the manifest security gate. Remaining: the live in-cluster capture still needs a device-plugin USB host (a live sweep needs the SDR mounted, which the gate forbids in a shipped manifest), so on-host capture-and-scrape stays the real-sensor path for now
+- [ ] Spectrum sensor container using the HackRF Pro, receive-only: `hackrf_sweep` or `soapy_power` sweeping 902 to 928 MHz (SoapySDR keeps the container hardware-agnostic for future RTL-SDR sites). Capture path built and validated on real hardware (2026-08-09): a receive-only capture helper (`hack/spectrum-sweep.sh`, integrating several seconds of `hackrf_sweep` passes) and its analysis ran end to end against a HackRF on the Linux USB host over SSH, the 915 band reading a stable ~32 to 34 percent occupancy; runbook at `docs/guides/spectrum-validation.md`. Remaining: package it as a container with `squat/generic-device-plugin` USB access (still needs an in-cluster device host) rather than the current host-tools-over-SSH form
+- [x] Exporter: parse sweep CSV into per-band aggregate Prometheus gauges (occupancy percent, peak/noise dB, not per-bin series). Research found no existing exporter for sweep data; this is novel glue. Built and validated on real hardware (2026-08-09): `cmd/spectrum-exporter` runs `hackrf_sweep` on a loop, reduces via `internal/spectrum`, and serves `nephmesh_spectrum_*` gauges (occupancy, peak dB, peak freq, noise floor) on `/metrics`; cross-compiled for arm64 and run on the Linux USB host against the HackRF Pro, `curl /metrics` returned live per-band values with uncovered bands correctly absent. In-cluster wiring landed (2026-08-10): `packages/spectrum-exporter` is a hardened, receive-only kpt package with a Deployment, a `ServiceMonitor` so the Prometheus Operator scrapes it, and a report-only `PrometheusRule` (no-sensor, stale-sweep, sweep-error, band-congested). It is simulation-first, like the mesh-gateway node: the Deployment runs with a new exporter `-replay` flag over a bundled sample sweep, so it publishes the same `nephmesh_spectrum_*` series with no radio, proves the Prometheus integration hardware-free in `kind`, and passes the manifest security gate. Remaining: the live in-cluster capture still needs a device-plugin USB host (a live sweep needs the SDR mounted, which the gate forbids in a shipped manifest), so on-host capture-and-scrape stays the real-sensor path for now
 - [ ] Demo: a Git intent change (for example modem preset LongFast to MediumSlow) propagates to the physical radios; a message crosses real RF (handheld serial to `meshtasticd` gateway, no IP mesh); the mesh's own transmissions appear in the occupancy metrics. A message crossing real RF is done (2026-08-13): two-way application text tagged `TRANSPORT_LORA`, hopsAway 0 (`docs/plans/meshtoad-gateway-bench.md`). The spectrum-visibility half is validated (2026-08-09): with a Meshtastic T-Deck transmitting on its US LongFast channel and a HackRF Pro sensing 902-928 MHz, the mesh appeared as a 24 dB peak (idle -40.9 dB to -17.1 dB) at 906.5 MHz, exactly the LongFast channel frequency, with 1367 strong (>-30 dB) hits there during the burst versus 0 idle. Two findings: per-band peak power, not aggregate occupancy, is the sensitive detection signal (occupancy barely moved, since one transmitter lights up one channel), and the peak landing at the correct frequency confirms the post-firmware-update mapping is honest. The actuation-and-sensing link is now demonstrated end to end (2026-08-09): the operator's reconcile loop changed the T-Deck's preset from LONG_FAST to LONG_MODERATE, and the HackRF Pro saw the transmission frequency move from ~906.5 to ~902.5 MHz (the 250 to 125 kHz bandwidth change shifts the channel slot), while the airtime rose in three independent measurements that agree, the operator's model (~559 to ~1642 ms per frame), the radio's own channelUtilization telemetry (0.0 to 3.2 percent), and the sensed spectrum (more strong hits per bin). Intent change caused an observable, correctly-attributed RF change. The last piece of the demo is wrapping the RF text and the spectrum half into a Git-driven, scripted run rather than a hand-driven one
 
 ## Phase 3: Nephio-native packaging ($0) (in progress; packaging done, Porch gate open; depends only on Phase 1)
@@ -397,7 +404,7 @@ Goal: the disaster-resilience story end to end, no cellular hardware. Cellular i
 
 ## Cross-cutting: exceptional engineering (in progress)
 
-The bar is code a critical-infrastructure or mission user could trust; the full standard and honest gaps are in `docs/CODE-QUALITY-STANDARDS.md`. Landed: golangci-lint (v2.12.2) and an 80% meaningful-coverage gate in CI, native fuzzing of the untrusted-input parsers, the race detector and `govulncheck` in CI (which caught real reachable vulnerabilities, fixed by bumping `golang.org/x/text`/`x/net` and pinning CI to Go 1.25.12), ShellCheck on the gate scripts, a real sim-device integration test, the fix for the production logger defaulting to dev mode, the envtest controller tier (real API server and etcd) proving hostile-CR rejection at admission and reconciler idempotency, assume-breach control-proving tests (the RBAC least-privilege golden test and a no-secret-in-logs proof of the redacting-secret path), and a supply-chain pass: SHA-pinned GitHub Actions and least-privilege workflow tokens enforced by `hack/check-actions.sh`, a checksum-verified kpt download, and Dependabot keeping dependencies current. Prioritized remaining, highest leverage first:
+The bar is code a critical-infrastructure or mission user could trust; the full standard and honest gaps are in `docs/CODE-QUALITY-STANDARDS.md`. Landed: golangci-lint (v2.12.2) and an 80% meaningful-coverage gate in CI, native fuzzing of the untrusted-input parsers, the race detector and `govulncheck` in CI (which caught real reachable vulnerabilities, fixed by bumping `golang.org/x/text`/`x/net` and pinning CI to Go 1.25.13), ShellCheck on the gate scripts, a real sim-device integration test, the fix for the production logger defaulting to dev mode, the envtest controller tier (real API server and etcd) proving hostile-CR rejection at admission and reconciler idempotency, assume-breach control-proving tests (the RBAC least-privilege golden test and a no-secret-in-logs proof of the redacting-secret path), and a supply-chain pass: SHA-pinned GitHub Actions and least-privilege workflow tokens enforced by `hack/check-actions.sh`, a checksum-verified kpt download, and Dependabot keeping dependencies current. Prioritized remaining, highest leverage first:
 
 - [ ] Server-side apply for status (the envtest controller tier and a two-call idempotency test are done)
 - [ ] Remaining assume-breach control-proving tests: no-secret-in-logs, NetworkPolicy blocks cross-namespace (with a positive control), no default credentials in any shipped package (the RBAC least-privilege golden test and hostile-CR rejection at admission are done)

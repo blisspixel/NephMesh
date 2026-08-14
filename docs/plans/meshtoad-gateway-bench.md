@@ -108,16 +108,15 @@ restart the model.
 
 Forbidden on that host:
 
-- Reboot the host, change `nvpmodel`, or touch jetson clocks.
-- Stop, restart, or reconfigure `ollama.service`, any `llama-server`, or port
-  11434.
-- `docker prune`, `docker system prune`, image deletes, or any cleanup of the
-  existing LLM images (`text-generation-webui:*`, `ollama/ollama`).
+- Reboot the host or change its power or clock profile.
+- Stop, restart, or reconfigure the unrelated LLM service or its listen port.
+- `docker prune`, `docker system prune`, image deletes, or any cleanup of
+  images that service did not create.
 - `apt upgrade` / dist-upgrade, CUDA or compiler installs, model pulls.
-- Binding, proxying, or fire-walling 11434.
+- Binding, proxying, or fire-walling the LLM listen port.
 - Long-running `hackrf_sweep` loops that contend for USB or CPU while a model
   is mid-request. Short, bounded sweeps are fine.
-- Passing the HackRF device (`001/005`) into the `meshtasticd` container.
+- Passing the HackRF USB node into the `meshtasticd` container.
 
 Allowed: `lsusb` / `dmesg`, a small `meshtasticd` container on `1a86:5512`
 only, publish 4403 on `127.0.0.1` only, SSH from Windows, `hackrf_info` and
@@ -134,7 +133,7 @@ trusts at 2.7.26) over an apt install. Need version 2.6.5 or newer for EEPROM
 autoconf. Do not copy a `config.d` LoRa fragment until autoconf is shown to
 fail.
 
-After the stick is on a **hub port** (not the HackRF cable on bus 001 port 1):
+After the stick is on a **hub port** (not the same USB node as the HackRF):
 
 ```sh
 # on the USB host, observe only
@@ -217,10 +216,11 @@ Closes, if the sequence succeeds:
 Does not close:
 
 - In-cluster serial, or a `MeshtasticNode` with `connection.serial`.
-- Physical-board apply of `role` through `reconcile-demo`.
 - In-cluster USB device plugin for the MeshToad or the HackRF.
 - Publishing the operator image (hardware-free, next sitting after this).
 - Porch 0.3, two-cluster control-plane independence, autonomy.
+
+Role apply through `reconcile-demo` on the gateway closed on 2026-08-13 (ROUTER then CLIENT, both Ready, restored).
 
 ## Non-goals
 
