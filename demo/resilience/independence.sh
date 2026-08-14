@@ -58,7 +58,9 @@ log "2/5 Build the operator and the reducer"
 # reduces the log on this host.
 # The binary is docker-exec'd into python:3.13-slim, which follows the engine
 # architecture. amd64-only broke the hardware-free path on arm64 Docker.
-arch=$(docker info --format '{{.Architecture}}' 2>/dev/null || echo amd64)
+# docker.exe on Git Bash emits CRLF; a trailing CR makes GOARCH and later
+# numeric flags unparseable.
+arch=$(docker info --format '{{.Architecture}}' 2>/dev/null | tr -d '\r' || echo amd64)
 case "$arch" in
     aarch64|arm64) goarch=arm64 ;;
     x86_64|amd64) goarch=amd64 ;;
@@ -72,6 +74,7 @@ docker rm -f operator >/dev/null 2>&1 || true
 docker run -d --name operator --network "$NET" python:3.13-slim sleep infinity >/dev/null
 docker exec operator pip install -q meshtastic >/dev/null 2>&1
 docker cp "$WORK/reconcile-demo" operator:/reconcile-demo >/dev/null
+docker exec operator chmod +x /reconcile-demo
 # Apply a benign owner change (no preset change, so it does not disturb the
 # channel) through the operator's real reconcile loop: export, diff, apply drift,
 # reboot, re-verify. sim1 reboots once here, before measurement starts.
@@ -87,12 +90,13 @@ sleep 14
 log "4/5 Measure delivery, then destroy the management plane mid-run"
 # The probe runs in the surviving monitor (meshcli) and writes its event log
 # incrementally, so even a truncated run leaves usable data.
-docker exec -d meshcli sh -c 'python /probe.py --sender sim1 --receivers sim2,sim3 --count 24 --interval 3 > /probe.jsonl 2>/dev/null'
+docker exec -d meshcli sh -c 'python /probe.py --sender sim1 --receivers sim2,sim3 --count 24 --interval 3 > /probe.jsonl 2>/probe.err'
 echo "  probe running; measuring baseline..."
 sleep 40
 # Perturbation time from the SAME (container) clock the probe timestamps with, so
 # a host/VM clock skew cannot misattribute messages to before or after.
-KILL_T="$(docker exec meshcli python3 -c 'import time; print(time.time())' 2>/dev/null)"
+KILL_T="$(docker exec meshcli python3 -c 'import time; print(time.time())' 2>/dev/null | tr -d '\r')"
+[ -n "$KILL_T" ] || { echo "  could not read the container clock; aborting"; exit 1; }
 echo "  perturbation at t=${KILL_T}: destroying the management plane (operator + its host)"
 docker rm -f operator >/dev/null 2>&1 || true
 echo "  mesh continues; waiting for the probe run to finish..."
@@ -106,6 +110,8 @@ while [ "$_n" -lt 45 ]; do
 done
 
 log "5/5 Verdict"
+docker exec meshcli grep -q '^SUMMARY' /probe.jsonl 2>/dev/null || {
+    echo "  the probe produced no SUMMARY (it may have crashed); cannot judge"; exit 1; }
 docker cp meshcli:/probe.jsonl "$WORK/probe.jsonl" >/dev/null
 grep -q '^EVENT' "$WORK/probe.jsonl" || {
     echo "  the probe produced no events (it may have failed to reach the nodes); cannot judge"; exit 1; }

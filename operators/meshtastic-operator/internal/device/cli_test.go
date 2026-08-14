@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -145,6 +146,43 @@ func TestLooksUnreachableMatchesKnownCLIErrors(t *testing.T) {
 	assert.False(t, looksUnreachable("FileNotFoundError: [Errno 2] No such file or directory: 'mesh-apply.py'", false),
 		"a missing-helper error on TCP is fatal, not a transient reboot")
 	assert.False(t, looksUnreachable("PermissionError: access is denied", false))
+
+	// Post-apply TCP drop: the device reboots and RSTs the session. These used
+	// to miss the matcher, so Apply returned a hard error and Converge re-applied.
+	assert.True(t, looksUnreachable("ConnectionResetError: [Errno 104] Connection reset by peer", false))
+	assert.True(t, looksUnreachable("BrokenPipeError: [Errno 32] Broken pipe", false))
+	assert.True(t, looksUnreachable("OSError: [Errno 107] Transport endpoint is not connected", false))
+}
+
+func TestExecErrorUnreachableMapsDeadlineAndReset(t *testing.T) {
+	dead, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	assert.True(t, execErrorUnreachable(dead, "", context.DeadlineExceeded, false),
+		"a hung CLI killed by our deadline is a transient drop, not a hard failure")
+
+	canceled, cancel2 := context.WithCancel(context.Background())
+	cancel2()
+	assert.False(t, execErrorUnreachable(canceled, "", context.Canceled, false),
+		"a canceled parent (shutdown) must not be swallowed as unreachable")
+
+	assert.True(t, execErrorUnreachable(context.Background(), "", errors.New("read tcp 127.0.0.1:4403: connection reset by peer"), false),
+		"a RST with empty CLI output still maps: the phrase is often only in err.Error()")
+	assert.False(t, execErrorUnreachable(context.Background(), "", errors.New("executable file not found in $PATH"), false),
+		"a missing binary is a hard failure")
+	assert.False(t, execErrorUnreachable(context.Background(), "", errors.New("fork/exec python3: no such file or directory"), false),
+		"serial-only path phrases in err.Error() must not map on either transport")
+}
+
+func TestExporterMapsConnectionResetToUnreachable(t *testing.T) {
+	c := &CLIClient{
+		Host:     "h",
+		Exporter: []string{"mesh-export.py"},
+		execFn: func(context.Context, string, ...string) (string, error) {
+			return "", errors.New("ConnectionResetError: [Errno 104] Connection reset by peer")
+		},
+	}
+	_, err := c.ExportConfig(context.Background())
+	assert.ErrorIs(t, err, ErrUnreachable)
 }
 
 func TestParseInfoFindsNodeID(t *testing.T) {

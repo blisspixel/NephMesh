@@ -87,10 +87,11 @@ docker exec meshcli pip install -q meshtastic >/dev/null 2>&1 || {
 # /c/... unconverted and docker cp then mangles it; the container-side target
 # needs that same guard to stay /probe.py.
 probe_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && { pwd -W 2>/dev/null || pwd; })"
-if [ -f "$probe_dir/probe.py" ]; then
-    docker cp "$probe_dir/probe.py" meshcli:/probe.py >/dev/null 2>&1 || \
-        echo "  (could not copy probe.py into the helper; copy it in manually)"
+if [ ! -f "$probe_dir/probe.py" ]; then
+    echo "  probe.py missing at $probe_dir"; exit 1
 fi
+docker cp "$probe_dir/probe.py" meshcli:/probe.py
+docker exec meshcli test -f /probe.py
 
 # Wait for a node's API to answer (up to ~60s); non-zero on timeout. Polling
 # instead of a fixed sleep so a slow boot on a loaded host is not a silent race.

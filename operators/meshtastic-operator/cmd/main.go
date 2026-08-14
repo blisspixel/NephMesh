@@ -134,7 +134,7 @@ func helperArgv(env, fallback string) []string {
 // newCLIDevice builds a CLI-backed device client for a node's TCP connection,
 // wired to the bundled config exporter and channel-apply helpers. Serial and
 // viaGateway transports are added as their reconcile paths are built; until then
-// a node that selects them is reported as unreachable rather than silently
+// a node that selects them is reported as unsupported rather than silently
 // mishandled.
 func newCLIDevice(_ context.Context, node *meshv1alpha1.MeshtasticNode) (device.Client, error) {
 	if tcp := node.Spec.Connection.TCP; tcp != nil {

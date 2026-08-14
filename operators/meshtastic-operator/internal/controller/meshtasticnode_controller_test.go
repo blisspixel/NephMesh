@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -38,6 +39,7 @@ import (
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/config"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/device"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/reconcile"
+	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/secret"
 )
 
 func testScheme(t *testing.T) *runtime.Scheme {
@@ -148,6 +150,50 @@ func TestSpecChangeRetriesAfterDegraded(t *testing.T) {
 	require.NoError(t, c.Get(context.Background(), request().NamespacedName, &got))
 	assert.True(t, meta.IsStatusConditionTrue(got.Status.Conditions, meshv1alpha1.ConditionRebootPending),
 		"a spec change after Degraded must apply again")
+	assert.Equal(t, int32(1), got.Status.ApplyAttempts)
+	assert.False(t, meta.IsStatusConditionTrue(got.Status.Conditions, meshv1alpha1.ConditionDegraded))
+}
+
+func TestSecretChangeRetriesAfterDegraded(t *testing.T) {
+	// A Degraded node whose MQTT Secret then changes must be tried again.
+	// Secret data is not part of metadata.generation.
+	node := newNode()
+	node.Finalizers = []string{meshv1alpha1.Finalizer}
+	node.Generation = 1
+	node.Status.ObservedGeneration = 1
+	node.Status.ApplyAttempts = reconcile.MaxApplyAttempts
+	node.Spec.MQTT = &meshv1alpha1.MQTTSpec{
+		Enabled: true, Address: "10.0.0.5",
+		PasswordSecretRef: &corev1.SecretKeySelector{
+			LocalObjectReference: corev1.LocalObjectReference{Name: "broker"}, Key: "password",
+		},
+	}
+	oldDesired := config.BuildDesired(node.Spec, "10.0.0.5", secret.New("old-secret"))
+	node.Status.LastBoundSecretsHash = config.SecretsFingerprint(config.WriteOnlyPasswordHash(oldDesired), nil)
+	sec := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "broker", Namespace: "default"},
+		Data:       map[string][]byte{"password": []byte("new-secret")},
+	}
+	live := desiredUS()
+	live["module_config"] = map[string]any{"mqtt": map[string]any{
+		"enabled": true, "address": "10.0.0.5",
+		"json_enabled": false, "encryption_enabled": false, "tls_enabled": false,
+	}}
+	c := fake.NewClientBuilder().
+		WithScheme(testScheme(t)).
+		WithObjects(node, sec).
+		WithStatusSubresource(&meshv1alpha1.MeshtasticNode{}).
+		Build()
+	r := &MeshtasticNodeReconciler{Client: c, Reader: c, NewDevice: func(context.Context, *meshv1alpha1.MeshtasticNode) (device.Client, error) {
+		return device.NewFake(live, 0), nil
+	}}
+	_, err := r.Reconcile(context.Background(), request())
+	require.NoError(t, err)
+
+	var got meshv1alpha1.MeshtasticNode
+	require.NoError(t, c.Get(context.Background(), request().NamespacedName, &got))
+	assert.True(t, meta.IsStatusConditionTrue(got.Status.Conditions, meshv1alpha1.ConditionRebootPending),
+		"a Secret-only change after Degraded must apply again")
 	assert.Equal(t, int32(1), got.Status.ApplyAttempts)
 	assert.False(t, meta.IsStatusConditionTrue(got.Status.Conditions, meshv1alpha1.ConditionDegraded))
 }
@@ -270,7 +316,7 @@ func TestReconcileResolvesChannelPSKAndReportsInSync(t *testing.T) {
 			LocalObjectReference: corev1.LocalObjectReference{Name: "ch0"}, Key: "psk",
 		},
 	}}
-	psk := []byte{0x2a, 0x2b, 0x2c}
+	psk := []byte{0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39}
 	sec := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: "ch0", Namespace: "default"},
 		Data:       map[string][]byte{"psk": psk},
@@ -484,6 +530,75 @@ func TestAirtimeBudgetCondition(t *testing.T) {
 	noTelemetry.Spec.ModemPreset = "LONG_SLOW"
 	applyAirtimeBudget(noTelemetry, "SHORT_FAST", device.Info{}, 1)
 	assert.Nil(t, meta.FindStatusCondition(noTelemetry.Status.Conditions, meshv1alpha1.ConditionAirtimeBudget))
+}
+
+func TestReconcileInvalidPSKLengthIsRefused(t *testing.T) {
+	node := newNode()
+	node.Finalizers = []string{meshv1alpha1.Finalizer}
+	node.Spec.Channels = []meshv1alpha1.ChannelSpec{{
+		Index: 1, Name: "ops",
+		PSKSecretRef: &corev1.SecretKeySelector{
+			LocalObjectReference: corev1.LocalObjectReference{Name: "ch"}, Key: "psk",
+		},
+	}}
+	// 24 ASCII bytes: the common mistake of storing the base64 text of a
+	// 16-byte key. Must fail now, not apply-and-reboot until Degraded.
+	sec := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "ch", Namespace: "default"},
+		Data:       map[string][]byte{"psk": []byte("1PG7OiApB1nwvP+rz05pAQ==")},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(testScheme(t)).
+		WithObjects(node, sec).
+		WithStatusSubresource(&meshv1alpha1.MeshtasticNode{}).
+		Build()
+	r := &MeshtasticNodeReconciler{Client: c, Reader: c, NewDevice: func(context.Context, *meshv1alpha1.MeshtasticNode) (device.Client, error) {
+		return device.NewFake(desiredUS(), 0), nil
+	}}
+
+	_, err := r.Reconcile(context.Background(), request())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "24 bytes")
+
+	var got meshv1alpha1.MeshtasticNode
+	require.NoError(t, c.Get(context.Background(), request().NamespacedName, &got))
+	cond := meta.FindStatusCondition(got.Status.Conditions, meshv1alpha1.ConditionReady)
+	require.NotNil(t, cond)
+	assert.Equal(t, metav1.ConditionFalse, cond.Status)
+	assert.Equal(t, meshv1alpha1.ReasonSecretMissing, cond.Reason)
+}
+
+func TestReconcileDeviceErrorClearsStaleReady(t *testing.T) {
+	node := newNode()
+	node.Finalizers = []string{meshv1alpha1.Finalizer}
+	applyOutcome(node, reconcile.Outcome{Reachable: true, ConfigInSync: true, Ready: true, Info: device.Info{NodeID: "!x"}})
+	boom := errors.New("parsing exported config: yaml: broken")
+	r, c := reconcilerFor(t, node, func(context.Context, *meshv1alpha1.MeshtasticNode) (device.Client, error) {
+		return errExportClient{err: boom}, nil
+	})
+	_, err := r.Reconcile(context.Background(), request())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, boom)
+
+	var got meshv1alpha1.MeshtasticNode
+	require.NoError(t, c.Get(context.Background(), request().NamespacedName, &got))
+	ready := meta.FindStatusCondition(got.Status.Conditions, meshv1alpha1.ConditionReady)
+	require.NotNil(t, ready)
+	assert.Equal(t, metav1.ConditionFalse, ready.Status)
+	assert.Equal(t, meshv1alpha1.ReasonDeviceError, ready.Reason)
+	assert.Nil(t, meta.FindStatusCondition(got.Status.Conditions, meshv1alpha1.ConditionReachable),
+		"stale Reachable must not survive an unexpected device error")
+}
+
+// errExportClient fails ExportConfig with a non-unreachable error.
+type errExportClient struct{ err error }
+
+func (e errExportClient) ExportConfig(context.Context) (map[string]any, error) { return nil, e.err }
+func (e errExportClient) Apply(context.Context, map[string]any) error          { return e.err }
+func (e errExportClient) Reboot(context.Context) error                         { return e.err }
+func (e errExportClient) Info(context.Context) (device.Info, error)            { return device.Info{}, e.err }
+func (e errExportClient) ApplyChannels(context.Context, []device.ChannelWrite) error {
+	return e.err
 }
 
 func TestReconcileMissingObjectIsNoOp(t *testing.T) {

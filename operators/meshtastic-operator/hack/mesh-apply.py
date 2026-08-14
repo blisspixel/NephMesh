@@ -143,23 +143,32 @@ def main() -> int:
         begin = getattr(node, "beginSettingsTransaction", None)
         commit = getattr(node, "commitSettingsTransaction", None)
         use_txn = callable(begin) and callable(commit)
-        if use_txn:
-            begin()
-        for ch in parsed:
-            idx = ch["index"]
-            c = node_channels[idx]
-            c.role = (
-                channel_pb2.Channel.Role.PRIMARY
-                if idx == 0
-                else channel_pb2.Channel.Role.SECONDARY
-            )
-            c.settings.name = ch["name"]
-            c.settings.psk = ch["psk"]
-            c.settings.uplink_enabled = ch["uplink"]
-            c.settings.downlink_enabled = ch["downlink"]
-            node.writeChannel(idx)
-        if use_txn:
-            commit()
+        abort = getattr(node, "abortSettingsTransaction", None)
+        try:
+            if use_txn:
+                begin()
+            for ch in parsed:
+                idx = ch["index"]
+                c = node_channels[idx]
+                c.role = (
+                    channel_pb2.Channel.Role.PRIMARY
+                    if idx == 0
+                    else channel_pb2.Channel.Role.SECONDARY
+                )
+                c.settings.name = ch["name"]
+                c.settings.psk = ch["psk"]
+                c.settings.uplink_enabled = ch["uplink"]
+                c.settings.downlink_enabled = ch["downlink"]
+                node.writeChannel(idx)
+            if use_txn:
+                commit()
+        except Exception:
+            if use_txn and callable(abort):
+                try:
+                    abort()
+                except Exception:  # noqa: BLE001 - still raise the write error
+                    pass
+            raise
     finally:
         iface.close()
 

@@ -391,6 +391,14 @@ spec:
                   written to the device. The device never echoes the password, so this is
                   how a Secret-only rotation is detected. It is a hash, not the password.
                 type: string
+              lastBoundSecretsHash:
+                description: |-
+                  lastBoundSecretsHash is a fingerprint of the resolved Secret-backed
+                  desired state (MQTT password and channel PSKs) last evaluated. Secret
+                  data is not part of metadata.generation, so this is how a Secret-only
+                  change resets the apply bound on a Degraded node. It is a hash, not
+                  secret material.
+                type: string
               lastHeard:
                 description: lastHeard is when the device was last reachable.
                 format: date-time

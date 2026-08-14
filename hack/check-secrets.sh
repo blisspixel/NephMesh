@@ -26,7 +26,10 @@
 set -eu
 
 # The full default channel PSK, the public broker host, and its default account.
-patterns='1PG7OiApB1nwvP\+rz05pAQ==|mqtt\.meshtastic\.org|meshdev|large4cats'
+# The full default channel PSK (base64 and hex expansion), the 0x01 shorthand
+# as a YAML psk value, the public broker host, and its default account.
+# AQ== is only matched as a psk value so random base64 does not trip the gate.
+patterns='1PG7OiApB1nwvP\+rz05pAQ==|d4f1bb3a20290759f0bcffabcd4e6901|psk:[[:space:]]*["'\'']?AQ==["'\'']?[[:space:]]*$|mqtt\.meshtastic\.org|meshdev|large4cats'
 
 # Tracked plus not-yet-committed files, matching check-manifests, so a new
 # manifest with a default credential fails locally before git add.

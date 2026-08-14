@@ -64,6 +64,9 @@ const (
 	ReasonApplyFailed   = "ApplyFailed"
 	ReasonConfigApplied = "ConfigApplied"
 	ReasonSecretMissing = "SecretMissing"
+	// ReasonDeviceError is an unexpected device-client failure (a parse error,
+	// a helper crash) as distinct from a bounded apply that would not converge.
+	ReasonDeviceError = "DeviceError"
 
 	ReasonReady    = "Ready"
 	ReasonNotReady = "NotReady"

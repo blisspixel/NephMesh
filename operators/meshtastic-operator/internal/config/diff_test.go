@@ -111,11 +111,26 @@ func TestWriteOnlyPasswordHash(t *testing.T) {
 		"module_config": map[string]any{"mqtt": map[string]any{"password": "s3cret"}},
 	}
 	h := WriteOnlyPasswordHash(desired)
-	assert.Equal(t, PSKHash([]byte("s3cret")), h)
+	assert.Equal(t, rawPSKHash([]byte("s3cret")), h)
 	assert.Empty(t, WriteOnlyPasswordHash(map[string]any{}), "no mqtt block is an empty hash")
 	assert.Empty(t, WriteOnlyPasswordHash(map[string]any{
 		"module_config": map[string]any{"mqtt": map[string]any{"enabled": true}},
 	}), "no password is an empty hash")
+}
+
+func TestWriteOnlyPasswordHashDoesNotNormalizePSKDefault(t *testing.T) {
+	// MQTT passwords are not channel keys. Hashing through PSKHash would
+	// collapse the well-known default PSK bytes onto 0x01 and hide a rotation.
+	expanded := string(defaultPSKExpanded)
+	hExpanded := WriteOnlyPasswordHash(map[string]any{
+		"module_config": map[string]any{"mqtt": map[string]any{"password": expanded}},
+	})
+	hShorthand := WriteOnlyPasswordHash(map[string]any{
+		"module_config": map[string]any{"mqtt": map[string]any{"password": string(DefaultPSKShorthand)}},
+	})
+	assert.NotEqual(t, hExpanded, hShorthand, "the two default-PSK encodings must not hash as one password")
+	assert.Equal(t, rawPSKHash([]byte(expanded)), hExpanded)
+	assert.Equal(t, rawPSKHash(DefaultPSKShorthand), hShorthand)
 }
 
 func TestMapVersusScalarMismatchIsDrift(t *testing.T) {

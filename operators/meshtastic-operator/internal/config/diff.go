@@ -102,7 +102,10 @@ func WriteOnlyPasswordHash(desired map[string]any) string {
 	if pw == "" {
 		return ""
 	}
-	return PSKHash([]byte(pw))
+	// Hash the password bytes as-is. PSKHash would collapse the well-known
+	// default channel key onto 0x01, hiding a rotation if someone reused those
+	// bytes as a broker password.
+	return rawPSKHash([]byte(pw))
 }
 
 func removePath(m map[string]any, path []string) {

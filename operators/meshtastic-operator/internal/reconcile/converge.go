@@ -137,7 +137,7 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 			MQTTPasswordHash: prior.MQTTPasswordHash,
 		}, nil
 	}
-	if errors.Is(err, device.ErrUnreachable) {
+	if isTransientDeviceDrop(err) {
 		reason := meshv1alpha1.ReasonConnectFailed
 		if prior.RebootPending {
 			reason = meshv1alpha1.ReasonConfigApplied
@@ -164,7 +164,7 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 	if info.NodeID == "" {
 		var infoErr error
 		info, infoErr = dev.Info(ctx)
-		if errors.Is(infoErr, device.ErrUnreachable) {
+		if isTransientDeviceDrop(infoErr) {
 			reason := meshv1alpha1.ReasonConnectFailed
 			if prior.RebootPending {
 				reason = meshv1alpha1.ReasonConfigApplied
@@ -221,27 +221,10 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 		}, nil
 	}
 
-	// Drift remains (scalar config, channels, or both). If we have already applied
-	// MaxApplyAttempts times without converging, stop: the desired state is very
-	// likely something the device will not echo back, so rebooting again would
-	// loop forever. Surface it.
-	if prior.ApplyAttempts >= MaxApplyAttempts {
-		return Outcome{
-			Reachable: true, ConfigInSync: scalarConverged, Degraded: true,
-			Reason: meshv1alpha1.ReasonApplyFailed, ApplyAttempts: prior.ApplyAttempts,
-			Requeue:            DriftCheckInterval,
-			Info:               info,
-			LiveChannels:       liveChannels,
-			CurrentModemPreset: currentPreset,
-			Drift:              allDrift,
-			MQTTPasswordHash:   prior.MQTTPasswordHash,
-			ChannelsUnobserved: channelsUnknown,
-		}, nil
-	}
-
 	// Declared channels but the export had no channel set: do not apply
 	// channels (that would reboot-loop against stock --export-config) and do
-	// not report Ready. If scalar config is also drifted, apply that only.
+	// not report Ready. Handle this before the apply bound: unobserved is not
+	// an apply, so a leftover attempt count must not hide it as Degraded.
 	if channelsUnknown && scalarConverged {
 		return Outcome{
 			Reachable: true, ConfigInSync: true, Ready: false,
@@ -253,6 +236,24 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 			CurrentModemPreset: currentPreset,
 			MQTTPasswordHash:   prior.MQTTPasswordHash,
 			ChannelsUnobserved: true,
+		}, nil
+	}
+
+	// Drift remains (scalar config, channels, or both). If we have already applied
+	// MaxApplyAttempts times without converging, stop: the desired state is very
+	// likely something the device will not echo back, so rebooting again would
+	// loop forever. Surface it.
+	if prior.ApplyAttempts >= MaxApplyAttempts {
+		return Outcome{
+			Reachable: true, ConfigInSync: scalarConverged && channelsConverged, Degraded: true,
+			Reason: meshv1alpha1.ReasonApplyFailed, ApplyAttempts: prior.ApplyAttempts,
+			Requeue:            DriftCheckInterval,
+			Info:               info,
+			LiveChannels:       liveChannels,
+			CurrentModemPreset: currentPreset,
+			Drift:              allDrift,
+			MQTTPasswordHash:   prior.MQTTPasswordHash,
+			ChannelsUnobserved: channelsUnknown,
 		}, nil
 	}
 
@@ -268,21 +269,18 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 		applyErr = dev.ApplyChannels(ctx, chans.Write)
 	}
 	if applyErr != nil {
-		if errors.Is(applyErr, device.ErrUnreachable) {
-			// The write likely landed and the device is already rebooting
-			// (session dropped). Count it toward the apply bound and wait for
-			// the reboot, the same as a clean apply, or a field the device
-			// never echoes would reboot forever.
-			appliedHash := prior.MQTTPasswordHash
-			if !scalarConverged {
-				appliedHash = passwordHash
-			}
+		if isTransientDeviceDrop(applyErr) {
+			// The session dropped. The write may or may not have landed (export
+			// succeeded, then Apply never connected). Count the attempt so a
+			// never-echoed field is still bounded, but do not advance the
+			// write-only password hash: committing it here would report Ready
+			// with the broker password never on the radio.
 			return Outcome{
 				Reachable: false, RebootPending: true,
 				ApplyAttempts:    prior.ApplyAttempts + 1,
 				Reason:           meshv1alpha1.ReasonConfigApplied,
 				Requeue:          RebootWait,
-				MQTTPasswordHash: appliedHash,
+				MQTTPasswordHash: prior.MQTTPasswordHash,
 			}, nil
 		}
 		return Outcome{ApplyAttempts: prior.ApplyAttempts, MQTTPasswordHash: prior.MQTTPasswordHash}, applyErr
@@ -343,6 +341,14 @@ func floatFromAny(v any) *float64 {
 	default:
 		return nil
 	}
+}
+
+// isTransientDeviceDrop reports a dropped session that should requeue, not a
+// hard failure. DeadlineExceeded is included because a hung CLI killed by the
+// client timeout is the same reboot window as ErrUnreachable; Canceled is not
+// (shutdown must surface).
+func isTransientDeviceDrop(err error) bool {
+	return errors.Is(err, device.ErrUnreachable) || errors.Is(err, context.DeadlineExceeded)
 }
 
 // unreachableOutcome is a device that did not answer this step. A node that

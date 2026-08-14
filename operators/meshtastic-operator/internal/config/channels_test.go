@@ -27,6 +27,22 @@ import (
 	meshv1alpha1 "github.com/blisspixel/nephmesh/api/mesh/v1alpha1"
 )
 
+func TestValidChannelPSK(t *testing.T) {
+	assert.NoError(t, ValidChannelPSK([]byte{0x01}), "the public default shorthand is valid")
+	assert.NoError(t, ValidChannelPSK(defaultPSKExpanded), "the expanded public default is valid")
+	assert.NoError(t, ValidChannelPSK(make([]byte, 16)), "a 16-byte key is valid")
+	assert.NoError(t, ValidChannelPSK(make([]byte, 32)), "a 32-byte key is valid")
+	err := ValidChannelPSK([]byte("demo-relief-key")) // 15 bytes, a truncated ASCII key
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "15 bytes")
+	// The common Secret mistake: storing the base64 text of a 16-byte key
+	// (24 ASCII bytes) instead of the raw key bytes.
+	err = ValidChannelPSK([]byte("1PG7OiApB1nwvP+rz05pAQ=="))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "24 bytes")
+	assert.Error(t, ValidChannelPSK(nil), "an empty key is not a valid explicit PSK")
+}
+
 func TestDefaultPSKNormalization(t *testing.T) {
 	shorthand := []byte{0x01}
 	expanded := []byte{
@@ -70,6 +86,21 @@ func TestToInt32RejectsNonIntegralFloat(t *testing.T) {
 	i, ok := toInt32(float64(2))
 	assert.True(t, ok)
 	assert.Equal(t, int32(2), i)
+}
+
+func TestSecretsFingerprintChangesWithPasswordOrChannels(t *testing.T) {
+	empty := SecretsFingerprint("", nil)
+	pw := SecretsFingerprint("abc", nil)
+	ch := SecretsFingerprint("", []ChannelState{{Index: 1, Name: "ops", PSKHash: "h"}})
+	assert.NotEqual(t, empty, pw)
+	assert.NotEqual(t, empty, ch)
+	assert.NotEqual(t, pw, ch)
+	assert.Equal(t, ch, SecretsFingerprint("", []ChannelState{{Index: 1, Name: "ops", PSKHash: "h"}}),
+		"the fingerprint is deterministic")
+	// Order of declaration must not matter.
+	a := SecretsFingerprint("p", []ChannelState{{Index: 1, PSKHash: "h1"}, {Index: 0, PSKHash: "h0"}})
+	b := SecretsFingerprint("p", []ChannelState{{Index: 0, PSKHash: "h0"}, {Index: 1, PSKHash: "h1"}})
+	assert.Equal(t, a, b)
 }
 
 func TestPSKHash(t *testing.T) {

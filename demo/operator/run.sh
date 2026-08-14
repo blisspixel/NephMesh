@@ -35,6 +35,9 @@ CLI="${MESH_BIN:-meshtastic}"
 EXPORTER="$PY hack/mesh-export.py"
 APPLIER="$PY hack/mesh-apply.py"
 
+# Git Bash rewrites in-container paths (--fsdir=/var/...) unless this is set.
+export MSYS_NO_PATHCONV=1
+
 cleanup() { docker rm -f nephmesh-demo >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
@@ -46,10 +49,18 @@ docker run -d --name nephmesh-demo --restart=always -p 127.0.0.1:14403:4403 "$IM
   meshtasticd --sim --fsdir=/var/lib/meshtasticd --port=4403 >/dev/null
 printf "waiting for the device API"
 i=0
+ready=0
 while [ "$i" -lt 30 ]; do
-  if "$PY" -c "import socket; socket.create_connection(('127.0.0.1',14403),timeout=2).close()" 2>/dev/null; then break; fi
+  if "$PY" -c "import socket; socket.create_connection(('127.0.0.1',14403),timeout=2).close()" 2>/dev/null; then
+    ready=1
+    break
+  fi
   printf "."; sleep 1; i=$((i + 1))
 done
+if [ "$ready" -ne 1 ]; then
+  echo " never became reachable"
+  exit 1
+fi
 echo " ready"
 sleep 6
 
