@@ -106,13 +106,13 @@ func TestApplyOutcomeThrottlesLastHeard(t *testing.T) {
 	recent := metav1.NewTime(time.Now().Add(-time.Second))
 	node.Status.LastHeard = &recent
 	applyOutcome(node, reconcile.Outcome{Reachable: true, Info: device.Info{NodeID: "!x"}})
-	assert.True(t, node.Status.LastHeard.Time.Equal(recent.Time),
+	assert.True(t, node.Status.LastHeard.Equal(&recent),
 		"a LastHeard written a second ago must not be rewritten")
 
 	stale := metav1.NewTime(time.Now().Add(-time.Minute))
 	node.Status.LastHeard = &stale
 	applyOutcome(node, reconcile.Outcome{Reachable: true, Info: device.Info{NodeID: "!x"}})
-	assert.True(t, node.Status.LastHeard.Time.After(stale.Time),
+	assert.True(t, node.Status.LastHeard.After(stale.Time),
 		"a LastHeard older than lastHeardMinInterval is refreshed")
 }
 
