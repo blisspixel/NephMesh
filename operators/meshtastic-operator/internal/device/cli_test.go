@@ -146,8 +146,8 @@ Nodes in mesh: { "!6e000001": { "num": 1845493761 } }`
 }
 
 func TestParseInfoExtractsAirtimeMetrics(t *testing.T) {
-	// Shape from a real T-Deck --info deviceMetrics block.
-	out := `Nodes in mesh: { "!0c3a5f2c": { "deviceMetrics": { "channelUtilization": 12.5, "airUtilTx": 3.25 } } }`
+	// Shape from a real --info deviceMetrics block. Synthetic node id.
+	out := `Nodes in mesh: { "!01020304": { "deviceMetrics": { "channelUtilization": 12.5, "airUtilTx": 3.25 } } }`
 	info := parseInfo(out)
 	require.NotNil(t, info.AirUtilTx)
 	assert.InDelta(t, 3.25, *info.AirUtilTx, 1e-9)

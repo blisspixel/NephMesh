@@ -48,8 +48,9 @@ operators/                                        (Phase 4)  deployable binaries
   meshtastic-operator/                            (Phase 4)  controller manager; reconcilers self-register via init() into a registry
 exporters/                                        (Phase 2)  small Go modules for metrics glue
   sweep-exporter/                                 (Phase 2)  rtl_power-format sweep CSV to per-band Prometheus gauges
-demo/                                             (Phase 1)  per-phase reproducible environments (demo/phase1/, demo/phase3/, ...)
+demo/                                             (Phase 1)  per-phase reproducible environments (demo/phase1/, demo/phase3/, demo/meshtoad-gateway/, ...)
 docs/                                             (exists)   architecture, roadmap, research, plans
+agent-plugin/                                     (cross-cutting) Agent Plugins 1.0 package: plugin.json, mcp.json, skills/
 distros/                                          (only if ever needed) cloud or distro-specific material, mirroring the Nephio catalog
 ```
 

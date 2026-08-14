@@ -37,8 +37,8 @@
 
 set -eu
 
-SENSOR_SSH="${SENSOR_SSH:-kilo@192.168.44.84}"
-COM_PORT="${COM_PORT:-COM3}"
+SENSOR_SSH="${SENSOR_SSH:?set SENSOR_SSH to user@linux-usb-host}"
+COM_PORT="${COM_PORT:?set COM_PORT to the handheld serial device}"
 FREQ_MIN="${FREQ_MIN:-902}"
 FREQ_MAX="${FREQ_MAX:-928}"
 BAND="${BAND:-ism-915-us}"

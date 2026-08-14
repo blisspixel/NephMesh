@@ -22,6 +22,7 @@ limitations under the License.
 // without a cluster.
 //
 //	go run ./cmd/reconcile-demo -host 127.0.0.1:14403
+//	go run ./cmd/reconcile-demo -host 127.0.0.1:14403 -region US -role ROUTER
 //	go run ./cmd/reconcile-demo -serial COM3 -exporter "python hack/mesh-export.py" -observe
 //
 // -observe reconciles an empty intent, so it reads the device but never
@@ -36,7 +37,6 @@ import (
 	"strings"
 	"time"
 
-	meshv1alpha1 "github.com/blisspixel/nephmesh/api/mesh/v1alpha1"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/airtime"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/config"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/device"
@@ -81,6 +81,7 @@ func main() {
 	observe := flag.Bool("observe", false, "read-only: reconcile an empty intent so the device is never modified")
 	region := flag.String("region", "", "desired region (apply mode)")
 	preset := flag.String("preset", "", "desired modem preset (apply mode)")
+	role := flag.String("role", "", "desired device role (apply mode), for example ROUTER or CLIENT")
 	owner := flag.String("owner", "", "desired owner long name (apply mode)")
 	ownerShort := flag.String("owner-short", "", "desired owner short name (apply mode)")
 	applier := flag.String("applier", "", `argv of the channel-apply helper (e.g. "python hack/mesh-apply.py"), required to reconcile a channel`)
@@ -135,23 +136,7 @@ func main() {
 		}
 		fmt.Println()
 	} else {
-		var spec meshv1alpha1.MeshtasticNodeSpec
-		if *region == "" && *preset == "" && *owner == "" && *ownerShort == "" {
-			// Default demo intent. A non-default preset because the export omits
-			// fields left at the device default (LONG_FAST), which would read as
-			// permanent drift.
-			spec = meshv1alpha1.MeshtasticNodeSpec{
-				Region:      "US",
-				ModemPreset: "MEDIUM_SLOW",
-				Owner:       &meshv1alpha1.OwnerSpec{LongName: "NephMesh Field 01", ShortName: "NF01"},
-			}
-		} else {
-			spec.Region = *region
-			spec.ModemPreset = *preset
-			if *owner != "" || *ownerShort != "" {
-				spec.Owner = &meshv1alpha1.OwnerSpec{LongName: *owner, ShortName: *ownerShort}
-			}
-		}
+		spec := applySpec(*region, *preset, *role, *owner, *ownerShort)
 		desired = config.BuildDesired(spec, "", secret.Value{})
 		fmt.Printf("nephmesh reconcile-demo: driving Meshtastic device at %s\n", target)
 		fmt.Printf("desired intent: %v\n", desired)

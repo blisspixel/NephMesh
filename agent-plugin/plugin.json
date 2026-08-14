@@ -1,0 +1,10 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "nephmesh",
+  "version": "0.2.1",
+  "description": "Report-only Meshtastic intent planning, spectrum reduction, and the MeshToad plus T-Deck bench. Does not write to a radio unless a skill says so and a human runs it.",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/blisspixel/nephmesh",
+  "repository": "https://github.com/blisspixel/nephmesh",
+  "keywords": ["meshtastic", "nephio", "intent", "lora"]
+}
