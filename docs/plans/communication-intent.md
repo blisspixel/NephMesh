@@ -1,11 +1,10 @@
 # CommunicationIntent and the intent compiler (report-only first)
 
-Status: design direction, not shipped. This is a plan for roadmap stage 9, not a
-description of code that exists. Everything here is proposed. The first
-implementation is deliberately report-only: it parses objectives, evaluates
-feasibility, emits proposed `MeshtasticNode`s and a `ChangePlan`, reports
-`IntentInfeasible` when it must, and never actuates a radio. The schema below is
-illustrative and explicitly not final.
+Status: partial. A report-only compiler shipped (CRD + `internal/intent.Compile` +
+RBAC so it cannot create `MeshtasticNode`s). `Feasible` today means renderable.
+This plan describes the rest of stage 9: `objectives`, a `ChangePlan`, and
+`IntentInfeasible` when physics forbids an outcome. The schema below is
+illustrative and explicitly not final. Do not read this file as "nothing exists."
 
 Honesty note on what shipped versus this plan: the report-only compiler that exists
 today renders and reports a feasibility verdict, but the shipped

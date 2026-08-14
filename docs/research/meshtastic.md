@@ -48,4 +48,4 @@ Fully scriptable via the [Python CLI](https://meshtastic.org/docs/software/pytho
 
 ## Prior art in Kubernetes
 
-Thin. No official or community Helm chart/operator for meshtasticd found. Closest: [MeshMonitor](https://meshmonitor.org/) - a monitoring web app with a maintained Helm chart, whose docs describe running meshtasticd in simulation mode as a containerized virtual node. Nobody has published declarative node-state reconciliation - **the Phase-4 operator would be the first**.
+Thin as of 2026-08-13. No official meshtasticd Helm chart, and no CRD operator that continuously observes, diffs, and reconciles node config. Closest: [MeshMonitor](https://meshmonitor.org/) - a live dashboard with a maintained Helm chart, remote admin, automation, and MeshCore alongside Meshtastic. That is imperative fleet UI. Nobody has published Git-declared observe-diff-reconcile of Meshtastic node state; the Phase-4 operator is that attempt.

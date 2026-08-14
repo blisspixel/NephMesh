@@ -12,9 +12,9 @@ the history.
 
 | ADR | Title | Status |
 |---|---|---|
-| [0001](0001-intent-as-an-outcome-envelope.md) | Intent is an outcome envelope; `MeshtasticNode` is a compiled artifact | Proposed |
+| [0001](0001-intent-as-an-outcome-envelope.md) | Intent is an outcome envelope; `MeshtasticNode` is a compiled artifact | Proposed (report-only compiler shipped; Accepted waits on `ChangePlan` and `objectives`) |
 | [0002](0002-signed-autonomy-and-rejoin-before-closed-loop.md) | Define signed autonomy and rejoin semantics before the Phase 6 closed loop | Proposed |
 
-Both are Proposed, not Accepted: they set a direction for work that is mostly not
-built yet. They become Accepted when the first slice that depends on them ships. The
-full reasoning behind both lives in [the design doctrine](../design/doctrine.md).
+0001's first report-only slice shipped; it stays Proposed until the compiler
+expresses outcomes, not only renderability. 0002 stays Proposed until the safety
+kernel exists. The full reasoning lives in [the design doctrine](../design/doctrine.md).

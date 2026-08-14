@@ -20,9 +20,9 @@
 # gate, so a newcomer sees the command surface first.
 .DEFAULT_GOAL := help
 
-.PHONY: check check-all check-headers check-style check-manifests check-transmit check-actions check-secrets check-packages kpt-runner demo-phase1 demo-phase1-down help
+.PHONY: check check-all check-headers check-style check-manifests check-transmit check-actions check-secrets check-lab-identity check-packages kpt-runner demo-phase1 demo-phase1-down help
 
-check: check-headers check-style check-manifests check-transmit check-actions check-secrets ## Run all fast repo checks (no Docker)
+check: check-headers check-style check-manifests check-transmit check-actions check-secrets check-lab-identity ## Run all fast repo checks (no Docker)
 
 check-all: ## Run every gate (repo, Go modules, package render), skipping absent tooling
 	@sh hack/check-all.sh
@@ -44,6 +44,9 @@ check-actions: ## Enforce SHA-pinned GitHub Actions (no mutable tag pins)
 
 check-secrets: ## Enforce no default credentials embedded in shipped manifests
 	@sh hack/check-secrets.sh
+
+check-lab-identity: ## Fail if lab hostnames, LAN addresses, or device ids land in the tree
+	@sh hack/check-lab-identity.sh
 
 check-packages: ## Render every kpt package and fail on any pipeline error (needs Docker)
 	@sh hack/check-packages.sh

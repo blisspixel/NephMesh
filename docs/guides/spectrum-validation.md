@@ -12,8 +12,8 @@ Until you run this, the sensing path is exercised only against synthetic sweeps
 runbook closes that gap with a real capture.
 
 Validated end to end on 2026-08-09 against a HackRF (board reported as an
-unrecognized id 5 by the 2021.03 tools, i.e. newer than they name) on the USB-C
-port of a Jetson Orin Nano (Ubuntu 22.04, arm64), receive-only. The parser
+unrecognized id 5 by the 2021.03 tools, i.e. newer than they name) on a Linux
+USB host (arm64), receive-only. The parser
 handled real, out-of-frequency-order sweep segments and tens of thousands of bins
 with no errors. Findings that shaped this runbook: a single sweep is noisy (the
 915 band read anywhere from 30 to 46 percent occupancy with an 8 dB noise-floor

@@ -63,9 +63,11 @@ Other lineage worth citing rather than re-deriving: **Baran** (distributed survi
 - **CAP (Common Alerting Protocol / ITU-T X.1303)** for emergencies: ingesting official IPAWS/CAP feeds and fanning them over the mesh offline (and optionally emitting CAP) is concrete value to emergency managers, well beyond using CAP's code taxonomy for agent responses.
 - **MQTT Sparkplug** birth/death state model fits an intermittently-connected fleet's liveness on NephMesh's own telemetry plane (not Meshtastic's fixed topics).
 
-## Observability: the foundational gap
+## Observability: landed enough to measure; the gap moved
 
-The completeness stream's pick for the single most important gap to close next is **the mesh-observability layer**: integrate [MeshMonitor](https://meshmonitor.org/) and add a Prometheus exporter for packet delivery ratio, neighbor churn, last-heard age, airtime utilization, hop count, and SNR/RSSI, together with the control-plane-independence measurement harness. NephMesh committed in writing (roadmap, "Resilience, defined") to reporting resilience as numbers; none of that is measurable without this. It is the prerequisite for the Phase 6 closed loop and every day-2 operation, and it is entirely $0 and hardware-free, so it fits the current pre-hardware phase.
+The completeness stream originally picked **the mesh-observability layer** as the single most important gap. That is no longer the top gap. The operator publishes readiness, apply, and airtime gauges; `demo/resilience` measures message delivery ratio and reduces it to a verdict; last-heard is a printer column. What remains of that stream is MeshMonitor integration (a cousin dashboard, not a replacement) and richer hop/SNR series.
+
+The ranking that matches the code now: (1) an *enforced* airtime `ChannelBudget` (report-only floor exists; refusal does not); (2) two-cluster control-plane independence (UDP-sim demonstration exists; two clusters do not); (3) a stranger-runnable three-witness RF script (the 2026-08-09 bench ran by hand).
 
 ## Day-2 fleet lifecycle
 
@@ -84,8 +86,8 @@ Named "thin" in our own roadmap and confirmed as the gap between a demo and some
 
 Highest leverage first. Near-term items are hardware-free and fit the current phase; later items are tracked but deferred.
 
-1. **Airtime/duty-cycle budget as an enforced reconciler invariant** (near-term). The one idea backed by two independent streams and the canonical literature; turns the biggest physical constraint into the clearest differentiator.
-2. **Mesh observability layer: MeshMonitor integration plus a Prometheus exporter, and the control-plane-independence harness** (near-term). The foundation the committed resilience metrics and the closed loop stand on.
+1. **Airtime/duty-cycle budget as an enforced reconciler invariant** (near-term). The one idea backed by two independent streams and the canonical literature; turns the biggest physical constraint into the clearest differentiator. Report-only floor shipped; refusal (a Porch/KRM validator) is the remaining distinctive step.
+2. **Two-cluster control-plane independence, then MeshMonitor as a cousin UI** (near-term). The UDP-sim harness and operator metrics landed. The load-bearing remainder is two clusters, MDR unchanged. Do not rebuild MeshMonitor; integrate it if a live dashboard is needed.
 3. **Application-layer authentication and freshness envelope on automation-triggering mesh packets** (near-term). Neutralizes the impersonation, replay, and PKI-downgrade cluster; the honest completion of assume-breach.
 4. **SDR "claim vs air" ground-truth monitor** (near-term, sim-first), starting with duplicate-node-id and impossible-mobility detection, plus adding a receive-only LoRa decoder alongside the energy sweep. Strengthens the project's actual novelty.
 5. **Anti-oscillation debouncer plus unpredictable-destination selection plus jam-versus-congestion classifier for Phase 6** (design near-term). Makes the closed loop stable and un-steerable.

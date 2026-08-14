@@ -33,8 +33,8 @@ built against the replay works unchanged against a real SDR.
 
 Reading a live sweep needs USB access to the SDR on the host. That means a device
 mount, which the manifest security gate rightly forbids in a shipped package, so
-the live sensor runs outside this hardened Deployment: on the sensor host (a
-Jetson or any box with the HackRF or an RTL-SDR attached), run the exporter
+the live sensor runs outside this hardened Deployment: on the Linux USB host
+(or any box with the HackRF or an RTL-SDR attached), run the exporter
 directly against the sweep tool.
 
     spectrum-exporter -bind :9808 -freq-min 902 -freq-max 928 -interval 15s

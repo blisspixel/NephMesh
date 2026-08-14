@@ -23,10 +23,8 @@ before you start:
   `kind load docker-image nephmesh-meshtastic-operator:local`. The `Dockerfile`
   bundles the pinned Meshtastic CLI and the helper scripts. Signing, SBOM, and
   a digest-pinned `ghcr.io` tag land with the publish, not this local build.
-  A local build on 2026-08-13 produced `nephmesh-meshtastic-operator:local`
-  (`sha256:0ddbf1c312374bcf7809d28eec64f91bc1712a08648c0ad0d72d77b061a1a135`),
-  non-root, `--help` ok, helpers and `meshtastic` 2.7.11 present. That is not a
-  release.
+  A local build on 2026-08-13 produced `nephmesh-meshtastic-operator:local`,
+  non-root, helpers and CLI present. That is not a release.
 - For the full Nephio/Porch path (register the repo, propose/approve/apply), see
   the [Porch registration guide](porch-registration.md). For a plain cluster,
   `kubectl apply` the rendered package.

@@ -6,7 +6,7 @@ The 0.1 gate from the [roadmap](../../docs/roadmap.md): a simulated Meshtastic n
 
 - A local cluster: kind, k3d, or k3s. On Windows, Docker Desktop plus kind or k3d works; run the scripts under WSL2 or Git Bash.
 - kubectl pointed at it. Nothing else: the CLI and the MQTT watcher run in-cluster.
-- Internet egress from pods (the applier Job pip-installs the Meshtastic CLI).
+- A locally built CLI image (`nephmesh/meshtastic-cli`). The configure Job does not pip-install and does not need pod internet egress.
 
 ## Run it
 
@@ -56,7 +56,7 @@ Persistence (validation item V1) also passed: after `kubectl delete pod` on the 
 
 ```
 INFO  | 21:23:40 0 Loaded /prefs/nodes.proto successfully
-INFO  | 21:23:40 0 [mqtt] Connecting directly to MQTT server 10.96.215.62, port: 1883
+INFO  | 21:23:40 0 [mqtt] Connecting directly to MQTT server <broker-cluster-ip>, port: 1883
 INFO  | 21:23:40 0 [mqtt] MQTT connected
 ```
 
@@ -69,5 +69,5 @@ Two Kubernetes-specific findings from the gate run, both encoded in the manifest
 ## Troubleshooting
 
 - `meshnode-sim` restarting once or twice during configuration is expected (see above), not a crash loop.
-- If the configure Job exhausts its backoff, check `kubectl -n nephmesh logs job/meshnode-configure`; the usual cause is no pod egress for pip.
+- If the configure Job exhausts its backoff, check `kubectl -n nephmesh logs job/meshnode-configure`; the usual cause is the node image or the CLI image not loaded into the cluster.
 - Windows: if you shell into containers manually with `docker exec` and paths get mangled, prefix commands with `MSYS_NO_PATHCONV=1` (Git Bash path conversion).

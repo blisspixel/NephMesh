@@ -53,9 +53,9 @@ sh demo/closed-loop/run.sh
 
 ## Captured run
 
-The following is a real run on the bench (2026-08-09), a HackRF Pro on a Jetson
-Orin Nano sensing, and a Meshtastic T-Deck actuated by the operator over USB
-serial:
+The following is a real run on the bench (2026-08-09), a HackRF Pro on the
+Linux USB host sensing, and a Meshtastic handheld actuated by the operator over
+USB serial:
 
 ```
 === SENSE: sweep 902-928 MHz with the mesh on the air ===

@@ -4,20 +4,19 @@ Status: Phase 0 deliverable, drafted 2026-08-04. Primary source: `docs/research/
 Goal: keep NephMesh upstream-compatible with the Nephio ecosystem and provider-neutral, so any
 component is a header-swap and a module-path change away from fitting the Nephio house style.
 
-## 0. Language mix and why the repo is shell-heavy today
+## 0. Language mix
 
 Nephio's codebase is roughly 90% Go, with small amounts of Makefile, Python, shell, and Dockerfile.
-NephMesh should converge toward that same profile, because the substance of the project, the
-Meshtastic operator and the specializer functions, is Go (Phases 4 and 5). Until then the repo is
-deliberately shell and YAML: what exists so far is CI gates (`hack/*.sh`), demo glue
-(`demo/phase1/scripts/*.sh`), and Kubernetes manifests, which is exactly the category Nephio also
-implements in shell and Makefile. This is not drift; it is the pre-Go phase of the roadmap.
+NephMesh matches that profile now: `api/` and `operators/meshtastic-operator` have existed since
+0.2.0, and Go is the dominant language by volume. Shell stays orchestration and enforcement
+(`hack/`, demo scripts). No domain logic lives in shell. The paragraph that once called this a
+pre-Go repo is historical.
 
-The load-bearing rule that keeps future integration easy: no domain logic lives in shell. The shell
-here is orchestration and enforcement only (run a demo, fail a build). The moment reconciliation
-logic appears, it is Go, structured per the module layout below, so that a future contribution to
-Nephio is a module-path and header change, not a rewrite. When the operator lands, Go becomes the
-dominant language by volume, matching the upstream profile.
+Layout notes versus the original target tree: there is no `exporters/` directory and no
+`packages/spectrum-sensor`. The sweep exporter lives at
+`operators/meshtastic-operator/cmd/spectrum-exporter` and ships as `packages/spectrum-exporter`
+(replay-first). `api/intent/v1alpha1` (`CommunicationIntent`) exists; `api/sense/` does not.
+`default-*.mk` fragments were never added; the root Makefile carries the gates directly.
 
 ## 1. Target repo layout (final state)
 

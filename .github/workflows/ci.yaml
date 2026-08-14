@@ -44,6 +44,8 @@ jobs:
         run: sh hack/check-actions.sh
       - name: No default credentials in shipped manifests
         run: sh hack/check-secrets.sh
+      - name: No lab identity in the tree
+        run: sh hack/check-lab-identity.sh
       - name: ShellCheck the gate scripts
         run: shellcheck hack/*.sh
 
