@@ -56,7 +56,15 @@ sh "$HERE/up.sh" 3
 log "2/5 Build the operator and the reducer"
 # reconcile-demo runs in a Linux container as the management plane; nephmeshctl
 # reduces the log on this host.
-( cd "$MOD" && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$WORK/reconcile-demo" ./cmd/reconcile-demo )
+# The binary is docker-exec'd into python:3.13-slim, which follows the engine
+# architecture. amd64-only broke the hardware-free path on arm64 Docker.
+arch=$(docker info --format '{{.Architecture}}' 2>/dev/null || echo amd64)
+case "$arch" in
+    aarch64|arm64) goarch=arm64 ;;
+    x86_64|amd64) goarch=amd64 ;;
+    *) goarch=$arch ;;
+esac
+( cd "$MOD" && GOOS=linux GOARCH="$goarch" CGO_ENABLED=0 go build -o "$WORK/reconcile-demo" ./cmd/reconcile-demo )
 ( cd "$MOD" && go build -o "$WORK/nephmeshctl.exe" ./cmd/nephmeshctl )
 
 log "3/5 Operator configures sim1 (the management plane manages the mesh)"

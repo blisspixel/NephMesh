@@ -76,6 +76,11 @@ func TestCommunicationIntentReportsProposedNodes(t *testing.T) {
 	var nodes meshv1alpha1.MeshtasticNodeList
 	require.NoError(t, c.List(context.Background(), &nodes))
 	assert.Empty(t, nodes.Items, "report-only: no MeshtasticNode is created")
+
+	// A second reconcile of an unchanged spec must not fail (it should skip
+	// the status write rather than bump resourceVersion in a loop).
+	_, err = r.Reconcile(context.Background(), ctrl.Request{NamespacedName: key})
+	require.NoError(t, err)
 }
 
 func TestCommunicationIntentReportsAirtimeOverBudget(t *testing.T) {

@@ -44,6 +44,7 @@ func TestBuildDesiredModemPresetAndRole(t *testing.T) {
 	device := d["config"].(map[string]any)["device"].(map[string]any)
 	assert.Equal(t, "US", lora["region"])
 	assert.Equal(t, "MEDIUM_SLOW", lora["modemPreset"])
+	assert.Equal(t, true, lora["usePreset"], "a declared preset must turn preset mode on")
 	assert.Equal(t, "ROUTER", device["role"])
 }
 

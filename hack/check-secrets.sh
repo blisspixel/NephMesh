@@ -28,8 +28,25 @@ set -eu
 # The full default channel PSK, the public broker host, and its default account.
 patterns='1PG7OiApB1nwvP\+rz05pAQ==|mqtt\.meshtastic\.org|meshdev|large4cats'
 
-hits=$(git grep -nE "$patterns" -- packages demo ':!*.md' 2>/dev/null |
-	grep -vE ':[0-9]+:[[:space:]]*#' || true)
+# Tracked plus not-yet-committed files, matching check-manifests, so a new
+# manifest with a default credential fails locally before git add.
+list_manifests() {
+    {
+        git ls-files -- 'packages' 'demo'
+        git ls-files --others --exclude-standard -- 'packages' 'demo'
+    } | grep -E '\.(yaml|yml)$' | grep -vE '(^|/)[^/]*\.md$' | sort -u
+}
+
+hits=""
+for f in $(list_manifests); do
+    [ -f "$f" ] || continue
+    found=$(grep -nE "$patterns" "$f" | grep -vE '^[0-9]+:[[:space:]]*#' || true)
+    if [ -n "$found" ]; then
+        hits="$hits
+$f:
+$found"
+    fi
+done
 
 if [ -n "$hits" ]; then
 	echo "default credentials embedded in a deployable manifest (supply your own):"

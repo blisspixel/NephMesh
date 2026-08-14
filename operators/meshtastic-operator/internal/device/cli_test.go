@@ -23,6 +23,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -118,6 +119,14 @@ func TestParseExportConfigEmptyYieldsEmptyMap(t *testing.T) {
 	assert.Empty(t, cfg)
 }
 
+func TestRedactCLISecretsStripsPasswordLines(t *testing.T) {
+	in := "Set lora.region to US\nSet mqtt.password to s3cret-never-log\nConnected\n"
+	out := redactCLISecrets(in)
+	assert.NotContains(t, out, "s3cret-never-log")
+	assert.Contains(t, out, "Set lora.region to US")
+	assert.Contains(t, out, "[REDACTED]")
+}
+
 func TestLooksUnreachableMatchesKnownCLIErrors(t *testing.T) {
 	// Transport-agnostic connection failures count on either transport.
 	assert.True(t, looksUnreachable("Error connecting to meshnode-sim:[Errno 110] Connection timed out", false))
@@ -145,6 +154,26 @@ Nodes in mesh: { "!6e000001": { "num": 1845493761 } }`
 	assert.Empty(t, parseInfo("no node id here").NodeID)
 }
 
+func TestParseInfoPrefersMyInfoOverFirstNeighbor(t *testing.T) {
+	out := `Owner: NephMesh (NM)
+My info: { "user": { "id": "!aabbccdd" }, "deviceMetrics": { "channelUtilization": 4.0, "airUtilTx": 1.0 } }
+Nodes in mesh: { "!01020304": { "deviceMetrics": { "channelUtilization": 40.0, "airUtilTx": 20.0 } }, "!aabbccdd": { "deviceMetrics": { "channelUtilization": 4.0, "airUtilTx": 1.0 } } }`
+	info := parseInfo(out)
+	assert.Equal(t, "!aabbccdd", info.NodeID, "identity comes from My info, not the first neighbor")
+	require.NotNil(t, info.ChannelUtilization)
+	assert.InDelta(t, 4.0, *info.ChannelUtilization, 1e-9, "metrics come from the local node, not the neighbor")
+}
+
+func TestParseInfoMetricsFromLocalNodesEntry(t *testing.T) {
+	// My info has the id but no metrics; a neighbor is listed first in Nodes.
+	out := `My info: { "user": { "id": "!aabbccdd" } }
+Nodes in mesh: { "!01020304": { "deviceMetrics": { "channelUtilization": 40.0, "airUtilTx": 20.0 } }, "!aabbccdd": { "deviceMetrics": { "channelUtilization": 4.0, "airUtilTx": 1.0 } } }`
+	info := parseInfo(out)
+	assert.Equal(t, "!aabbccdd", info.NodeID)
+	require.NotNil(t, info.ChannelUtilization)
+	assert.InDelta(t, 4.0, *info.ChannelUtilization, 1e-9)
+}
+
 func TestParseInfoExtractsAirtimeMetrics(t *testing.T) {
 	// Shape from a real --info deviceMetrics block. Synthetic node id.
 	out := `Nodes in mesh: { "!01020304": { "deviceMetrics": { "channelUtilization": 12.5, "airUtilTx": 3.25 } } }`
@@ -156,6 +185,33 @@ func TestParseInfoExtractsAirtimeMetrics(t *testing.T) {
 
 	// Absent metrics stay nil, distinct from a real 0.0 on an idle node.
 	assert.Nil(t, parseInfo("no metrics here").AirUtilTx)
+}
+
+func TestCLIClientAppliesDefaultTimeout(t *testing.T) {
+	var sawDeadline bool
+	c := &CLIClient{Host: "h", Timeout: 10 * time.Millisecond, runFn: func(ctx context.Context, _ ...string) (string, error) {
+		_, sawDeadline = ctx.Deadline()
+		return "", nil
+	}}
+	_, err := c.Info(context.Background())
+	require.NoError(t, err)
+	assert.True(t, sawDeadline, "a CLI call with no parent deadline must get one")
+}
+
+func TestCLIClientKeepsParentDeadline(t *testing.T) {
+	parent, cancel := context.WithTimeout(context.Background(), time.Hour)
+	defer cancel()
+	var childDeadline time.Time
+	c := &CLIClient{Host: "h", Timeout: 10 * time.Millisecond, runFn: func(ctx context.Context, _ ...string) (string, error) {
+		d, ok := ctx.Deadline()
+		require.True(t, ok)
+		childDeadline = d
+		return "", nil
+	}}
+	_, err := c.Info(parent)
+	require.NoError(t, err)
+	want, _ := parent.Deadline()
+	assert.Equal(t, want, childDeadline, "a parent deadline is not replaced by a shorter default")
 }
 
 func TestCLIClientBinDefault(t *testing.T) {

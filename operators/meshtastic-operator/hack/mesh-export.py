@@ -35,6 +35,20 @@ import sys
 import yaml
 from meshtastic.protobuf import config_pb2
 
+# The device stores the public default as the single 0x01 byte; some paths
+# write the well-known 16-byte expansion. Hash both as the shorthand so a
+# default channel does not read as permanent drift.
+_DEFAULT_PSK = b"\x01"
+_DEFAULT_PSK_EXPANDED = bytes.fromhex("d4f1bb3a20290759f0bcffabcd4e6901")
+
+
+def _psk_hash(psk: bytes) -> str:
+    if not psk:
+        return ""
+    if psk in (_DEFAULT_PSK, _DEFAULT_PSK_EXPANDED):
+        psk = _DEFAULT_PSK
+    return hashlib.sha256(psk).hexdigest()
+
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
@@ -78,6 +92,8 @@ def main() -> int:
         doc: dict = {"config": {"lora": {"region": region}, "device": {"role": role}}}
         # modemPreset is only meaningful when the device is preset-based; emit it
         # only then, so it does not read as drift on a bandwidth/spread-factor node.
+        # Always emit usePreset so a declared preset can turn preset mode back on.
+        doc["config"]["lora"]["usePreset"] = bool(lc.lora.use_preset)
         if lc.lora.use_preset:
             doc["config"]["lora"]["modemPreset"] = preset
 
@@ -144,7 +160,7 @@ def main() -> int:
                 if ch.role == 0:  # DISABLED
                     continue
                 s = ch.settings
-                psk_hash = hashlib.sha256(bytes(s.psk)).hexdigest() if len(s.psk) else ""
+                psk_hash = _psk_hash(bytes(s.psk))
                 channels.append(
                     {
                         "index": int(ch.index),
@@ -154,8 +170,10 @@ def main() -> int:
                         "downlinkEnabled": bool(s.downlink_enabled),
                     }
                 )
-            if channels:
-                doc["channels"] = channels
+            # Always emit the key, even when empty, so the operator can tell
+            # "device has no channels" from stock --export-config (which omits
+            # discrete channels entirely and would otherwise reboot-loop).
+            doc["channels"] = channels
         except Exception:  # noqa: BLE001 - channels are best-effort
             pass
     finally:

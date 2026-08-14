@@ -50,7 +50,7 @@ for f in $files; do
     # Expose-the-workload predicates. Each allows optional quote/brace and
     # surrounding whitespace so "NodePort", { type: NodePort }, and block
     # style all match.
-    if grep -Eiq '(^|[[:space:],{])type:[[:space:]]*"?(NodePort|LoadBalancer)"?' "$f"; then
+    if grep -Eiq '(^|[[:space:],{])type:[[:space:]]*["'\'']?(NodePort|LoadBalancer)["'\'']?' "$f"; then
         flag "$f: Service type NodePort/LoadBalancer (control surface must stay ClusterIP)"
     fi
     if grep -Eiq '(^|[[:space:],{])externalIPs:' "$f"; then
@@ -59,13 +59,13 @@ for f in $files; do
     if grep -Eiq '(^|[[:space:],{])hostPort:' "$f"; then
         flag "$f: hostPort (binds a port on the node, bypassing cluster isolation)"
     fi
-    if grep -Eiq '(^|[[:space:],{])(hostNetwork|hostPID|hostIPC):[[:space:]]*"?true"?' "$f"; then
+    if grep -Eiq '(^|[[:space:],{])(hostNetwork|hostPID|hostIPC):[[:space:]]*["'\'']?(true|yes|on)["'\'']?' "$f"; then
         flag "$f: host namespace sharing (exposes node network/process space)"
     fi
-    if grep -Eiq '(^|[[:space:],{])privileged:[[:space:]]*"?true"?' "$f"; then
+    if grep -Eiq '(^|[[:space:],{])privileged:[[:space:]]*["'\'']?(true|yes|on)["'\'']?' "$f"; then
         flag "$f: privileged container (must be an explicit, reviewed deviation)"
     fi
-    if grep -Eiq '(^|[[:space:],{])allowPrivilegeEscalation:[[:space:]]*"?true"?' "$f"; then
+    if grep -Eiq '(^|[[:space:],{])allowPrivilegeEscalation:[[:space:]]*["'\'']?(true|yes|on)["'\'']?' "$f"; then
         flag "$f: allowPrivilegeEscalation true"
     fi
     if grep -Eiq '(^|[[:space:],{])hostPath:' "$f"; then

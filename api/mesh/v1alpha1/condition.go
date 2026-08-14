@@ -38,11 +38,9 @@ const (
 	ConditionAirtimeHealthy = "AirtimeHealthy"
 	// ConditionChannelsInSync is True when every channel the spec declares
 	// matches the device (name, uplink, downlink, and key compared by hash),
-	// False when any declared channel drifts. It is observability today: the
-	// operator reports channel drift but does not yet apply it, because the
-	// channel apply is a distinct path (the export encodes channels as a single
-	// channel_url), so detecting drift is deliberately decoupled from acting on
-	// it until the apply is validated against a device.
+	// False when any declared channel drifts, and Unknown when the export did
+	// not include a channel set (stock --export-config emits channel_url, not
+	// discrete channels). Ready is gated on channel convergence in Converge.
 	ConditionChannelsInSync = "ChannelsInSync"
 	// ConditionAirtimeBudget is True when a declared modem-preset change is
 	// predicted to keep the channel within the recommended utilization ceiling,
@@ -72,8 +70,9 @@ const (
 	ReasonAirtimeHealthy = "AirtimeHealthy"
 	ReasonAirtimeHigh    = "AirtimeHigh"
 
-	ReasonChannelsInSync  = "ChannelsInSync"
-	ReasonChannelsDrifted = "ChannelsDrifted"
+	ReasonChannelsInSync     = "ChannelsInSync"
+	ReasonChannelsDrifted    = "ChannelsDrifted"
+	ReasonChannelsUnobserved = "ChannelsUnobserved"
 
 	ReasonAirtimeBudgetOK       = "WithinBudget"
 	ReasonAirtimeBudgetExceeded = "WouldExceedBudget"

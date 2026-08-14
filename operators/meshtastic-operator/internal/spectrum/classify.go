@@ -238,9 +238,15 @@ func gridStep(feats []binFeature) float64 {
 func buildEmission(run []binFeature, opts ClassifyOptions) Emission {
 	low := run[0].freqHz
 	high := run[len(run)-1].freqHz
-	// Bandwidth spans the run plus one bin's worth on each edge is not known
-	// precisely; use the center span, which is a floor on the true occupied width.
-	bandwidth := high - low
+	// Occupied width is the run's own spacing: (n-1) gaps plus one bin. Using
+	// the global grid step here is wrong when quiet bins sit far away (median
+	// gap becomes several MHz and a one-bin carrier looks wideband). A single
+	// bin has no measured width and is not called wideband.
+	var bandwidth float64
+	if len(run) >= 2 {
+		binWidth := (high - low) / float64(len(run)-1)
+		bandwidth = high - low + binWidth
+	}
 	var maxDuty, peak, peakFreq float64
 	peak = run[0].peakDB
 	peakFreq = run[0].freqHz

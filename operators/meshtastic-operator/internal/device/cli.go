@@ -27,6 +27,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -66,7 +67,15 @@ type CLIClient struct {
 	runFn func(ctx context.Context, args ...string) (string, error)
 	// execFn executes an arbitrary binary (the exporter), injectable for tests.
 	execFn func(ctx context.Context, name string, args ...string) (string, error)
+	// Timeout bounds one CLI/helper invocation when the caller context has no
+	// deadline. A hung meshtasticd (single-client API, or --export-config over
+	// serial) must not park a reconcile worker forever. Zero uses DefaultExecTimeout.
+	Timeout time.Duration
 }
+
+// DefaultExecTimeout is how long one device CLI or helper call may run when the
+// reconcile context has no deadline of its own.
+const DefaultExecTimeout = 45 * time.Second
 
 const exportMarker = "# start of Meshtastic configure yaml"
 
@@ -115,7 +124,25 @@ func (c *CLIClient) connArgs() []string {
 	return []string{"--host", c.Host}
 }
 
+func (c *CLIClient) execTimeout() time.Duration {
+	if c.Timeout > 0 {
+		return c.Timeout
+	}
+	return DefaultExecTimeout
+}
+
+// withExecTimeout attaches a deadline when the caller did not. A parent
+// deadline is left alone so a shorter reconcile timeout still wins.
+func withExecTimeout(ctx context.Context, d time.Duration) (context.Context, context.CancelFunc) {
+	if _, ok := ctx.Deadline(); ok {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, d)
+}
+
 func (c *CLIClient) run(ctx context.Context, args ...string) (string, error) {
+	ctx, cancel := withExecTimeout(ctx, c.execTimeout())
+	defer cancel()
 	if c.runFn != nil {
 		return c.runFn(ctx, args...)
 	}
@@ -130,7 +157,7 @@ func (c *CLIClient) execRun(ctx context.Context, args ...string) (string, error)
 		if looksUnreachable(string(out), c.Serial != "") {
 			return string(out), ErrUnreachable
 		}
-		return string(out), fmt.Errorf("%s %s: %w: %s", c.bin(), strings.Join(full, " "), err, strings.TrimSpace(string(out)))
+		return string(out), fmt.Errorf("%s %s: %w: %s", c.bin(), strings.Join(full, " "), err, strings.TrimSpace(redactCLISecrets(string(out))))
 	}
 	return string(out), nil
 }
@@ -144,6 +171,8 @@ func (c *CLIClient) runExporter(ctx context.Context) (string, error) {
 		conn, value = "--serial", c.Serial
 	}
 	args := append(append([]string(nil), c.Exporter[1:]...), conn, value)
+	ctx, cancel := withExecTimeout(ctx, c.execTimeout())
+	defer cancel()
 	if c.execFn != nil {
 		return c.execFn(ctx, c.Exporter[0], args...)
 	}
@@ -206,6 +235,10 @@ func (c *CLIClient) Apply(ctx context.Context, desired map[string]any) error {
 		return err
 	}
 	defer func() { _ = os.Remove(f.Name()) }()
+	if err := os.Chmod(f.Name(), 0o600); err != nil {
+		_ = f.Close()
+		return err
+	}
 	if _, err := f.Write(data); err != nil {
 		_ = f.Close()
 		return err
@@ -290,6 +323,8 @@ func (c *CLIClient) runApplier(ctx context.Context, channelsFile string) error {
 		conn, value = "--serial", c.Serial
 	}
 	args := append(append([]string(nil), c.Applier[1:]...), conn, value, "--channels-file", channelsFile)
+	ctx, cancel := withExecTimeout(ctx, c.execTimeout())
+	defer cancel()
 	var (
 		out string
 		err error
@@ -326,25 +361,75 @@ func (c *CLIClient) Info(ctx context.Context) (Info, error) {
 	return parseInfo(out), nil
 }
 
-// parseInfo pulls the node id token (for example "!6e000001") from --info
-// output. It is intentionally forgiving.
+// parseInfo pulls the local node id and its airtime telemetry from --info
+// output. It prefers the "My info" block so a neighbor listed first in
+// "Nodes in mesh" cannot supply the identity or the metrics.
 func parseInfo(out string) Info {
 	var info Info
-	for _, field := range strings.Fields(out) {
-		token := strings.Trim(field, `"',:{}[]`)
-		if strings.HasPrefix(token, "!") && len(token) == 9 {
-			info.NodeID = token
-			break
+	if i := strings.Index(out, "My info:"); i >= 0 {
+		section := out[i:]
+		if j := strings.Index(section, "\nNodes in mesh:"); j >= 0 {
+			section = section[:j]
+		}
+		info.NodeID = firstNodeID(section)
+		info.AirUtilTx = parseFloatMetric(section, "airUtilTx")
+		info.ChannelUtilization = parseFloatMetric(section, "channelUtilization")
+	}
+	if info.NodeID == "" {
+		info.NodeID = firstNodeID(out)
+	}
+	if info.NodeID != "" && (info.AirUtilTx == nil || info.ChannelUtilization == nil) {
+		// Metrics are often under the local entry in "Nodes in mesh", not in
+		// "My info". Search that section for this node id so a neighbor listed
+		// first cannot supply them, and so a "My info" id match does not then
+		// scan into the neighbor's metrics.
+		search := out
+		if n := strings.Index(out, "Nodes in mesh:"); n >= 0 {
+			search = out[n:]
+		}
+		marker := `"` + info.NodeID + `"`
+		if k := strings.Index(search, marker); k >= 0 {
+			block := search[k:]
+			if info.AirUtilTx == nil {
+				info.AirUtilTx = parseFloatMetric(block, "airUtilTx")
+			}
+			if info.ChannelUtilization == nil {
+				info.ChannelUtilization = parseFloatMetric(block, "channelUtilization")
+			}
 		}
 	}
-	// Airtime telemetry from deviceMetrics (best effort: the first reported
-	// value, which is the local node on a bench device).
-	info.AirUtilTx = parseFloatMetric(out, "airUtilTx")
-	info.ChannelUtilization = parseFloatMetric(out, "channelUtilization")
+	if info.AirUtilTx == nil && info.ChannelUtilization == nil && info.NodeID == "" {
+		info.AirUtilTx = parseFloatMetric(out, "airUtilTx")
+		info.ChannelUtilization = parseFloatMetric(out, "channelUtilization")
+	}
 	return info
 }
 
+func firstNodeID(s string) string {
+	for _, field := range strings.Fields(s) {
+		token := strings.Trim(field, `"',:{}[]`)
+		if strings.HasPrefix(token, "!") && len(token) == 9 {
+			return token
+		}
+	}
+	return ""
+}
+
 // parseFloatMetric pulls a numeric JSON field value out of --info output.
+// redactCLISecrets strips CLI lines that echo write-only values. The Meshtastic
+// CLI prints every YAML leaf as "Set mqtt.password to <value>" while parsing
+// --configure; that must never reach a log line or a returned error.
+func redactCLISecrets(out string) string {
+	lines := strings.Split(out, "\n")
+	for i, line := range lines {
+		low := strings.ToLower(line)
+		if strings.Contains(low, "password") || strings.Contains(low, "psk") {
+			lines[i] = "[REDACTED]"
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 func parseFloatMetric(out, key string) *float64 {
 	m := regexp.MustCompile(`"` + key + `"\s*:\s*(-?[0-9]+(?:\.[0-9]+)?)`).FindStringSubmatch(out)
 	if m == nil {

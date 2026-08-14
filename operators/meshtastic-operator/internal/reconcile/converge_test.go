@@ -67,7 +67,7 @@ func TestConvergesWithWriteOnlyPasswordAgainstFakeDevice(t *testing.T) {
 	for i := 0; i < 6; i++ {
 		out, err := Converge(context.Background(), dev, desired, DesiredChannels{}, state)
 		require.NoError(t, err)
-		state = State{RebootPending: out.RebootPending, ApplyAttempts: out.ApplyAttempts}
+		state = out.NextState()
 		if out.Ready {
 			final = out
 			break
@@ -103,12 +103,12 @@ func TestConvergesChannelsThroughApplyAndReboot(t *testing.T) {
 	assert.Equal(t, 0, dev.Applies, "the scalar config was already converged, so it is not reapplied")
 
 	// Step 2..n: the device reboots (unreachable), then converges with channels in sync.
-	state := State{RebootPending: out.RebootPending, ApplyAttempts: out.ApplyAttempts}
+	state := out.NextState()
 	var final Outcome
 	for i := 0; i < 5; i++ {
 		out, err = Converge(context.Background(), dev, desiredUS(), chans, state)
 		require.NoError(t, err)
-		state = State{RebootPending: out.RebootPending, ApplyAttempts: out.ApplyAttempts}
+		state = out.NextState()
 		if out.Ready {
 			final = out
 			break
@@ -179,6 +179,54 @@ func TestConvergeSurfacesTelemetryWhileDrifted(t *testing.T) {
 	assert.Equal(t, 15.0, *out.Info.ChannelUtilization)
 }
 
+func TestPasswordOnlyRotationApplies(t *testing.T) {
+	// Device already matches the echoed fields. A new MQTT password must still
+	// apply: the live export never contains it, so only the stored hash can
+	// detect the rotation.
+	desired := map[string]any{
+		"config": map[string]any{"lora": map[string]any{"region": "US"}},
+		"module_config": map[string]any{"mqtt": map[string]any{
+			"enabled": true, "address": "10.0.0.5", "password": "rotated",
+		}},
+	}
+	live := map[string]any{
+		"config":        map[string]any{"lora": map[string]any{"region": "US"}},
+		"module_config": map[string]any{"mqtt": map[string]any{"enabled": true, "address": "10.0.0.5"}},
+	}
+	dev := device.NewFake(live, 0)
+	oldHash := config.PSKHash([]byte("previous"))
+	out, err := Converge(context.Background(), dev, desired, DesiredChannels{}, State{MQTTPasswordHash: oldHash})
+	require.NoError(t, err)
+	assert.True(t, out.RebootPending, "a password-only rotation must apply")
+	assert.Equal(t, 1, dev.Applies)
+	assert.Equal(t, config.WriteOnlyPasswordHash(desired), out.MQTTPasswordHash)
+	assert.Contains(t, out.Drift, "module_config.mqtt.password")
+
+	// Same password as last applied: no write.
+	dev2 := device.NewFake(live, 0)
+	out2, err := Converge(context.Background(), dev2, desired, DesiredChannels{}, State{MQTTPasswordHash: config.WriteOnlyPasswordHash(desired)})
+	require.NoError(t, err)
+	assert.True(t, out2.Ready)
+	assert.Equal(t, 0, dev2.Applies, "an unchanged password is not reapplied")
+}
+
+func TestMissingChannelSetDoesNotApply(t *testing.T) {
+	// Stock --export-config has no discrete channels key. Declared channels
+	// must not be treated as missing (that reboot-looped). Scalar config can
+	// still apply.
+	chans := DesiredChannels{
+		Compare: []config.ChannelState{{Index: 1, Name: "ops", PSKHash: "abc"}},
+		Write:   []device.ChannelWrite{{Index: 1, Name: "ops"}},
+	}
+	// Already scalar-converged, no channels key (stock --export-config shape).
+	dev := stubClient{live: desiredUS()}
+	out, err := Converge(context.Background(), dev, desiredUS(), chans, State{})
+	require.NoError(t, err)
+	assert.False(t, out.Ready)
+	assert.True(t, out.ChannelsUnobserved)
+	assert.Equal(t, ReconnectBackoff, out.Requeue)
+}
+
 func TestAlreadyConvergedIsReadyWithoutApply(t *testing.T) {
 	dev := device.NewFake(desiredUS(), 0)
 	out, err := Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, State{})
@@ -226,13 +274,13 @@ func TestDriftedDeviceAppliesOnceThenConvergesAcrossReboot(t *testing.T) {
 
 	// Steps 2..n: device is rebooting (unreachable). Reported as still
 	// rebooting because reboot was pending, not as a fresh connect failure.
-	state := State{RebootPending: out.RebootPending, ApplyAttempts: out.ApplyAttempts}
+	state := out.NextState()
 	sawUnreachable := false
 	var final Outcome
 	for i := 0; i < 6; i++ {
 		out, err = Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, state)
 		require.NoError(t, err)
-		state = State{RebootPending: out.RebootPending, ApplyAttempts: out.ApplyAttempts}
+		state = out.NextState()
 		if !out.Reachable {
 			sawUnreachable = true
 			assert.Equal(t, ReconnectBackoff, out.Requeue)
@@ -260,11 +308,21 @@ func TestApplyLoopIsBoundedThenDegraded(t *testing.T) {
 	for i := 0; i < MaxApplyAttempts+2; i++ {
 		out, err = Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, state)
 		require.NoError(t, err)
-		state = State{RebootPending: out.RebootPending, ApplyAttempts: out.ApplyAttempts}
+		state = out.NextState()
 	}
 	assert.True(t, out.Degraded, "an unconvergeable device becomes Degraded, not an infinite loop")
 	assert.False(t, out.RebootPending)
 	assert.Equal(t, MaxApplyAttempts, dev.applies, "apply stops once the bound is reached")
+}
+
+func TestUnreachablePreservesDegraded(t *testing.T) {
+	dev := device.NewFake(map[string]any{}, 3)
+	_ = dev.Reboot(context.Background())
+	out, err := Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, State{ApplyAttempts: MaxApplyAttempts})
+	require.NoError(t, err)
+	assert.False(t, out.Reachable)
+	assert.True(t, out.Degraded, "an already-bound node must stay Degraded while offline, not flicker recovered")
+	assert.Equal(t, int32(MaxApplyAttempts), out.ApplyAttempts)
 }
 
 func TestUnreachableFromStartRequeuesWithoutError(t *testing.T) {

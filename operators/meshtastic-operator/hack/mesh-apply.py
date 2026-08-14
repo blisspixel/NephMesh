@@ -38,6 +38,23 @@ import sys
 from meshtastic.protobuf import channel_pb2
 
 
+def as_bool(value, default=False):
+    """Parse a JSON boolean without treating the string 'false' as True."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value != 0
+    if isinstance(value, str):
+        s = value.strip().lower()
+        if s in ("true", "yes", "on", "1"):
+            return True
+        if s in ("false", "no", "off", "0", ""):
+            return False
+    raise ValueError("not a boolean: %r" % (value,))
+
+
 def psk_bytes(directive: str) -> bytes:
     if directive == "none":
         return b""
@@ -103,8 +120,8 @@ def main() -> int:
                 "index": int(ch["index"]),
                 "name": ch.get("name", ""),
                 "psk": psk_bytes(ch.get("psk", "default")),
-                "uplink": bool(ch.get("uplinkEnabled", False)),
-                "downlink": bool(ch.get("downlinkEnabled", False)),
+                "uplink": as_bool(ch.get("uplinkEnabled"), False),
+                "downlink": as_bool(ch.get("downlinkEnabled"), False),
             }
         )
 
@@ -120,6 +137,14 @@ def main() -> int:
         for ch in parsed:
             if not 0 <= ch["index"] < slots:
                 raise IndexError("channel index %d out of range 0..%d" % (ch["index"], slots - 1))
+        # Prefer a settings transaction so every channel is committed together
+        # (one reboot) rather than writeChannel leaving a prefix applied if a
+        # later slot fails. Older library builds have no such API; fall back.
+        begin = getattr(node, "beginSettingsTransaction", None)
+        commit = getattr(node, "commitSettingsTransaction", None)
+        use_txn = callable(begin) and callable(commit)
+        if use_txn:
+            begin()
         for ch in parsed:
             idx = ch["index"]
             c = node_channels[idx]
@@ -133,6 +158,8 @@ def main() -> int:
             c.settings.uplink_enabled = ch["uplink"]
             c.settings.downlink_enabled = ch["downlink"]
             node.writeChannel(idx)
+        if use_txn:
+            commit()
     finally:
         iface.close()
 

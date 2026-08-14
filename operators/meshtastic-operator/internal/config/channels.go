@@ -17,6 +17,7 @@ limitations under the License.
 package config
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -69,15 +70,56 @@ type ChannelState struct {
 	DownlinkEnabled bool
 }
 
+// DefaultPSKShorthand is the single 0x01 byte the device stores for the public
+// default channel key (exported psk "AQ==").
+var DefaultPSKShorthand = []byte{0x01}
+
+// defaultPSKExpanded is the well-known 16-byte Meshtastic default that 0x01
+// expands to at use time. A Secret holding these bytes is the public default
+// written out; the device may store either form.
+var defaultPSKExpanded = []byte{
+	0xd4, 0xf1, 0xbb, 0x3a, 0x20, 0x29, 0x07, 0x59,
+	0xf0, 0xbc, 0xff, 0xab, 0xcd, 0x4e, 0x69, 0x01,
+}
+
+// IsDefaultPSK reports whether raw is the public default, in either the 0x01
+// shorthand or the expanded 16-byte form.
+func IsDefaultPSK(raw []byte) bool {
+	return bytes.Equal(raw, DefaultPSKShorthand) || bytes.Equal(raw, defaultPSKExpanded)
+}
+
+// NormalizePSK maps the expanded public default onto the 0x01 shorthand the
+// device stores, so a Secret holding the well-known 16-byte key does not
+// never-converge against a device that stored the shorthand.
+func NormalizePSK(raw []byte) []byte {
+	if IsDefaultPSK(raw) {
+		return DefaultPSKShorthand
+	}
+	return raw
+}
+
 // PSKHash returns the hex SHA-256 of a raw pre-shared key. An empty key yields
 // the empty string, so "no declared key" and "no key on the device" compare
-// equal rather than reading as drift.
+// equal rather than reading as drift. The public default is hashed as the 0x01
+// shorthand regardless of which representation was supplied.
 func PSKHash(raw []byte) string {
+	return rawPSKHash(NormalizePSK(raw))
+}
+
+func rawPSKHash(raw []byte) string {
 	if len(raw) == 0 {
 		return ""
 	}
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
+}
+
+// ChannelSetPresent reports whether the export carried a channels list (even
+// an empty one). Stock --export-config omits this key (it emits channel_url
+// instead), which is distinct from "the device has no channels".
+func ChannelSetPresent(export map[string]any) bool {
+	_, ok := export["channels"].([]any)
+	return ok
 }
 
 // DesiredChannels projects the spec's declared channels into comparable state.
@@ -88,10 +130,16 @@ func PSKHash(raw []byte) string {
 func DesiredChannels(spec meshv1alpha1.MeshtasticNodeSpec, pskHashByIndex map[int32]string) []ChannelState {
 	out := make([]ChannelState, 0, len(spec.Channels))
 	for _, ch := range spec.Channels {
+		hash, ok := pskHashByIndex[ch.Index]
+		if !ok {
+			// No resolved key means the public default, the same 0x01
+			// shorthand the controller uses when pskSecretRef is omitted.
+			hash = PSKHash(DefaultPSKShorthand)
+		}
 		out = append(out, ChannelState{
 			Index:           ch.Index,
 			Name:            ch.Name,
-			PSKHash:         pskHashByIndex[ch.Index],
+			PSKHash:         hash,
 			UplinkEnabled:   ch.UplinkEnabled,
 			DownlinkEnabled: ch.DownlinkEnabled,
 		})
@@ -125,7 +173,7 @@ func LiveChannels(export map[string]any) []ChannelState {
 		out = append(out, ChannelState{
 			Index:           idx,
 			Name:            toString(m["name"]),
-			PSKHash:         toString(m["pskHash"]),
+			PSKHash:         normalizeLivePSKHash(toString(m["pskHash"])),
 			UplinkEnabled:   toBool(m["uplinkEnabled"]),
 			DownlinkEnabled: toBool(m["downlinkEnabled"]),
 		})
@@ -182,14 +230,33 @@ func toString(v any) string {
 }
 
 func toBool(v any) bool {
-	b, _ := v.(bool)
-	return b
+	switch b := v.(type) {
+	case bool:
+		return b
+	case string:
+		switch strings.TrimSpace(strings.ToLower(b)) {
+		case "true", "yes", "on", "1":
+			return true
+		default:
+			return false
+		}
+	case int:
+		return b != 0
+	case int32:
+		return b != 0
+	case int64:
+		return b != 0
+	case float64:
+		return b != 0
+	default:
+		return false
+	}
 }
 
 // toInt32 converts a decoded index value (YAML gives int/int64, JSON gives
 // float64, a stray source might give a string) to int32. ok is false for an
 // unparseable value, so the caller can skip the entry rather than defaulting it
-// to slot 0.
+// to slot 0. A non-integral float (JSON 1.9) is refused rather than truncated.
 func toInt32(v any) (int32, bool) {
 	switch n := v.(type) {
 	case int:
@@ -199,7 +266,11 @@ func toInt32(v any) (int32, bool) {
 	case int64:
 		return int32(n), true
 	case float64:
-		return int32(n), true
+		i := int32(n)
+		if float64(i) != n {
+			return 0, false
+		}
+		return i, true
 	case string:
 		i, err := strconv.Atoi(strings.TrimSpace(n))
 		if err != nil {
@@ -209,4 +280,14 @@ func toInt32(v any) (int32, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// normalizeLivePSKHash maps a hash of the expanded public default onto the
+// shorthand hash, so a device that stored the 16-byte form still compares
+// equal to a declared default channel.
+func normalizeLivePSKHash(h string) string {
+	if h == rawPSKHash(defaultPSKExpanded) {
+		return rawPSKHash(DefaultPSKShorthand)
+	}
+	return h
 }

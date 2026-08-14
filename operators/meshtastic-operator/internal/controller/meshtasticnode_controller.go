@@ -34,9 +34,12 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	meshv1alpha1 "github.com/blisspixel/nephmesh/api/mesh/v1alpha1"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/airtime"
@@ -129,8 +132,15 @@ func (r *MeshtasticNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	desired := config.BuildDesired(node.Spec, r.resolveBroker(ctx, &node), mqttPassword)
 	prior := reconcile.State{
-		RebootPending: meta.IsStatusConditionTrue(node.Status.Conditions, meshv1alpha1.ConditionRebootPending),
-		ApplyAttempts: node.Status.ApplyAttempts,
+		RebootPending:    meta.IsStatusConditionTrue(node.Status.Conditions, meshv1alpha1.ConditionRebootPending),
+		ApplyAttempts:    node.Status.ApplyAttempts,
+		MQTTPasswordHash: node.Status.LastAppliedMQTTPasswordHash,
+	}
+	// A new spec generation is a new desired state: reset the apply bound so a
+	// Degraded node is retried after the user fixes the field that would not
+	// converge, instead of staying Degraded forever.
+	if node.Generation != node.Status.ObservedGeneration {
+		prior.ApplyAttempts = 0
 	}
 	priorDegraded := meta.IsStatusConditionTrue(node.Status.Conditions, meshv1alpha1.ConditionDegraded)
 	priorReachable := meta.IsStatusConditionTrue(node.Status.Conditions, meshv1alpha1.ConditionReachable)
@@ -142,8 +152,18 @@ func (r *MeshtasticNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	applyOutcome(&node, outcome)
-	if outcome.Reachable {
+	if outcome.ChannelsUnobserved {
+		meta.SetStatusCondition(&node.Status.Conditions, metav1.Condition{
+			Type:               meshv1alpha1.ConditionChannelsInSync,
+			Status:             metav1.ConditionUnknown,
+			Reason:             meshv1alpha1.ReasonChannelsUnobserved,
+			ObservedGeneration: node.Generation,
+			Message:            "device export did not include a channel set; not treating declared channels as missing",
+		})
+	} else if outcome.Reachable {
 		applyChannelsInSync(&node, desiredChannels.Compare, outcome.LiveChannels, node.Generation)
+	}
+	if outcome.Reachable {
 		applyAirtimeBudget(&node, outcome.CurrentModemPreset, outcome.Info, node.Generation)
 	} else {
 		// No current view of the device this step: drop the channel- and
@@ -261,10 +281,16 @@ func (r *MeshtasticNodeReconciler) buildDesiredChannels(ctx context.Context, nod
 		}
 		// The compare hash: an explicit key hashes its raw bytes, a default (no
 		// ref) hashes the 0x01 shorthand the device stores, so a default channel
-		// does not read as permanent drift.
-		raw := []byte{0x01}
+		// does not read as permanent drift. The well-known 16-byte expanded
+		// default is treated as the shorthand so a Secret holding it does not
+		// never-converge against a device that stored 0x01.
+		raw := config.DefaultPSKShorthand
 		if !key.IsZero() {
 			raw = []byte(key.Reveal())
+			if config.IsDefaultPSK(raw) {
+				key = secret.Value{}
+				raw = config.DefaultPSKShorthand
+			}
 		}
 		out.Compare = append(out.Compare, config.ChannelState{
 			Index: ch.Index, Name: ch.Name, PSKHash: config.PSKHash(raw),
@@ -279,10 +305,8 @@ func (r *MeshtasticNodeReconciler) buildDesiredChannels(ctx context.Context, nod
 }
 
 // applyChannelsInSync records whether the declared channels match the device.
-// It is observability, not a gate: channels apply through a separate path, so
-// the operator surfaces drift here without acting on it. A node that declares no
-// channels gets no condition at all, so channel management stays invisible until
-// it is used.
+// Ready is gated on channel convergence in Converge; this writes the condition
+// the operator surfaces. A node that declares no channels gets no condition.
 func applyChannelsInSync(node *meshv1alpha1.MeshtasticNode, desired, live []config.ChannelState, gen int64) {
 	if len(desired) == 0 {
 		// The node declares no channels; drop any prior condition so it does not
@@ -323,6 +347,16 @@ func (r *MeshtasticNodeReconciler) event(node *meshv1alpha1.MeshtasticNode, even
 // records a Warning Event, drops the ready metric, writes status, and returns the
 // error for a rate-limited retry.
 func (r *MeshtasticNodeReconciler) secretFailure(ctx context.Context, node *meshv1alpha1.MeshtasticNode, cause error) (ctrl.Result, error) {
+	// We did not talk to the device this step. Drop device-derived conditions
+	// rather than leaving Ready=False next to a stale Reachable=True from the
+	// last good reconcile.
+	meta.RemoveStatusCondition(&node.Status.Conditions, meshv1alpha1.ConditionReachable)
+	meta.RemoveStatusCondition(&node.Status.Conditions, meshv1alpha1.ConditionConfigInSync)
+	meta.RemoveStatusCondition(&node.Status.Conditions, meshv1alpha1.ConditionChannelsInSync)
+	meta.RemoveStatusCondition(&node.Status.Conditions, meshv1alpha1.ConditionAirtimeHealthy)
+	meta.RemoveStatusCondition(&node.Status.Conditions, meshv1alpha1.ConditionAirtimeBudget)
+	meta.RemoveStatusCondition(&node.Status.Conditions, meshv1alpha1.ConditionRebootPending)
+	meta.RemoveStatusCondition(&node.Status.Conditions, meshv1alpha1.ConditionDegraded)
 	meta.SetStatusCondition(&node.Status.Conditions, metav1.Condition{
 		Type: meshv1alpha1.ConditionReady, Status: metav1.ConditionFalse,
 		Reason: meshv1alpha1.ReasonSecretMissing, ObservedGeneration: node.Generation,
@@ -374,11 +408,21 @@ func applyOutcome(node *meshv1alpha1.MeshtasticNode, o reconcile.Outcome) {
 
 	node.Status.ObservedGeneration = gen
 	node.Status.ApplyAttempts = o.ApplyAttempts
+	node.Status.LastAppliedMQTTPasswordHash = o.MQTTPasswordHash
 	if o.Reachable {
-		node.Status.NodeID = o.Info.NodeID
-		now := metav1.NewTime(time.Now())
-		node.Status.LastHeard = &now
+		if o.Info.NodeID != "" {
+			node.Status.NodeID = o.Info.NodeID
+		}
+		// Do not rewrite LastHeard on every poll. A status write retriggers the
+		// watch; without this throttle (and ignoreStatusOnly) a Ready node would
+		// hammer the single-client device API instead of waiting DriftCheckInterval.
+		if node.Status.LastHeard == nil || time.Since(node.Status.LastHeard.Time) >= lastHeardMinInterval {
+			now := metav1.NewTime(time.Now())
+			node.Status.LastHeard = &now
+		}
 		applyAirtimeHealth(node, o.Info, gen)
+	} else {
+		meta.RemoveStatusCondition(&node.Status.Conditions, meshv1alpha1.ConditionAirtimeHealthy)
 	}
 }
 
@@ -494,7 +538,46 @@ func removeFinalizer(node *meshv1alpha1.MeshtasticNode) {
 // in parallel, never the same node concurrently.
 func (r *MeshtasticNodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&meshv1alpha1.MeshtasticNode{}).
+		For(&meshv1alpha1.MeshtasticNode{}, builder.WithPredicates(ignoreStatusOnly())).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 4}).
 		Complete(r)
+}
+
+// lastHeardMinInterval is how old LastHeard must be before a reachable step
+// rewrites it. Shorter than DriftCheckInterval so a 5-minute poll still
+// refreshes the column, long enough that a burst of status writes cannot
+// form a tight loop by themselves.
+const lastHeardMinInterval = 30 * time.Second
+
+// ignoreStatusOnly drops watch events that are only a status write. Spec
+// generation changes, finalizer edits, and deletion still reconcile. Combined
+// with RequeueAfter this is what makes DriftCheckInterval real: without it
+// every LastHeard bump re-enqueues the same node immediately.
+func ignoreStatusOnly() predicate.Predicate {
+	return predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			if e.ObjectOld == nil || e.ObjectNew == nil {
+				return true
+			}
+			if !e.ObjectNew.GetDeletionTimestamp().IsZero() {
+				return true
+			}
+			if e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration() {
+				return true
+			}
+			return !sameStrings(e.ObjectOld.GetFinalizers(), e.ObjectNew.GetFinalizers())
+		},
+	}
+}
+
+func sameStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

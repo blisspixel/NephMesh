@@ -115,7 +115,7 @@ func TestIntegrationConvergeAgainstSimDevice(t *testing.T) {
 		var err error
 		out, err = Converge(ctx, cli, desired, chans, state)
 		require.NoError(t, err, "convergence step should not hard-error against the sim")
-		state = State{RebootPending: out.RebootPending, ApplyAttempts: out.ApplyAttempts}
+		state = out.NextState()
 		if out.Ready {
 			require.True(t, out.ConfigInSync, "a ready device reports its config in sync")
 			require.NotEmpty(t, out.Info.NodeID, "a reachable device reports its node id")

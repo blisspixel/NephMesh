@@ -19,10 +19,13 @@ package controller
 import (
 	"context"
 
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	intentv1alpha1 "github.com/blisspixel/nephmesh/api/intent/v1alpha1"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/intent"
@@ -51,6 +54,7 @@ func (r *CommunicationIntentReconciler) Reconcile(ctx context.Context, req ctrl.
 	if err := r.Get(ctx, req.NamespacedName, &ci); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+	before := ci.Status.DeepCopy()
 
 	result := intent.Compile(ci.Spec)
 
@@ -96,15 +100,21 @@ func (r *CommunicationIntentReconciler) Reconcile(ctx context.Context, req ctrl.
 	ci.Status.PredictedChannelUtilizationPercent = result.Airtime.PredictedUtilizationPercent
 	ci.Status.ProposedNodes = result.Proposed
 
+	if apiequality.Semantic.DeepEqual(before, &ci.Status) {
+		// Status is already what this compile produces. Writing it again would
+		// bump resourceVersion and re-enqueue the same intent forever.
+		return ctrl.Result{}, nil
+	}
 	if err := r.Status().Update(ctx, &ci); err != nil {
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
 }
 
-// SetupWithManager registers the reconciler.
+// SetupWithManager registers the reconciler. GenerationChangedPredicate drops
+// status-only events so a status write cannot hot-loop the report-only compile.
 func (r *CommunicationIntentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&intentv1alpha1.CommunicationIntent{}).
+		For(&intentv1alpha1.CommunicationIntent{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
 }

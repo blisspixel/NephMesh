@@ -45,11 +45,18 @@ docker network inspect "$NET" >/dev/null 2>&1 || docker network create "$NET" >/
 
 # Clear nodes/volumes from any previous, possibly larger, run so stale sim
 # containers do not keep transmitting on the shared channel and skew results.
-for c in $(docker ps -a --filter 'name=^sim[0-9]' --format '{{.Names}}'); do
-    docker rm -f "$c" >/dev/null 2>&1 || true
+# Docker name filters are substring/regex against the stored name (/sim1).
+# A leading ^ does not match. List by the sim/mesh prefix and keep only
+# sim<digits> / mesh<digits> so a previous larger run cannot stay on the net.
+for c in $(docker ps -a --filter 'name=sim' --format '{{.Names}}'); do
+    case "$c" in
+        sim[0-9]|sim[0-9][0-9]|sim[0-9][0-9][0-9]) docker rm -f "$c" >/dev/null 2>&1 || true ;;
+    esac
 done
-for v in $(docker volume ls --filter 'name=^mesh[0-9]' --format '{{.Name}}'); do
-    docker volume rm "$v" >/dev/null 2>&1 || true
+for v in $(docker volume ls --filter 'name=mesh' --format '{{.Name}}'); do
+    case "$v" in
+        mesh[0-9]|mesh[0-9][0-9]|mesh[0-9][0-9][0-9]) docker volume rm "$v" >/dev/null 2>&1 || true ;;
+    esac
 done
 
 log "Starting ${NODES} simulated nodes"

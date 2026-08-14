@@ -108,13 +108,17 @@ func TestWithinChannelBudget(t *testing.T) {
 }
 
 func TestFleetChannelUtilizationMatchesHandCalculation(t *testing.T) {
-	// SHORT_FAST (SF7, BW250k, CR4/5), 40-byte payload, 16-symbol preamble has a
-	// per-frame time-on-air of ~45.184 ms. Ten nodes at 6 messages/min each is 60
-	// frames/min, so airtime/min = 60 * 45.184 = 2711.04 ms, which is
-	// 2711.04/60000 = 4.5184% of the channel (rebroadcast ignored: this is a floor).
+	// SHORT_FAST (SF7, BW250k, CR4/5), 40-byte application payload plus the
+	// 16-byte Meshtastic header, 16-symbol preamble. Ten nodes at 6 messages/min
+	// is 60 frames/min. The expected percent is computed from the same ToA
+	// function so a formula change is caught by TestTimeOnAirMatchesSemtechFormula.
+	toa, ok := PresetTimeOnAir("SHORT_FAST", 40+MeshFrameHeaderBytes)
+	assert.True(t, ok)
+	want := 60 * float64(toa) / float64(time.Minute) * 100
 	got, ok := FleetChannelUtilizationPercent("SHORT_FAST", 10, 6, 40)
 	assert.True(t, ok)
-	assert.InDelta(t, 4.5184, got, 0.02, "fleet utilization must match the hand calculation")
+	assert.InDelta(t, want, got, 1e-9, "fleet utilization must include the on-air header")
+	assert.Greater(t, got, 4.5, "header bytes must raise the floor above the 40-byte-only figure")
 }
 
 func TestFleetChannelUtilizationScalesWithFleetAndRate(t *testing.T) {

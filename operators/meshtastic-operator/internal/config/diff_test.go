@@ -106,6 +106,18 @@ func TestScalarComparisonIsCaseSensitive(t *testing.T) {
 		"a differently-cased value is real drift, not convergence")
 }
 
+func TestWriteOnlyPasswordHash(t *testing.T) {
+	desired := map[string]any{
+		"module_config": map[string]any{"mqtt": map[string]any{"password": "s3cret"}},
+	}
+	h := WriteOnlyPasswordHash(desired)
+	assert.Equal(t, PSKHash([]byte("s3cret")), h)
+	assert.Empty(t, WriteOnlyPasswordHash(map[string]any{}), "no mqtt block is an empty hash")
+	assert.Empty(t, WriteOnlyPasswordHash(map[string]any{
+		"module_config": map[string]any{"mqtt": map[string]any{"enabled": true}},
+	}), "no password is an empty hash")
+}
+
 func TestMapVersusScalarMismatchIsDrift(t *testing.T) {
 	desired := map[string]any{"mqtt": map[string]any{"enabled": true}}
 	live := map[string]any{"mqtt": "on"}

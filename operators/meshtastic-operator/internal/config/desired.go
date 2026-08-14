@@ -48,6 +48,10 @@ func BuildDesired(spec meshv1alpha1.MeshtasticNodeSpec, mqttAddress string, mqtt
 	}
 	if spec.ModemPreset != "" {
 		setPath(desired, []string{"config", "lora"}, "modemPreset", spec.ModemPreset)
+		// A node already in bandwidth/spread-factor mode ignores modemPreset
+		// unless use_preset is on; without this the export omits modemPreset
+		// and the node never-converges.
+		setPath(desired, []string{"config", "lora"}, "usePreset", true)
 	}
 	if spec.Role != "" {
 		setPath(desired, []string{"config", "device"}, "role", spec.Role)

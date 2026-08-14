@@ -81,13 +81,32 @@ type Outcome struct {
 	// can name what has not converged in a condition message and a log line rather
 	// than reporting a bare "not in sync".
 	Drift []string
+	// MQTTPasswordHash is the SHA-256 of the desired MQTT password to persist
+	// as last-applied (empty when no password is declared). The controller
+	// writes it to status so a Secret-only rotation is visible next step.
+	MQTTPasswordHash string
+	// ChannelsUnobserved is true when the node declares channels but the export
+	// did not include a channel set (stock --export-config). Converge does not
+	// treat that as missing-channel drift, which would apply-and-reboot forever.
+	ChannelsUnobserved bool
 }
 
 // State is the reconcile memory Converge needs from the previous step: whether a
-// reboot was pending, and how many consecutive applies have not yet converged.
+// reboot was pending, how many consecutive applies have not yet converged, and
+// the last-applied MQTT password hash (write-only on the device).
 type State struct {
-	RebootPending bool
-	ApplyAttempts int32
+	RebootPending    bool
+	ApplyAttempts    int32
+	MQTTPasswordHash string
+}
+
+// NextState is the State to feed the next Converge call.
+func (o Outcome) NextState() State {
+	return State{
+		RebootPending:    o.RebootPending,
+		ApplyAttempts:    o.ApplyAttempts,
+		MQTTPasswordHash: o.MQTTPasswordHash,
+	}
 }
 
 // DesiredChannels is what Converge needs to reconcile channels: the comparable
@@ -114,10 +133,10 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 		if prior.RebootPending {
 			reason = meshv1alpha1.ReasonConfigApplied
 		}
-		return Outcome{Reachable: false, RebootPending: prior.RebootPending, ApplyAttempts: prior.ApplyAttempts, Reason: reason, Requeue: ReconnectBackoff}, nil
+		return unreachableOutcome(prior, reason), nil
 	}
 	if err != nil {
-		return Outcome{ApplyAttempts: prior.ApplyAttempts}, err
+		return Outcome{ApplyAttempts: prior.ApplyAttempts, MQTTPasswordHash: prior.MQTTPasswordHash}, err
 	}
 
 	// Read telemetry once, up front. It carries the node id for status and the
@@ -141,21 +160,32 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 			if prior.RebootPending {
 				reason = meshv1alpha1.ReasonConfigApplied
 			}
-			return Outcome{Reachable: false, RebootPending: prior.RebootPending, ApplyAttempts: prior.ApplyAttempts, Reason: reason, Requeue: ReconnectBackoff}, nil
+			return unreachableOutcome(prior, reason), nil
 		}
 		if infoErr != nil {
 			// An unexpected --info failure (not a mid-reboot drop): surface it for
 			// a rate-limited retry rather than proceeding with empty identity and
 			// possibly reporting a converged, Ready state built on nothing.
-			return Outcome{ApplyAttempts: prior.ApplyAttempts}, infoErr
+			return Outcome{ApplyAttempts: prior.ApplyAttempts, MQTTPasswordHash: prior.MQTTPasswordHash}, infoErr
 		}
 	}
 	liveChannels := config.LiveChannels(live)
 	currentPreset := liveModemPreset(live)
+	passwordHash := config.WriteOnlyPasswordHash(desired)
 	scalarDrift := config.Drift(config.ForComparison(desired), live)
-	channelDrift := config.ChannelDrift(chans.Compare, liveChannels)
+	// A Secret-only MQTT password rotation is invisible in the live export
+	// (write-only). Compare the desired hash to the last-applied hash.
+	writeOnlyDrift := passwordHash != "" && passwordHash != prior.MQTTPasswordHash
+	if writeOnlyDrift {
+		scalarDrift = append(scalarDrift, "module_config.mqtt.password")
+	}
+	channelsUnknown := len(chans.Compare) > 0 && !config.ChannelSetPresent(live)
+	var channelDrift []string
+	if !channelsUnknown {
+		channelDrift = config.ChannelDrift(chans.Compare, liveChannels)
+	}
 	scalarConverged := len(scalarDrift) == 0
-	channelsConverged := len(channelDrift) == 0
+	channelsConverged := !channelsUnknown && len(channelDrift) == 0
 	allDrift := append(append([]string{}, scalarDrift...), channelDrift...)
 
 	if scalarConverged && channelsConverged {
@@ -170,7 +200,7 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 			if prior.RebootPending {
 				reason = meshv1alpha1.ReasonConfigApplied
 			}
-			return Outcome{Reachable: false, RebootPending: prior.RebootPending, ApplyAttempts: prior.ApplyAttempts, Reason: reason, Requeue: ReconnectBackoff}, nil
+			return unreachableOutcome(prior, reason), nil
 		}
 		return Outcome{
 			Reachable: true, ConfigInSync: true, Ready: true,
@@ -178,6 +208,7 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 			ApplyAttempts:      0, // converged: reset the counter
 			LiveChannels:       liveChannels,
 			CurrentModemPreset: currentPreset,
+			MQTTPasswordHash:   passwordHash,
 		}, nil
 	}
 
@@ -194,13 +225,33 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 			LiveChannels:       liveChannels,
 			CurrentModemPreset: currentPreset,
 			Drift:              allDrift,
+			MQTTPasswordHash:   prior.MQTTPasswordHash,
+			ChannelsUnobserved: channelsUnknown,
 		}, nil
 	}
 
-	// Apply the surface that drifted. Scalar config goes first: it carries the
-	// module config whose reboot also settles the device, and only when the scalar
-	// config already matches do we apply channels (their own distinct, key-bearing
-	// path). Either apply reboots the device.
+	// Declared channels but the export had no channel set: do not apply
+	// channels (that would reboot-loop against stock --export-config) and do
+	// not report Ready. If scalar config is also drifted, apply that only.
+	if channelsUnknown && scalarConverged {
+		return Outcome{
+			Reachable: true, ConfigInSync: true, Ready: false,
+			Reason:             meshv1alpha1.ReasonChannelsUnobserved,
+			Requeue:            ReconnectBackoff,
+			ApplyAttempts:      prior.ApplyAttempts,
+			Info:               info,
+			LiveChannels:       liveChannels,
+			CurrentModemPreset: currentPreset,
+			MQTTPasswordHash:   prior.MQTTPasswordHash,
+			ChannelsUnobserved: true,
+		}, nil
+	}
+
+	// Apply the surface that drifted. Scalar config (including a write-only
+	// password rotation) goes first: it carries the module config whose reboot
+	// also settles the device, and only when the scalar config already matches
+	// do we apply channels (their own distinct, key-bearing path). Either apply
+	// reboots the device.
 	var applyErr error
 	if !scalarConverged {
 		applyErr = dev.Apply(ctx, desired)
@@ -209,26 +260,46 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 	}
 	if applyErr != nil {
 		if errors.Is(applyErr, device.ErrUnreachable) {
-			return Outcome{Reachable: false, RebootPending: prior.RebootPending, ApplyAttempts: prior.ApplyAttempts, Reason: meshv1alpha1.ReasonConfigApplied, Requeue: ReconnectBackoff}, nil
+			// The write likely landed and the device is already rebooting
+			// (session dropped). Count it toward the apply bound and wait for
+			// the reboot, the same as a clean apply, or a field the device
+			// never echoes would reboot forever.
+			appliedHash := prior.MQTTPasswordHash
+			if !scalarConverged {
+				appliedHash = passwordHash
+			}
+			return Outcome{
+				Reachable: false, RebootPending: true,
+				ApplyAttempts:    prior.ApplyAttempts + 1,
+				Reason:           meshv1alpha1.ReasonConfigApplied,
+				Requeue:          RebootWait,
+				MQTTPasswordHash: appliedHash,
+			}, nil
 		}
-		return Outcome{ApplyAttempts: prior.ApplyAttempts}, applyErr
+		return Outcome{ApplyAttempts: prior.ApplyAttempts, MQTTPasswordHash: prior.MQTTPasswordHash}, applyErr
 	}
 	// The MQTT module thread starts only at boot, and a channel write reboots the
-	// device on its own, so reboot explicitly to make activation deterministic. The
-	// device may already be rebooting from the apply, in which case the reboot is
-	// refused as unreachable; only a genuinely unexpected reboot error surfaces.
-	if rebootErr := dev.Reboot(ctx); rebootErr != nil && !errors.Is(rebootErr, device.ErrUnreachable) {
-		return Outcome{ApplyAttempts: prior.ApplyAttempts + 1}, rebootErr
-	}
+	// device on its own, so reboot explicitly to make activation deterministic.
+	// The device may already be rebooting from the apply (unreachable, or any
+	// other reboot error after a successful write). Record reboot-pending so
+	// the attempt count is persisted; the controller used to discard Outcome
+	// on a reboot error and the apply bound never advanced.
+	_ = dev.Reboot(ctx)
 
+	appliedHash := prior.MQTTPasswordHash
+	if !scalarConverged {
+		appliedHash = passwordHash
+	}
 	return Outcome{
-		Reachable: true, ConfigInSync: scalarConverged, RebootPending: true,
+		Reachable: true, ConfigInSync: scalarConverged && !writeOnlyDrift, RebootPending: true,
 		Reason: meshv1alpha1.ReasonConfigApplied, Requeue: RebootWait,
 		ApplyAttempts:      prior.ApplyAttempts + 1,
 		Info:               info,
 		LiveChannels:       liveChannels,
 		CurrentModemPreset: currentPreset,
 		Drift:              allDrift,
+		MQTTPasswordHash:   appliedHash,
+		ChannelsUnobserved: channelsUnknown,
 	}, nil
 }
 
@@ -262,6 +333,21 @@ func floatFromAny(v any) *float64 {
 		return &f
 	default:
 		return nil
+	}
+}
+
+// unreachableOutcome is a device that did not answer this step. A node that
+// already hit the apply bound stays Degraded rather than flickering recovered
+// while it is offline.
+func unreachableOutcome(prior State, reason string) Outcome {
+	return Outcome{
+		Reachable:        false,
+		RebootPending:    prior.RebootPending,
+		ApplyAttempts:    prior.ApplyAttempts,
+		Degraded:         prior.ApplyAttempts >= MaxApplyAttempts,
+		Reason:           reason,
+		Requeue:          ReconnectBackoff,
+		MQTTPasswordHash: prior.MQTTPasswordHash,
 	}
 }
 
