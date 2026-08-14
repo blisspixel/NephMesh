@@ -156,11 +156,12 @@ spec:
                     properties:
                       host:
                         description: |-
-                          host is the device address (a Service name, FQDN, IPv4, or IPv6). The
-                          pattern forbids a leading dash so the value cannot be misread as a CLI
-                          flag, and bounds the length.
+                          host is a hostname, IPv4 address, or IPv6 address. Port is a separate
+                          field: an IPv4 host:port in this field is rejected so JoinHostPort cannot
+                          produce a doubled port. IPv6 must contain a colon. A leading dash is
+                          forbidden so the value cannot be misread as a CLI flag.
                         maxLength: 253
-                        pattern: ^[a-zA-Z0-9:]([a-zA-Z0-9.:_-]*[a-zA-Z0-9])?$
+                        pattern: ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$|^[0-9a-fA-F:]*:[0-9a-fA-F:]+$
                         type: string
                       port:
                         default: 4403

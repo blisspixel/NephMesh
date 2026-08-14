@@ -97,10 +97,11 @@ type ConnectionSpec struct {
 
 // TCPConnection reaches the device over TCP.
 type TCPConnection struct {
-	// host is the device address (a Service name, FQDN, IPv4, or IPv6). The
-	// pattern forbids a leading dash so the value cannot be misread as a CLI
-	// flag, and bounds the length.
-	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9:]([a-zA-Z0-9.:_-]*[a-zA-Z0-9])?$`
+	// host is a hostname, IPv4 address, or IPv6 address. Port is a separate
+	// field: an IPv4 host:port in this field is rejected so JoinHostPort cannot
+	// produce a doubled port. IPv6 must contain a colon. A leading dash is
+	// forbidden so the value cannot be misread as a CLI flag.
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$|^[0-9a-fA-F:]*:[0-9a-fA-F:]+$`
 	// +kubebuilder:validation:MaxLength=253
 	Host string `json:"host"`
 	// port defaults to 4403.

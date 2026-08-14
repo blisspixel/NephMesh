@@ -31,7 +31,7 @@ type Unsupported struct {
 }
 
 func (u *Unsupported) err() error {
-	return fmt.Errorf("%w: transport %q is not implemented yet", ErrUnreachable, u.Transport)
+	return fmt.Errorf("%w: %s", ErrUnsupported, u.Transport)
 }
 
 func (u *Unsupported) ExportConfig(context.Context) (map[string]any, error) { return nil, u.err() }

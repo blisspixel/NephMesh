@@ -34,6 +34,12 @@ import (
 // hard failure.
 var ErrUnreachable = errors.New("device unreachable")
 
+// ErrUnsupported indicates the node's declared transport is not implemented
+// (serial and viaGateway in the in-cluster operator). It is not a transient
+// connect failure: retrying every ReconnectBackoff would hammer the worker
+// for a spec that cannot succeed until the transport is built.
+var ErrUnsupported = errors.New("device transport not implemented")
+
 // Client is the minimal control surface the reconciler needs. Every method
 // returns ErrUnreachable when the device cannot be reached so the caller can
 // distinguish "try again shortly" from a genuine error.

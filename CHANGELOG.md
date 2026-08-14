@@ -34,6 +34,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 - Phase 1 demo/teardown would apply or delete `namespace/nephmesh` on whatever kube-context was current, including a cloud cluster. They now refuse GKE/EKS/AKS/prod-looking contexts unless overridden.
 - `check-coverage.sh` dropped every file under `cmd/`, not just `main.go`, so `apply_spec.go` was not in the floor.
 - CI `govulncheck` pin moved from Go 1.25.12 to 1.25.13 (stdlib fixes for `net/url`, `crypto/tls`, `net/http`, `encoding/asn1`).
+- Relaxing TCP `host` for IPv6 also accepted an IPv4 `host:port` string, which `JoinHostPort` would turn into a doubled port. The pattern now allows IPv6 (must contain a colon) or a hostname/IPv4 (no colon).
+- A status-update conflict after a successful apply retried Reconcile immediately and could apply a second time against a radio mid-reboot. Conflicts after apply now wait the reboot interval.
+- Serial and viaGateway nodes were treated as transient unreachable and retried every 10s. They now use a distinct unsupported-transport error and the slow drift-check interval.
+- The Phase 1 / mesh-gateway one-shot applier folded case on config values (hiding MQTT root-topic drift) and would treat a write-only MQTT password as permanent drift. Values compare case-sensitively; password keys are skipped.
 
 ### Added
 

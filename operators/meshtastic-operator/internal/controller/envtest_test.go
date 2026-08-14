@@ -121,6 +121,9 @@ func TestAdmissionRejectsHostileResources(t *testing.T) {
 		{"host with a leading dash (flag/SSRF shape)", func(n *meshv1alpha1.MeshtasticNode) {
 			n.Spec.Connection.TCP.Host = "-evil.example.com"
 		}},
+		{"IPv4 host:port in the host field", func(n *meshv1alpha1.MeshtasticNode) {
+			n.Spec.Connection.TCP.Host = "10.0.0.51:4403"
+		}},
 		{"port out of range", func(n *meshv1alpha1.MeshtasticNode) {
 			n.Spec.Connection.TCP.Port = 70000
 		}},
@@ -147,6 +150,11 @@ func TestAdmissionAcceptsValidResource(t *testing.T) {
 	n.Spec.Owner = &meshv1alpha1.OwnerSpec{ShortName: "NM01", LongName: "NephMesh Node"}
 	require.NoError(t, envtestClient.Create(ctx, n), "a well-formed resource must be accepted")
 	require.NoError(t, envtestClient.Delete(ctx, n))
+
+	v6 := validNode()
+	v6.Spec.Connection.TCP.Host = "2001:db8::1"
+	require.NoError(t, envtestClient.Create(ctx, v6), "an IPv6 host must be accepted")
+	require.NoError(t, envtestClient.Delete(ctx, v6))
 }
 
 // validIntent is the smallest accepted CommunicationIntent; each hostile case

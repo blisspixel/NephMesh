@@ -325,6 +325,15 @@ func TestUnreachablePreservesDegraded(t *testing.T) {
 	assert.Equal(t, int32(MaxApplyAttempts), out.ApplyAttempts)
 }
 
+func TestUnsupportedTransportDoesNotHammer(t *testing.T) {
+	out, err := Converge(context.Background(), &device.Unsupported{Transport: "serial"}, desiredUS(), DesiredChannels{}, State{})
+	require.NoError(t, err)
+	assert.False(t, out.Ready)
+	assert.False(t, out.Reachable)
+	assert.Equal(t, DriftCheckInterval, out.Requeue, "an unimplemented transport must not retry every ReconnectBackoff")
+	assert.Equal(t, 0, int(out.ApplyAttempts))
+}
+
 func TestUnreachableFromStartRequeuesWithoutError(t *testing.T) {
 	dev := device.NewFake(map[string]any{}, 3)
 	_ = dev.Reboot(context.Background()) // now unreachable for 3 calls

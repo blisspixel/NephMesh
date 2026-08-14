@@ -54,9 +54,10 @@ const (
 
 // Condition reasons. CamelCase machine tokens, required by the conditions API.
 const (
-	ReasonConnected          = "Connected"
-	ReasonConnectFailed      = "ConnectFailed"
-	ReasonGatewayUnreachable = "GatewayUnreachable"
+	ReasonConnected            = "Connected"
+	ReasonConnectFailed        = "ConnectFailed"
+	ReasonGatewayUnreachable   = "GatewayUnreachable"
+	ReasonUnsupportedTransport = "UnsupportedTransport"
 
 	ReasonInSync        = "InSync"
 	ReasonDriftDetected = "DriftDetected"
