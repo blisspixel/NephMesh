@@ -28,10 +28,11 @@ func TestUnsupportedIsAlwaysUnreachable(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := u.ExportConfig(ctx)
-	assert.ErrorIs(t, err, ErrUnreachable)
-	assert.ErrorIs(t, u.Apply(ctx, nil), ErrUnreachable)
-	assert.ErrorIs(t, u.Reboot(ctx), ErrUnreachable)
+	assert.ErrorIs(t, err, ErrUnsupported)
+	assert.NotErrorIs(t, err, ErrUnreachable, "unsupported is not a transient reboot")
+	assert.ErrorIs(t, u.Apply(ctx, nil), ErrUnsupported)
+	assert.ErrorIs(t, u.Reboot(ctx), ErrUnsupported)
 	_, err = u.Info(ctx)
-	assert.ErrorIs(t, err, ErrUnreachable)
+	assert.ErrorIs(t, err, ErrUnsupported)
 	assert.Contains(t, err.Error(), "serial", "the error names the unimplemented transport")
 }

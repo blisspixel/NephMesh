@@ -128,6 +128,15 @@ type DesiredChannels struct {
 // requeue, not an error.
 func Converge(ctx context.Context, dev device.Client, desired map[string]any, chans DesiredChannels, prior State) (Outcome, error) {
 	live, err := dev.ExportConfig(ctx)
+	if errors.Is(err, device.ErrUnsupported) {
+		return Outcome{
+			Reachable:        false,
+			Reason:           meshv1alpha1.ReasonUnsupportedTransport,
+			Requeue:          DriftCheckInterval,
+			ApplyAttempts:    prior.ApplyAttempts,
+			MQTTPasswordHash: prior.MQTTPasswordHash,
+		}, nil
+	}
 	if errors.Is(err, device.ErrUnreachable) {
 		reason := meshv1alpha1.ReasonConnectFailed
 		if prior.RebootPending {

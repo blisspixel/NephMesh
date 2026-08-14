@@ -93,10 +93,12 @@ data:
                 return False
             live_n = {norm_key(k): v for k, v in live.items()}
             return all(
-                norm_key(k) in live_n and is_subset(v, live_n[norm_key(k)])
+                norm_key(k) == "password"
+                or (norm_key(k) in live_n and is_subset(v, live_n[norm_key(k)]))
                 for k, v in desired.items()
             )
-        return str(desired).strip().lower() == str(live).strip().lower()
+        # Values are case-sensitive (an MQTT root topic is). Keys already folded.
+        return str(desired).strip() == str(live).strip()
 
     def main():
         broker_ip = socket.gethostbyname(MQTT_SERVICE)

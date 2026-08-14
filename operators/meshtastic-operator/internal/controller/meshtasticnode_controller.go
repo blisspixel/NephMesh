@@ -29,6 +29,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -200,6 +201,13 @@ func (r *MeshtasticNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		ChannelUtilization: outcome.Info.ChannelUtilization, AirUtilTx: outcome.Info.AirUtilTx,
 	})
 	if statusErr := r.Status().Update(ctx, &node); statusErr != nil {
+		// An apply already wrote the radio. A conflict retry would run
+		// Converge again immediately and apply a second time against a
+		// device that is mid-reboot. Wait the reboot interval instead.
+		if apierrors.IsConflict(statusErr) && outcome.RebootPending {
+			log.Error(statusErr, "status conflict after apply; waiting to re-export rather than applying again")
+			return ctrl.Result{RequeueAfter: outcome.Requeue}, nil
+		}
 		return ctrl.Result{}, statusErr
 	}
 

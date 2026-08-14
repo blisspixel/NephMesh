@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -56,6 +57,19 @@ func TestValidateConnectionExactlyOne(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTCPHostPatternAcceptsIPv6RejectsHostPort(t *testing.T) {
+	// Keep in sync with the kubebuilder Pattern on TCPConnection.Host.
+	re := regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$|^[0-9a-fA-F:]*:[0-9a-fA-F:]+$`)
+	assert.True(t, re.MatchString("device.local"))
+	assert.True(t, re.MatchString("10.0.0.51"))
+	assert.True(t, re.MatchString("localhost"))
+	assert.True(t, re.MatchString("::1"))
+	assert.True(t, re.MatchString("2001:db8::1"))
+	assert.False(t, re.MatchString("-evil.example.com"), "a leading dash is a CLI flag shape")
+	assert.False(t, re.MatchString("10.0.0.51:4403"), "IPv4 host:port belongs in port, not host")
+	assert.False(t, re.MatchString(""), "empty host is rejected")
 }
 
 func TestTCPPortDefaulting(t *testing.T) {
