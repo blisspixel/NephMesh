@@ -25,11 +25,15 @@ export MSYS_NO_PATHCONV=1
 # (created by independence.sh), and any leftover sim* containers/volumes
 # regardless of how many nodes were started.
 docker rm -f meshcli operator >/dev/null 2>&1 || true
-for c in $(docker ps -a --filter "name=^sim[0-9]" --format '{{.Names}}'); do
-    docker rm -f "$c" >/dev/null 2>&1 || true
+for c in $(docker ps -a --filter "name=sim" --format '{{.Names}}'); do
+    case "$c" in
+        sim[0-9]|sim[0-9][0-9]|sim[0-9][0-9][0-9]) docker rm -f "$c" >/dev/null 2>&1 || true ;;
+    esac
 done
-for v in $(docker volume ls --filter "name=^mesh[0-9]" --format '{{.Name}}'); do
-    docker volume rm "$v" >/dev/null 2>&1 || true
+for v in $(docker volume ls --filter "name=mesh" --format '{{.Name}}'); do
+    case "$v" in
+        mesh[0-9]|mesh[0-9][0-9]|mesh[0-9][0-9][0-9]) docker volume rm "$v" >/dev/null 2>&1 || true ;;
+    esac
 done
 docker network rm "$NET" >/dev/null 2>&1 || true
 echo "resilience harness torn down"

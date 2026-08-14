@@ -144,6 +144,11 @@ func Healthy(channelUtilizationPercent, airUtilTxPercent float64) bool {
 // the relative effect of a preset change.
 const RepresentativeFramePayloadBytes = 40
 
+// MeshFrameHeaderBytes is the on-air Meshtastic packet header (see
+// internal/meshframe.HeaderSize). Fleet estimates add this to the declared
+// application payload so the floor is not below the originated frame's PHY size.
+const MeshFrameHeaderBytes = 16
+
 // PredictedChannelUtilizationPercent estimates what a node's channel utilization
 // would become if its modem preset changed from current to desired, given the
 // utilization the radio measures today at the current preset. Channel time is
@@ -170,7 +175,8 @@ func WithinChannelBudget(utilizationPercent float64) bool {
 
 // FleetChannelUtilizationPercent estimates the share of a shared channel that a
 // fleet occupies: nodeCount nodes each originating messagesPerMinutePerNode
-// frames of payloadBytes at the given preset. This is the fleet-wide view only
+// frames of payloadBytes (application payload; the on-air size adds
+// MeshFrameHeaderBytes) at the given preset. This is the fleet-wide view only
 // the intent layer has; the per-node reconcile sees one radio, never the whole
 // channel.
 //
@@ -184,7 +190,13 @@ func WithinChannelBudget(utilizationPercent float64) bool {
 // sufficient, which is why the measured AirtimeHealthy condition stays the
 // ground truth. ok is false for an unknown preset.
 func FleetChannelUtilizationPercent(preset string, nodeCount, messagesPerMinutePerNode, payloadBytes int) (percent float64, ok bool) {
-	toa, ok := PresetTimeOnAir(preset, payloadBytes)
+	// payloadBytes is the application payload; the originated on-air frame is
+	// that plus the clear-text Meshtastic header.
+	phyBytes := payloadBytes
+	if payloadBytes > 0 {
+		phyBytes = payloadBytes + MeshFrameHeaderBytes
+	}
+	toa, ok := PresetTimeOnAir(preset, phyBytes)
 	if !ok || nodeCount <= 0 || messagesPerMinutePerNode <= 0 {
 		return 0, ok
 	}

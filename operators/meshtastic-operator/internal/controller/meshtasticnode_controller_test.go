@@ -26,10 +26,13 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"time"
+
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	meshv1alpha1 "github.com/blisspixel/nephmesh/api/mesh/v1alpha1"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/config"
@@ -71,6 +74,48 @@ func request() ctrl.Request {
 	return ctrl.Request{NamespacedName: types.NamespacedName{Name: "node1", Namespace: "default"}}
 }
 
+func TestIgnoreStatusOnlyPredicate(t *testing.T) {
+	p := ignoreStatusOnly()
+	old := newNode()
+	old.Generation = 1
+	old.Finalizers = []string{meshv1alpha1.Finalizer}
+
+	statusOnly := old.DeepCopy()
+	statusOnly.Status.NodeID = "!abcd1234"
+	assert.False(t, p.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: statusOnly}),
+		"a status-only write must not re-enqueue (that is the LastHeard hot loop)")
+
+	specChange := old.DeepCopy()
+	specChange.Generation = 2
+	assert.True(t, p.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: specChange}))
+
+	fin := old.DeepCopy()
+	fin.Finalizers = nil
+	assert.True(t, p.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: fin}),
+		"finalizer removal must still reconcile")
+
+	now := metav1.Now()
+	del := old.DeepCopy()
+	del.DeletionTimestamp = &now
+	assert.True(t, p.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: del}),
+		"deletion must still reconcile")
+}
+
+func TestApplyOutcomeThrottlesLastHeard(t *testing.T) {
+	node := newNode()
+	recent := metav1.NewTime(time.Now().Add(-time.Second))
+	node.Status.LastHeard = &recent
+	applyOutcome(node, reconcile.Outcome{Reachable: true, Info: device.Info{NodeID: "!x"}})
+	assert.True(t, node.Status.LastHeard.Time.Equal(recent.Time),
+		"a LastHeard written a second ago must not be rewritten")
+
+	stale := metav1.NewTime(time.Now().Add(-time.Minute))
+	node.Status.LastHeard = &stale
+	applyOutcome(node, reconcile.Outcome{Reachable: true, Info: device.Info{NodeID: "!x"}})
+	assert.True(t, node.Status.LastHeard.Time.After(stale.Time),
+		"a LastHeard older than lastHeardMinInterval is refreshed")
+}
+
 func TestReconcileAddsFinalizerFirst(t *testing.T) {
 	node := newNode()
 	r, c := reconcilerFor(t, node, func(context.Context, *meshv1alpha1.MeshtasticNode) (device.Client, error) {
@@ -83,6 +128,35 @@ func TestReconcileAddsFinalizerFirst(t *testing.T) {
 	require.NoError(t, c.Get(context.Background(), request().NamespacedName, &got))
 	assert.Contains(t, got.Finalizers, meshv1alpha1.Finalizer,
 		"the first pass adds the finalizer; the Update re-triggers reconcile via the watch")
+}
+
+func TestSpecChangeRetriesAfterDegraded(t *testing.T) {
+	// A Degraded node whose spec then changes must be tried again, not left
+	// stuck because ApplyAttempts is still at the bound.
+	node := newNode()
+	node.Finalizers = []string{meshv1alpha1.Finalizer}
+	node.Generation = 2
+	node.Status.ObservedGeneration = 1
+	node.Status.ApplyAttempts = reconcile.MaxApplyAttempts
+	r, c := reconcilerFor(t, node, func(context.Context, *meshv1alpha1.MeshtasticNode) (device.Client, error) {
+		return device.NewFake(map[string]any{}, 0), nil // drifted from US
+	})
+	_, err := r.Reconcile(context.Background(), request())
+	require.NoError(t, err)
+
+	var got meshv1alpha1.MeshtasticNode
+	require.NoError(t, c.Get(context.Background(), request().NamespacedName, &got))
+	assert.True(t, meta.IsStatusConditionTrue(got.Status.Conditions, meshv1alpha1.ConditionRebootPending),
+		"a spec change after Degraded must apply again")
+	assert.Equal(t, int32(1), got.Status.ApplyAttempts)
+	assert.False(t, meta.IsStatusConditionTrue(got.Status.Conditions, meshv1alpha1.ConditionDegraded))
+}
+
+func TestApplyOutcomeDoesNotBlankNodeID(t *testing.T) {
+	node := newNode()
+	node.Status.NodeID = "!abcd1234"
+	applyOutcome(node, reconcile.Outcome{Reachable: true, Info: device.Info{NodeID: ""}})
+	assert.Equal(t, "!abcd1234", node.Status.NodeID, "an empty identity read must not wipe a previously good node id")
 }
 
 func TestReconcileConvergedSetsReady(t *testing.T) {
@@ -225,6 +299,96 @@ func TestReconcileResolvesChannelPSKAndReportsInSync(t *testing.T) {
 	cond := meta.FindStatusCondition(got.Status.Conditions, meshv1alpha1.ConditionChannelsInSync)
 	require.NotNil(t, cond, "a node declaring a channel gets the ChannelsInSync condition")
 	assert.Equal(t, metav1.ConditionTrue, cond.Status)
+}
+
+func TestSecretFailureClearsStaleDeviceConditions(t *testing.T) {
+	node := newNode()
+	node.Finalizers = []string{meshv1alpha1.Finalizer}
+	node.Spec.MQTT = &meshv1alpha1.MQTTSpec{
+		Enabled: true,
+		PasswordSecretRef: &corev1.SecretKeySelector{
+			LocalObjectReference: corev1.LocalObjectReference{Name: "gone"}, Key: "password",
+		},
+	}
+	// Pretend the last reconcile left a healthy device view.
+	ch, tx := 5.0, 1.0
+	applyOutcome(node, reconcile.Outcome{
+		Reachable: true, ConfigInSync: true, Ready: true,
+		Info: device.Info{NodeID: "!x", ChannelUtilization: &ch, AirUtilTx: &tx},
+	})
+	applyChannelsInSync(node, []config.ChannelState{{Index: 0, Name: "ops", PSKHash: "h"}}, []config.ChannelState{{Index: 0, Name: "ops", PSKHash: "h"}}, 1)
+
+	r, c := reconcilerFor(t, node, func(context.Context, *meshv1alpha1.MeshtasticNode) (device.Client, error) {
+		return device.NewFake(desiredUS(), 0), nil
+	})
+	_, err := r.Reconcile(context.Background(), request())
+	require.Error(t, err)
+
+	var got meshv1alpha1.MeshtasticNode
+	require.NoError(t, c.Get(context.Background(), request().NamespacedName, &got))
+	ready := meta.FindStatusCondition(got.Status.Conditions, meshv1alpha1.ConditionReady)
+	require.NotNil(t, ready)
+	assert.Equal(t, metav1.ConditionFalse, ready.Status)
+	assert.Equal(t, meshv1alpha1.ReasonSecretMissing, ready.Reason)
+	assert.Nil(t, meta.FindStatusCondition(got.Status.Conditions, meshv1alpha1.ConditionReachable),
+		"stale Reachable must not survive a secret-resolution failure")
+	assert.Nil(t, meta.FindStatusCondition(got.Status.Conditions, meshv1alpha1.ConditionConfigInSync))
+	assert.Nil(t, meta.FindStatusCondition(got.Status.Conditions, meshv1alpha1.ConditionChannelsInSync))
+	assert.Nil(t, meta.FindStatusCondition(got.Status.Conditions, meshv1alpha1.ConditionAirtimeHealthy))
+}
+
+func TestUnreachableClearsAirtimeHealthy(t *testing.T) {
+	node := newNode()
+	ch := 12.0
+	applyOutcome(node, reconcile.Outcome{Reachable: true, Info: device.Info{NodeID: "!x", ChannelUtilization: &ch}})
+	require.NotNil(t, meta.FindStatusCondition(node.Status.Conditions, meshv1alpha1.ConditionAirtimeHealthy))
+
+	applyOutcome(node, reconcile.Outcome{Reachable: false, Reason: meshv1alpha1.ReasonConnectFailed})
+	assert.Nil(t, meta.FindStatusCondition(node.Status.Conditions, meshv1alpha1.ConditionAirtimeHealthy),
+		"an outage must not leave a stale AirtimeHealthy verdict")
+}
+
+func TestPasswordRotationPersistsHash(t *testing.T) {
+	node := newNode()
+	node.Finalizers = []string{meshv1alpha1.Finalizer}
+	node.Spec.MQTT = &meshv1alpha1.MQTTSpec{
+		Enabled: true, Address: "10.0.0.5",
+		PasswordSecretRef: &corev1.SecretKeySelector{
+			LocalObjectReference: corev1.LocalObjectReference{Name: "broker"}, Key: "password",
+		},
+	}
+	sec := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "broker", Namespace: "default"},
+		Data:       map[string][]byte{"password": []byte("rotated-secret")},
+	}
+	// Device already matches the echoed MQTT fields; only the password is new.
+	live := desiredUS()
+	live["module_config"] = map[string]any{"mqtt": map[string]any{
+		"enabled": true, "address": "10.0.0.5",
+		"json_enabled": false, "encryption_enabled": false, "tls_enabled": false,
+	}}
+	c := fake.NewClientBuilder().
+		WithScheme(testScheme(t)).
+		WithObjects(node, sec).
+		WithStatusSubresource(&meshv1alpha1.MeshtasticNode{}).
+		Build()
+	fakeDev := device.NewFake(live, 0)
+	r := &MeshtasticNodeReconciler{Client: c, Reader: c, NewDevice: func(context.Context, *meshv1alpha1.MeshtasticNode) (device.Client, error) {
+		return fakeDev, nil
+	}}
+
+	_, err := r.Reconcile(context.Background(), request())
+	require.NoError(t, err)
+	var got meshv1alpha1.MeshtasticNode
+	require.NoError(t, c.Get(context.Background(), request().NamespacedName, &got))
+	assert.NotEmpty(t, got.Status.LastAppliedMQTTPasswordHash, "the applied password hash is persisted")
+	assert.Equal(t, 1, fakeDev.Applies, "a password-only rotation must write the device")
+	assert.True(t, meta.IsStatusConditionTrue(got.Status.Conditions, meshv1alpha1.ConditionRebootPending))
+
+	// Same secret again: no second write.
+	_, err = r.Reconcile(context.Background(), request())
+	require.NoError(t, err)
+	assert.Equal(t, 1, fakeDev.Applies, "an unchanged password is not reapplied")
 }
 
 func TestReconcileEmptyChannelSecretIsRefused(t *testing.T) {

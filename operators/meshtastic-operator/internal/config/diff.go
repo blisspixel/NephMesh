@@ -61,12 +61,10 @@ var writeOnlyPaths = [][]string{
 // dropped from the compare, it is applied whenever any other field drifts (which
 // covers initial provisioning).
 //
-// Known gap: rotating ONLY a write-only field on an otherwise-converged node is
-// not detected today. Channel PSKs escape this because the device echoes a channel
-// hash, so a hash compare catches a rotation; the MQTT password is never echoed by
-// the device, so a password-only rotation on an already-Ready node is currently a
-// no-op. Closing it needs a stored last-applied-password hash compared each
-// reconcile (mirroring the channel path), tracked as day-2-rotation work.
+// A password-only rotation is detected by comparing WriteOnlyPasswordHash against
+// the last-applied hash persisted in status (the device never echoes the
+// password, so the live export cannot). ForComparison still drops the key so an
+// unchanged password does not look like permanent drift.
 func ForComparison(desired map[string]any) map[string]any {
 	out := copyNestedMaps(desired)
 	for _, path := range writeOnlyPaths {
@@ -85,6 +83,26 @@ func copyNestedMaps(m map[string]any) map[string]any {
 		}
 	}
 	return out
+}
+
+// WriteOnlyPasswordHash is the SHA-256 hex of the MQTT password in desired, or
+// "" when no password is present. Converge compares this to the last-applied
+// hash so a Secret-only rotation is applied even though ForComparison drops
+// the password.
+func WriteOnlyPasswordHash(desired map[string]any) string {
+	mc, _ := desired["module_config"].(map[string]any)
+	if mc == nil {
+		return ""
+	}
+	mqtt, _ := mc["mqtt"].(map[string]any)
+	if mqtt == nil {
+		return ""
+	}
+	pw, _ := mqtt["password"].(string)
+	if pw == "" {
+		return ""
+	}
+	return PSKHash([]byte(pw))
 }
 
 func removePath(m map[string]any, path []string) {

@@ -42,7 +42,7 @@ echo "== bringing up a simulated Meshtastic radio (real firmware, no RF) =="
 cleanup
 # --restart=always matters: applying config reboots meshtasticd, which exits, and
 # the container must bring it back for the loop to re-verify.
-docker run -d --name nephmesh-demo --restart=always -p 14403:4403 "$IMAGE" \
+docker run -d --name nephmesh-demo --restart=always -p 127.0.0.1:14403:4403 "$IMAGE" \
   meshtasticd --sim --fsdir=/var/lib/meshtasticd --port=4403 >/dev/null
 printf "waiting for the device API"
 i=0

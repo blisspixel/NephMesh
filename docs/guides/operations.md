@@ -120,6 +120,11 @@ Map the symptom to the signal:
   key, reboots, and re-verifies. Coordinated make-before-break rotation across a
   whole fleet is a design, not built yet: see
   [key-rotation-and-epochs](../plans/key-rotation-and-epochs.md).
+- **Rotate an MQTT broker password (single node, today).** Update the password
+  Secret. The device never echoes the password, so the operator compares a stored
+  hash of the last-applied value (on status, not the password itself) and applies
+  when it changes. A node and its Secrets must live in the operator's namespace:
+  Secret access is a namespaced get-only Role, not a cluster-wide grant.
 - **Turn a feature off.** Owned fields (MQTT enabled, encryption, JSON) reconcile
   both ways: set `mqtt.enabled: false` (or `encryptionEnabled: false`) and the
   operator turns it off on the device, it does not only ever turn things on.

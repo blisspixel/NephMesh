@@ -10,6 +10,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ### Fixed
 
+- A Secret-resolution failure (missing or empty PSK/password) left stale `Reachable`, `ConfigInSync`, `ChannelsInSync`, and `AirtimeHealthy` conditions from the last good reconcile, so `kubectl describe` could show Ready=False next to Reachable=True. Those device-derived conditions are now dropped. An unreachable step also clears a stale `AirtimeHealthy` verdict (metrics already did).
+- MQTT broker password-only rotation was a no-op on an already-Ready node: the device never echoes the password, so `ForComparison` could not see the Secret change. The operator now persists a SHA-256 of the last-applied password on status and applies when it differs.
+- Declared channels against stock `--export-config` (no discrete `channels` key, only `channel_url`) were treated as missing and applied until `MaxApplyAttempts` / Degraded. That export shape is now unobserved: no channel apply, no Ready, no reboot loop. The bundled exporter always emits `channels`, including an empty list.
+- A hung Meshtastic CLI or helper (`--export-config` over serial, a wedged TCP 4403 session) could park a reconcile worker forever. Each exec now has a 45s timeout when the caller context has no deadline.
+- An unexpected reboot error after a successful apply discarded `ApplyAttempts` (the controller returns the error without writing status), so the apply bound never advanced. Post-apply reboot errors are treated as reboot-pending.
+- `Apply` returning unreachable (the session dropped because the device rebooted mid-write) did not increment `ApplyAttempts`, so a field the device never echoes could reboot forever. That path now counts as an apply and waits for the reboot.
+- A Degraded node never retried after the user changed the spec: `ApplyAttempts` stayed at the bound. A new generation now resets the counter. An already-Degraded node that goes offline no longer flickers `Degraded=False`.
+- The Meshtastic CLI prints `Set mqtt.password to <value>` while parsing `--configure`. That string is stripped from apply errors before they can be logged. The configure tempfile is chmod 0600, matching the channel-apply file.
+- A declared `modemPreset` did not set `usePreset: true`, so a node already in bandwidth/spread-factor mode ignored the preset, the exporter omitted `modemPreset`, and the node never-converged.
+- An empty identity read on a reachable apply path could wipe a previously good `status.nodeID`.
+- The operator demo published the unauthenticated device API on all interfaces (`-p 14403:4403`). It now binds `127.0.0.1` only.
+- `demo/resilience` up/down used a Docker name filter (`^sim[0-9]`) that matches nothing, so leftover nodes from a larger previous run stayed on the mesh. Teardown now matches `sim<digits>` / `mesh<digits>`. `independence.sh` builds reconcile-demo for the Docker engine architecture, not hardcoded amd64.
+- `check-secrets.sh` only grepped tracked files; `check-manifests.sh` missed single-quoted `NodePort` and YAML `yes`/`on`. Both gates are tighter.
+- A Secret holding the well-known 16-byte Meshtastic default PSK hashed differently from the 0x01 shorthand the device stores, which could never-converge a "default" channel. Both forms now compare and apply as the shorthand.
+- MQTT `address`/`username`/`root` had no length bound. TCP `host` rejected IPv6 (`:`). Both are tightened/relaxed in the CRD.
+- Every reachable reconcile rewrote `LastHeard`, which retriggered the watch and ignored `DriftCheckInterval`, hammering the single-client device API. Status-only watch events are now ignored and `LastHeard` is refreshed at most every 30s. The report-only intent controller skips a no-op status write and ignores status-only events.
+- `--info` fallback took the first `!id` and the first airtime metric in the dump, which on a multi-node mesh can be a neighbor. It now prefers the `My info` block and that node's metrics.
+- `DesiredChannels` hashed a missing key as empty rather than the `0x01` default. Live `uplinkEnabled: "true"` (string) compared as false and looked like permanent drift. Both are fixed.
+- Fleet airtime treated the declared application payload as the Semtech PHY payload, under-counting originated frames by the 16-byte Meshtastic header.
+- Spectrum classification measured bandwidth as center-to-center span, so a 2 MHz interferer on a 1 MHz sweep grid was labeled packet, not wideband.
+- `mesh-apply.py` treated the JSON string `"false"` as true (`bool("false")`) and wrote each channel without a settings transaction.
+- Phase 1 demo/teardown would apply or delete `namespace/nephmesh` on whatever kube-context was current, including a cloud cluster. They now refuse GKE/EKS/AKS/prod-looking contexts unless overridden.
+- `check-coverage.sh` dropped every file under `cmd/`, not just `main.go`, so `apply_spec.go` was not in the floor.
 - CI `govulncheck` pin moved from Go 1.25.12 to 1.25.13 (stdlib fixes for `net/url`, `crypto/tls`, `net/http`, `encoding/asn1`).
 
 ### Added

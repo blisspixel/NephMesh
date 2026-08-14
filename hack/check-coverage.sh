@@ -30,9 +30,11 @@ trap 'rm -f "$prof" "$filtered"' EXIT
 
 go test ./... -coverprofile="$prof" >/dev/null
 
-# Keep the mode line, drop generated and cmd/main lines from the profile.
+# Keep the mode line. Drop generated deepcopy and thin cmd main entrypoints
+# (cmd/main.go, cmd/<name>/main.go). Other cmd files (apply_spec.go) stay in
+# the denominator so their tests count.
 head -1 "$prof" > "$filtered"
-grep -v -E 'zz_generated|/cmd/' "$prof" | tail -n +2 >> "$filtered" || true
+grep -v -E 'zz_generated|/cmd/[^/]+/main\.go|/cmd/main\.go' "$prof" | tail -n +2 >> "$filtered" || true
 
 pct=$(go tool cover -func="$filtered" | awk '/^total:/ {gsub(/%/,"",$3); print $3}')
 [ -z "$pct" ] && { echo "check-coverage: no coverage measured"; exit 1; }

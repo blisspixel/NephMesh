@@ -73,5 +73,7 @@ Channel keys and the MQTT broker password are referenced from Secrets and never
 belong in a `MeshtasticNode` or in Git. The example key in
 `secure-channel-node.yaml` is a placeholder; generate your own, and never reuse
 the public default channel key for anything private (the operator refuses an empty
-key rather than silently falling back to it). The [threat model](../docs/security/threat-model.md)
+key rather than silently falling back to it). Apply the node and its Secret in the
+same namespace as the operator: Secret access is a namespaced get-only Role, so a
+Secret in another namespace cannot be read. The [threat model](../docs/security/threat-model.md)
 is precise about what a shared channel key does and does not protect.

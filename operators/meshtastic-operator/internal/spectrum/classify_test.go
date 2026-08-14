@@ -105,7 +105,23 @@ func TestClassifyGroupsWidebandOnACoarseGrid(t *testing.T) {
 	em := Classify(series, band915, DefaultClassifyOptions())
 	require.Len(t, em, 1, "the coarse-grid emitter is one emission, not four")
 	assert.Equal(t, ClassWideband, em[0].Class)
-	assert.InDelta(t, 6e6, em[0].BandwidthHz, 1)
+	// Four 2 MHz-spaced centers: 6 MHz span plus one bin = 8 MHz.
+	assert.InDelta(t, 8e6, em[0].BandwidthHz, 1)
+}
+
+func TestClassifyTwoBinInterfererIsWideband(t *testing.T) {
+	// Default hackrf_sweep grid is 1 MHz. A 2 MHz interferer is two adjacent
+	// bins; center-to-center span is 1 MHz and must not be labeled packet.
+	series := []BinSeries{
+		bin(904e6, 100, 0, 0),
+		bin(910e6, 100, 90, -25),
+		bin(911e6, 100, 90, -25),
+		bin(920e6, 100, 0, 0),
+	}
+	em := Classify(series, band915, DefaultClassifyOptions())
+	require.Len(t, em, 1)
+	assert.Equal(t, ClassWideband, em[0].Class)
+	assert.InDelta(t, 2e6, em[0].BandwidthHz, 1)
 }
 
 func TestClassifyWidebandSurvivesSubGridGap(t *testing.T) {

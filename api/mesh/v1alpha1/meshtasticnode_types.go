@@ -97,11 +97,10 @@ type ConnectionSpec struct {
 
 // TCPConnection reaches the device over TCP.
 type TCPConnection struct {
-	// host is the device address (a Service name, FQDN, or IP). The pattern
-	// forbids a leading dash so the value cannot be misread as a CLI flag, and
-	// bounds the length; it is a hostname or IP shape, not an arbitrary string,
-	// to limit where the operator can be pointed.
-	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$`
+	// host is the device address (a Service name, FQDN, IPv4, or IPv6). The
+	// pattern forbids a leading dash so the value cannot be misread as a CLI
+	// flag, and bounds the length.
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9:]([a-zA-Z0-9.:_-]*[a-zA-Z0-9])?$`
 	// +kubebuilder:validation:MaxLength=253
 	Host string `json:"host"`
 	// port defaults to 4403.
@@ -176,9 +175,11 @@ type MQTTSpec struct {
 	// enabled turns the MQTT module on.
 	Enabled bool `json:"enabled"`
 	// address is the broker host.
+	// +kubebuilder:validation:MaxLength=253
 	// +optional
 	Address string `json:"address,omitempty"`
 	// username is the broker username.
+	// +kubebuilder:validation:MaxLength=64
 	// +optional
 	Username string `json:"username,omitempty"`
 	// passwordSecretRef references the broker password. It is never inlined.
@@ -194,6 +195,7 @@ type MQTTSpec struct {
 	// +optional
 	TLSEnabled bool `json:"tlsEnabled,omitempty"`
 	// root overrides the MQTT root topic.
+	// +kubebuilder:validation:MaxLength=64
 	// +optional
 	Root string `json:"root,omitempty"`
 }
@@ -225,6 +227,11 @@ type MeshtasticNodeStatus struct {
 	// forever, which protects against a desired field the device never echoes.
 	// +optional
 	ApplyAttempts int32 `json:"applyAttempts,omitempty"`
+	// lastAppliedMQTTPasswordHash is the SHA-256 hex of the broker password last
+	// written to the device. The device never echoes the password, so this is
+	// how a Secret-only rotation is detected. It is a hash, not the password.
+	// +optional
+	LastAppliedMQTTPasswordHash string `json:"lastAppliedMQTTPasswordHash,omitempty"`
 }
 
 // +kubebuilder:object:root=true

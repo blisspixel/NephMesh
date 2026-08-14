@@ -206,12 +206,11 @@ spec:
                           properties:
                             host:
                               description: |-
-                                host is the device address (a Service name, FQDN, or IP). The pattern
-                                forbids a leading dash so the value cannot be misread as a CLI flag, and
-                                bounds the length; it is a hostname or IP shape, not an arbitrary string,
-                                to limit where the operator can be pointed.
+                                host is the device address (a Service name, FQDN, IPv4, or IPv6). The
+                                pattern forbids a leading dash so the value cannot be misread as a CLI
+                                flag, and bounds the length.
                               maxLength: 253
-                              pattern: ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$
+                              pattern: ^[a-zA-Z0-9:]([a-zA-Z0-9.:_-]*[a-zA-Z0-9])?$
                               type: string
                             port:
                               default: 4403
@@ -502,12 +501,11 @@ spec:
                               properties:
                                 host:
                                   description: |-
-                                    host is the device address (a Service name, FQDN, or IP). The pattern
-                                    forbids a leading dash so the value cannot be misread as a CLI flag, and
-                                    bounds the length; it is a hostname or IP shape, not an arbitrary string,
-                                    to limit where the operator can be pointed.
+                                    host is the device address (a Service name, FQDN, IPv4, or IPv6). The
+                                    pattern forbids a leading dash so the value cannot be misread as a CLI
+                                    flag, and bounds the length.
                                   maxLength: 253
-                                  pattern: ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$
+                                  pattern: ^[a-zA-Z0-9:]([a-zA-Z0-9.:_-]*[a-zA-Z0-9])?$
                                   type: string
                                 port:
                                   default: 4403
@@ -578,6 +576,7 @@ spec:
                           properties:
                             address:
                               description: address is the broker host.
+                              maxLength: 253
                               type: string
                             enabled:
                               description: enabled turns the MQTT module on.
@@ -617,12 +616,14 @@ spec:
                               x-kubernetes-map-type: atomic
                             root:
                               description: root overrides the MQTT root topic.
+                              maxLength: 64
                               type: string
                             tlsEnabled:
                               description: tlsEnabled uses TLS to the broker.
                               type: boolean
                             username:
                               description: username is the broker username.
+                              maxLength: 64
                               type: string
                           required:
                           - enabled

@@ -182,7 +182,7 @@ func main() {
 		fmt.Printf("  step %-2d reachable=%-5t inSync=%-5t rebootPending=%-5t ready=%-5t%s\n",
 			step, out.Reachable, out.ConfigInSync, out.RebootPending, out.Ready, note)
 
-		state = reconcile.State{RebootPending: out.RebootPending, ApplyAttempts: out.ApplyAttempts}
+		state = out.NextState()
 		if out.Ready {
 			fmt.Printf("\nconverged: node %s, config in sync, Ready=true\n", out.Info.NodeID)
 			for _, ch := range chans.Compare {

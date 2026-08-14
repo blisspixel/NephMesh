@@ -32,6 +32,33 @@ MSG="hello nephmesh $(date +%s)"
 
 step() { printf '\n== %s\n' "$1"; }
 
+# Refuse to apply to a cloud or production-looking context unless the caller
+# names it. kind/k3d/k3s/minikube/desktop are the $0 path; a stray kubeconfig
+# pointed at GKE/EKS/AKS must not get a nephmesh namespace.
+require_safe_kube_context() {
+    ctx=$(kubectl config current-context 2>/dev/null || true)
+    if [ -z "$ctx" ]; then
+        echo "kubectl has no current context" >&2
+        exit 1
+    fi
+    echo "kubectl context: $ctx"
+    if [ -n "${NEPHMESH_CONTEXT:-}" ] && [ "$ctx" != "$NEPHMESH_CONTEXT" ]; then
+        echo "refusing: current context '$ctx' != NEPHMESH_CONTEXT='$NEPHMESH_CONTEXT'" >&2
+        exit 1
+    fi
+    case "$ctx" in
+        *prod*|*Prod*|*PROD*|gke_*|arn:aws:*|*eks*|*aks*)
+            if [ "${NEPHMESH_ALLOW_CONTEXT:-}" != "1" ]; then
+                echo "refusing to change cluster '$ctx' (looks like a cloud or production context)." >&2
+                echo "set NEPHMESH_CONTEXT=$ctx and NEPHMESH_ALLOW_CONTEXT=1 if this is intentional." >&2
+                exit 1
+            fi
+            ;;
+    esac
+}
+
+require_safe_kube_context
+
 step "0/6 build and load the pinned CLI image (no runtime PyPI dependency)"
 sh "$(dirname "$0")/build-cli-image.sh"
 

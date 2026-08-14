@@ -87,6 +87,12 @@ func (f *Fake) ExportConfig(_ context.Context) (map[string]any, error) {
 	// how a write-only-field bug, an MQTT password read as permanent drift, hid in
 	// unit tests while breaking against a real device.
 	stripWriteOnly(out)
+	// The bundled exporter always emits a channels list (possibly empty). Stock
+	// --export-config omits the key; that shape is tested with a stub, not this
+	// fake, so a declared channel is drift rather than "unobserved".
+	if _, ok := out["channels"]; !ok {
+		out["channels"] = []any{}
+	}
 	return out, nil
 }
 

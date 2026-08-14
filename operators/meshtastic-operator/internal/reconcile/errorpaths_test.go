@@ -78,12 +78,21 @@ func TestApplyUnreachableIsRequeueNotError(t *testing.T) {
 	out, err := Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, State{})
 	require.NoError(t, err)
 	assert.False(t, out.Reachable)
-	assert.Equal(t, ReconnectBackoff, out.Requeue)
+	assert.True(t, out.RebootPending, "apply-unreachable is treated as a write that rebooted the device")
+	assert.Equal(t, int32(1), out.ApplyAttempts, "the apply bound must advance or a never-echoed field reboot-loops")
+	assert.Equal(t, RebootWait, out.Requeue)
 }
 
-func TestRebootUnexpectedErrorPropagates(t *testing.T) {
+func TestRebootUnexpectedErrorIsRebootPending(t *testing.T) {
+	// Apply already wrote the config. An unexpected reboot error (device already
+	// dropping off after the apply) must record reboot-pending and increment
+	// ApplyAttempts, not return an error the controller would discard without
+	// writing status (which used to leave the apply bound stuck at 0).
 	boom := errors.New("reboot failed")
 	dev := stubClient{live: map[string]any{}, rebootErr: boom} // drifted, apply ok, reboot errors
-	_, err := Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, State{})
-	assert.ErrorIs(t, err, boom, "an unexpected reboot error is surfaced, not swallowed")
+	out, err := Converge(context.Background(), dev, desiredUS(), DesiredChannels{}, State{})
+	require.NoError(t, err, "a post-apply reboot error is reboot-pending, not a hard failure")
+	assert.True(t, out.RebootPending)
+	assert.Equal(t, int32(1), out.ApplyAttempts)
+	assert.Equal(t, RebootWait, out.Requeue)
 }
