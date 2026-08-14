@@ -2,6 +2,8 @@
 
 Target: the 0.4 gate, a Go operator that reconciles a `MeshtasticNode` custom resource against a real (or simulated) device, correcting drift and surviving the device's reboot-on-write. This is the project's flagship deliverable: no Meshtastic Kubernetes operator exists today. Sources: `docs/research/nephio-codebase.md`, `docs/plans/crd-api-design.md`, and the August-2026 research summarized inline below with the caveats it carried. Where research flagged uncertainty, this plan says so; nothing here is claimed to work until it is executed.
 
+Status as of 2026-08-13: the software flagship is shipped (0.2 / 0.2.1). The deployed operator speaks TCP only. `reconcile-demo` drives serial (T-Deck owner, modemPreset, and channels) and TCP (MeshToad region, role, channels). Image publish remains a separate, hardware-free release step. See `docs/plans/meshtoad-gateway-bench.md` and `demo/meshtoad-gateway/`.
+
 ## Toolchain baseline (verify against go.mod at build time)
 
 - Go 1.25.x; `sigs.k8s.io/controller-runtime` v0.22.x (pins k8s.io/* v0.34.x); Kubebuilder 4.9 line, `go/v4` plugin; controller-tools v0.21.0. These match the Nephio codebase conventions and were current as of August 2026.

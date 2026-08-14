@@ -129,3 +129,18 @@ roadmapped as a later, richer MCP layer (see `docs/roadmap.md`); they involve a
 live cluster and, for actuation, the signed-autonomy safety work. Keeping the
 first slice a pure dry-run is deliberate: it is the safe, hardware-free thing an
 agent can lean on today.
+
+## Portable packaging (Agent Plugins and OKF)
+
+The pieces above are already the two things [Agent Plugins 1.0.0](https://agent-plugins.org/specification)
+knows how to ship: an MCP stdio server, and Agent Skills. The box is
+`agent-plugin/` (`plugin.json`, `mcp.json` pointing at `nephmesh-mcp` on
+PATH, `skills/*/SKILL.md`). It is not a new control surface, and it does
+not authorize a write to a radio.
+
+[OKF v0.2](https://cloud.google.com/blog/products/data-analytics/okf-v0-2-adds-trust-signals)
+is the matching language for notes an agent or a bench script writes:
+`generated` vs `verified`, `sources`, `stale_after`, `status`. Use those
+signals on derived artifacts (a sweep reduction, a plan verdict, a bench
+log). Do not retrofit the whole `docs/` tree. An unverified bench note is
+still allowed; it just must not read as a human-reviewed claim.

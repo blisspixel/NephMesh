@@ -24,12 +24,12 @@ import (
 )
 
 func TestParseHeaderExtractsSenderAndFields(t *testing.T) {
-	// A broadcast packet from node !0c3a5f2c (the bench T-Deck), id 0x12345678,
+	// A broadcast packet from synthetic node !01020304, id 0x12345678,
 	// hop limit 3, hop start 3, channel hash 8, plus two payload bytes that must
-	// be ignored.
+	// be ignored. Not a lab radio.
 	pkt := []byte{
 		0xff, 0xff, 0xff, 0xff, // to: broadcast
-		0x2c, 0x5f, 0x3a, 0x0c, // from: 0x0c3a5f2c little-endian
+		0x04, 0x03, 0x02, 0x01, // from: 0x01020304 little-endian
 		0x78, 0x56, 0x34, 0x12, // id: 0x12345678
 		0x63,       // flags: hopLimit 3 | hopStart 3
 		0x08,       // channel hash
@@ -38,7 +38,7 @@ func TestParseHeaderExtractsSenderAndFields(t *testing.T) {
 	}
 	h, err := ParseHeader(pkt)
 	require.NoError(t, err)
-	assert.Equal(t, "!0c3a5f2c", h.FromID(), "the sender read straight off the air")
+	assert.Equal(t, "!01020304", h.FromID(), "the sender read straight off the air")
 	assert.Equal(t, "^all", h.ToID())
 	assert.Equal(t, uint32(0x12345678), h.ID)
 	assert.EqualValues(t, 3, h.HopLimit)
@@ -65,7 +65,7 @@ func TestParseHeaderTooShort(t *testing.T) {
 }
 
 func TestNodeID(t *testing.T) {
-	assert.Equal(t, "!0c3a5f2c", NodeID(0x0c3a5f2c))
+	assert.Equal(t, "!01020304", NodeID(0x01020304))
 	assert.Equal(t, "^all", NodeID(Broadcast))
 	assert.Equal(t, "!00000001", NodeID(1), "always eight hex digits, zero-padded")
 }

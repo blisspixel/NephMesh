@@ -1,8 +1,10 @@
 # Phase 2 implementation plan: real radios and spectrum sensing
 
-Target: the 0.2 release gate. Intent drives physical Meshtastic boards, and the mesh is visible in sensed spectrum from a receive-only HackRF Pro. Assumes the Phase 1 pipeline (meshtasticd -s, YAML config Job, Mosquitto) works.
+Target (original, 2026-08-04): the 0.2 release gate. Intent drives physical Meshtastic boards, and the mesh is visible in sensed spectrum from a receive-only HackRF Pro. Assumes the Phase 1 pipeline (meshtasticd -s, YAML config Job, Mosquitto) works.
 
-Lab hardware in scope: two or more ESP32-class Meshtastic boards, one HackRF Pro, a Raspberry Pi, an Orange Pi 5 (single-node k3s edge cluster), the dev PC. Everything here is provider-neutral and receive-only. No transmit paths of any kind.
+Status as of 2026-08-13: 0.2 shipped as the operator-on-sim milestone instead; this phase is mid-flight, not unstarted. Capture, the Go spectrum exporter, T-Deck serial apply (owner and modemPreset), a hand-driven closed-loop PoC, the MeshToad Linux gateway, and a two-node LoRa text (both directions) already ran. Remaining: in-cluster USB device-plugin and a Porch/Git wrap of `demo/meshtoad-gateway/`. The executed bench is [`meshtoad-gateway-bench.md`](meshtoad-gateway-bench.md). The body below is the original design; where it disagrees with that bench plan or with the shipped exporter, the later document wins.
+
+Lab hardware in scope (updated): an ESP32-S3 handheld on the dev PC (USB serial), a MeshToad-class CH341 USB-SPI radio (`1a86:5512`) on the Linux USB host, HackRF Pro (`1d50:6089`) on that host, Raspberry Pi and Orange Pi 5 as arm64 container hosts. The Linux USB host may also run a local LLM; bench work must not reboot it or disturb that service. Everything here is provider-neutral. The SDR stays receive-only. MeshToad TX is ordinary Meshtastic on a license-free band, not an SDR transmit path.
 
 ## 1. Deliverables mapped to roadmap checkboxes
 
@@ -47,7 +49,13 @@ Minimal-diff discipline applies even in this pre-operator phase: the Job should 
 
 Target: HackRF Pro attached to the Orange Pi 5 (the k3s node). Advertised to pods by `squat/generic-device-plugin`, no privileged pods.
 
-**Product ID caveat:** HackRF One is USB `1d50:6089`. The HackRF Pro is new hardware and its product ID is not verified; it may share 6089 or use a new ID. First task on hardware arrival: `lsusb` on the Pi with the Pro attached and record the `1d50:xxxx` pair. The manifest below uses 6089 as a placeholder and must be corrected from the lsusb output. Serial adapters vary too (CH341 sticks are `1a86:7523`; ESP32 boards commonly carry CP210x `10c4:ea60`); identify each with lsusb before writing rules.
+**Product ID caveat:** HackRF One is USB `1d50:6089`. The lab HackRF Pro enumerates as the same pair (`1d50:6089`). Serial adapters vary. Identify each with `lsusb` before writing rules:
+
+- CH341 USB-SPI (MeshToad V3, MeshStick): `1a86:5512`. No `/dev/ttyUSB*`. This is the gateway radio. Device-plugin / udev must match this pair and `/dev/bus/usb/BUS/DEV`, not a tty.
+- CH341 USB-UART (cheap serial sticks): `1a86:7523`. `/dev/ttyUSB*`. Wrong for the MeshToad.
+- ESP32-S3 CDC (handheld): `303a:1001`. Serial path on the dev PC (`COMn` or `/dev/ttyACM0`).
+
+The original draft named only `1a86:7523`. A rule written from that draft will not see the MeshToad.
 
 DaemonSet sketch (final YAML lands with the manifests):
 
@@ -188,7 +196,7 @@ Explicit non-goals for Phase 2:
 - No closed loop: metrics are observed by humans, nothing acts on them (Phase 6).
 - No operator or CRDs (Phase 4), no kpt packaging or Porch (Phase 3): plain manifests and one-shot Jobs are correct for this phase.
 - No Grafana, no per-bin metrics, no MQTT spectra, no IQ capture.
-- No meshtasticd-with-real-RF on the Pis (no LoRa HAT owned); physical RF is the ESP32 boards only.
+- No meshtasticd-with-real-RF on the Pis. The Linux-native gateway radio is the MeshToad-class stick on the USB host (`docs/plans/meshtoad-gateway-bench.md`). The handheld stays on the dev PC serial path. Physical RF is no longer "ESP32 boards only."
 
 Open decisions needing a human call:
 

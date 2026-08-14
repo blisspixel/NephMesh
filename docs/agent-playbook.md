@@ -37,6 +37,8 @@ This runs the repo gates (license headers, writing style, manifest control-surfa
 | Run the Phase 1 virtual mesh demo | `sh demo/phase1/scripts/demo.sh` then `sh demo/phase1/scripts/teardown.sh` (needs a cluster) |
 | Dry-run a CommunicationIntent (no cluster) | `cd operators/meshtastic-operator && go run ./cmd/nephmeshctl plan -f ../../examples/regional-intent.yaml` (see `docs/guides/agent-interface.md`) |
 | Operator integration test vs sim device | see the header of `operators/meshtastic-operator/internal/reconcile/integration_test.go` |
+| MeshToad plus handheld RF bench | set `SENSOR_SSH` and `COM_PORT`, tunnel `ssh -N -L 14403:127.0.0.1:4403 "$SENSOR_SSH"`, then `sh demo/meshtoad-gateway/run.sh` |
+| Build the operator image locally (no push) | `sh hack/build-operator-image.sh` |
 
 ## Rules that are enforced, not just requested
 

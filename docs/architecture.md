@@ -18,6 +18,8 @@ The project is about radio systems in general, not one product. The intent model
 
 A new radio earns inclusion by having a control surface worth reconciling; analog services with no digital control (for example CB voice) stay out of scope as managed transports, though the SDR side can still monitor them.
 
+Current lab shape, not a required topology: a Windows (or other) dev PC holds a USB handheld; a Linux USB host holds the HackRF and a CH341 `meshtasticd` gateway (device API on localhost, reached by SSH tunnel). That pair has exchanged LoRa text. See `docs/plans/meshtoad-gateway-bench.md`. The Linux host may also run unrelated services; do not treat it as a disposable box.
+
 ## Topology
 
 ```

@@ -73,9 +73,11 @@ This demonstrates the operator's reconcile engine against real firmware, which i
 the load-bearing part. It is not the full Kubernetes path (a `MeshtasticNode`
 custom resource reconciled by the deployed operator in a cluster); that is
 exercised separately by the envtest controller tier and the CI integration test.
-It also does not measure over-the-air message delivery, which needs real radios
-or a multi-node mesh; the control-plane-independence resilience test that does
-measure delivery is a Phase 5 item that depends on that hardware.
+It also does not measure over-the-air message delivery. That bench is
+[demo/meshtoad-gateway](../meshtoad-gateway/): T-Deck on serial plus MeshToad
+on `meshtasticd` TCP, texts tagged `TRANSPORT_LORA`. The
+control-plane-independence resilience test that measures delivery without
+radios is `demo/resilience/`.
 
 The same `reconcile-demo` tool points at a real board over USB with `-serial`
 (plus `-exporter`), and its read-only `-observe` mode reads a device without ever

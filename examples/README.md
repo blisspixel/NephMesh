@@ -13,7 +13,9 @@ device or a `meshtasticd --sim` at the address in each file.
 
 To try the operator without a resource file or any hardware, the scripted
 [operator demo](../demo/operator/) stands up a simulated radio and reconciles it,
-including a secure channel, end to end.
+including a secure channel, end to end. The MeshToad plus T-Deck LoRa bench is
+[demo/meshtoad-gateway](../demo/meshtoad-gateway/), not a `MeshtasticNode` that
+points at a LAN 4403 (the device API stays on localhost).
 
 ## Watching a node
 

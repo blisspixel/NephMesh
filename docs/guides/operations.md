@@ -19,15 +19,24 @@ before you start:
 
 - The operator image is not published to a public registry yet (that is a pending
   release step, see the roadmap). Until then you build it from the repo and load
-  it into your cluster (for kind: `docker build` then `kind load docker-image`).
-  The `Dockerfile` bundles the pinned Meshtastic CLI and the helper scripts.
+  it into your cluster: `sh hack/build-operator-image.sh` then
+  `kind load docker-image nephmesh-meshtastic-operator:local`. The `Dockerfile`
+  bundles the pinned Meshtastic CLI and the helper scripts. Signing, SBOM, and
+  a digest-pinned `ghcr.io` tag land with the publish, not this local build.
+  A local build on 2026-08-13 produced `nephmesh-meshtastic-operator:local`
+  (`sha256:0ddbf1c312374bcf7809d28eec64f91bc1712a08648c0ad0d72d77b061a1a135`),
+  non-root, `--help` ok, helpers and `meshtastic` 2.7.11 present. That is not a
+  release.
 - For the full Nephio/Porch path (register the repo, propose/approve/apply), see
   the [Porch registration guide](porch-registration.md). For a plain cluster,
   `kubectl apply` the rendered package.
 
 To try the reconcile engine with no cluster and no hardware at all, the scripted
 [operator demo](../../demo/operator/) stands up a simulated radio and converges
-it, including a secure channel, end to end.
+it, including a secure channel, end to end. With a `meshtasticd` USB gateway
+and a serial handheld, [demo/meshtoad-gateway](../../demo/meshtoad-gateway/)
+observes both and sends one LoRa text each way. `reconcile-demo` accepts
+`-role` as well as `-region`, `-preset`, owner, and channels.
 
 ## Declare a node
 
@@ -128,7 +137,9 @@ Map the symptom to the signal:
 
 Stated plainly so nothing here overpromises: serial and viaGateway transports are
 reported as unsupported by the deployed operator (TCP is the wired path today; the
-reconcile engine drives serial via the `reconcile-demo` tool and a real board);
+reconcile engine drives serial via the `reconcile-demo` tool and a real T-Deck,
+and TCP against `meshtasticd` plus a MeshToad-class USB radio is recorded in
+`docs/plans/meshtoad-gateway-bench.md`);
 the Wipe deletion policy is not implemented; and coordinated fleet key rotation,
 the airtime-budget admission gate, and the closed loop are designs on the roadmap,
 not shipped behavior.

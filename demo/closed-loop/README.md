@@ -44,8 +44,8 @@ helper; and on the sensor host, `hackrf_sweep`. Configure with environment
 variables (see the defaults at the top of `run.sh`) and run:
 
 ```sh
-export SENSOR_SSH="user@sensor-host"
-export COM_PORT="COM3"
+export SENSOR_SSH="user@linux-usb-host"
+export COM_PORT="COMn"
 export EXPORTER="python /path/to/operators/meshtastic-operator/hack/mesh-export.py"
 # ... plus the binary paths; see run.sh
 sh demo/closed-loop/run.sh
@@ -68,7 +68,7 @@ channel is active (peak -17.2 > -35 dB); ACTUATE: move the mesh to LONG_MODERATE
   step 1  reachable=true  inSync=false rebootPending=true  ready=false  <- applied drift, device rebooting
   ...
   step 7  reachable=true  inSync=true  rebootPending=false ready=true   <- converged
-converged: node !0c3a5f2c, config in sync, Ready=true
+converged: node <handheld-id>, config in sync, Ready=true
 
 === VERIFY: sense again; the mesh should have moved frequency ===
 after actuation, ism-915-us peak is at 903.500 MHz (was 906.500 MHz)
@@ -76,7 +76,7 @@ after actuation, ism-915-us peak is at 903.500 MHz (was 906.500 MHz)
 === RESTORE: return the node to LONG_FAST ===
   step 1  reachable=true  inSync=false rebootPending=true  ready=false  <- applied drift, device rebooting
   step 3  reachable=true  inSync=true  rebootPending=false ready=true   <- converged
-converged: node !0c3a5f2c, config in sync, Ready=true
+converged: node <handheld-id>, config in sync, Ready=true
 ```
 
 The decision was driven by the sensed peak, the actuation went through the

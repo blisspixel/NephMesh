@@ -17,7 +17,7 @@ Scope is deliberately broader than any single radio. Meshtastic is the first con
 
 ## Deepr expert council (optional host capacity)
 
-When the host has the `deepr` MCP server connected (see project `.mcp.json`), use it for design questions against persistent domain experts. Expert store lives at `C:\Users\nicks\.deepr` on the operator machine.
+When the host has the `deepr` MCP server connected (see project `.mcp.json`), use it for design questions against persistent domain experts. Expert store lives at `~/.deepr` (or `$DEEPR_DATA_DIR`) on the operator machine.
 
 Council (exact names):
 
