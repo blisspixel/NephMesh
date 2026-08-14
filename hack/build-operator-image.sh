@@ -22,7 +22,7 @@
 
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
 TAG=${1:-nephmesh-meshtastic-operator:local}
 
 cd "$ROOT"
