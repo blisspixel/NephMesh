@@ -25,7 +25,7 @@ group() { printf '\n== %s\n' "$1"; }
 note()  { printf '   %s\n' "$1"; }
 
 group "repo gates"
-for g in check-headers check-style check-manifests check-transmit check-actions check-secrets check-lab-identity; do
+for g in check-headers check-style check-manifests check-transmit check-actions check-secrets check-lab-identity test-check-dco; do
     sh "$ROOT/hack/$g.sh" || fail=1
 done
 

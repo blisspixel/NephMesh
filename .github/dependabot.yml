@@ -17,9 +17,8 @@ updates:
         update-types:
           - minor
           - patch
-    # The Kubernetes libraries move the go directive forward (k8s v0.36
-    # requires go 1.26), which reintroduces the stdlib-vulnerability versus
-    # toolchain churn the 1.25.12 pin avoids and needs a tested migration.
+    # Go's security floor is 1.27.2 as of 2026-10-11, independently of the
+    # tested k8s v0.34/controller-runtime v0.22 framework boundary.
     # Take only their patch releases automatically; the framework major and
     # minor jumps are a deliberate, tracked upgrade, not an auto-merge.
     ignore:

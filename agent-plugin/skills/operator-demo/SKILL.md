@@ -13,7 +13,7 @@ cd operators/meshtastic-operator
 sh ../../demo/operator/run.sh
 ```
 
-Needs Docker, Go 1.25.x, and `meshtastic` on PATH.
+Needs Docker, Go 1.27.2 or newer, and `meshtastic` on PATH.
 
 This is not over-the-air delivery. For the MeshToad plus T-Deck RF bench, use the `meshtoad-bench` skill.
 

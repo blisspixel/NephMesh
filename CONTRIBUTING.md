@@ -16,7 +16,7 @@ Every commit must be signed off (`git commit -s`), certifying the [Developer Cer
 
 - No emojis, no em dashes, no AI attribution anywhere (commit messages, code, docs). CI enforces this.
 - Source files carry the Apache-2.0 header (`hack/boilerplate.go.txt` is the canonical text). CI enforces this too.
-- Go code follows the conventions in `docs/plans/engineering-conventions.md` (Go 1.25.x, testify plus golden tests, mockery, golangci-lint).
+- Go code follows the conventions in `docs/plans/engineering-conventions.md` (Go 1.27.2 minimum, testify plus golden tests, mockery, golangci-lint).
 
 ## Workflow
 

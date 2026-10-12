@@ -20,7 +20,7 @@
 # re-verify to Ready, and then proves idempotency by running it again with zero
 # further writes.
 #
-# Prerequisites: docker, go (1.25.x), and the Meshtastic CLI plus library
+# Prerequisites: docker, go (1.27.2 or newer), and the Meshtastic CLI plus library
 # (`pip install "meshtastic[cli]"`). Override the CLI and python with MESH_BIN and
 # NEPHMESH_PY if they are not `meshtastic` and `python` on your PATH.
 #

@@ -23,7 +23,7 @@
 # runs on a host with the SDR attached, outside the hardened cluster deployment
 # (device access is a reviewed host deviation; see packages/spectrum-exporter).
 
-FROM golang:1.26-alpine AS build
+FROM golang:1.27.2-alpine AS build
 WORKDIR /src
 COPY api/ api/
 COPY operators/meshtastic-operator/ operators/meshtastic-operator/

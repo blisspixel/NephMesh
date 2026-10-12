@@ -4,12 +4,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-11
+
 ### Changed
 
 - Public docs now match the tree: architecture packages and transports, README Status as a capability map, MeshMonitor named as the live-dashboard cousin, "What comes next" labeled installability vs uniqueness. Lab host identity (specific SBC, USB bus/dev, personal image digest, kind ClusterIP) removed from tracked files. The hardware screenshot node id is the test fixture `!01020304`. A `hack/check-lab-identity.sh` gate refuses known lab fingerprints.
 
+### Security
+
+- Raise both modules' Go minimum, all Go CI jobs and both Go image build stages to 1.27.2; update `golang.org/x/net` to v0.60.0 with its required dependency closure. These fixed versions address the scanner findings GO-2026-6603, GO-2026-6605, GO-2026-6607, GO-2026-6608, GO-2026-6610, GO-2026-6611, GO-2026-6612, GO-2026-6613 and GO-2026-6617. Kubernetes v0.34 and controller-runtime v0.22 stay on their tested lines.
+
 ### Fixed
 
+- CI permits toolchain selection for the scanner installation only, independently of the pinned project compiler. DCO checks use the actual PR contribution range, excluding GitHub's unsigned test merge while still rejecting unsigned contribution commits.
 - A Secret-resolution failure (missing or empty PSK/password) left stale `Reachable`, `ConfigInSync`, `ChannelsInSync`, and `AirtimeHealthy` conditions from the last good reconcile, so `kubectl describe` could show Ready=False next to Reachable=True. Those device-derived conditions are now dropped. An unreachable step also clears a stale `AirtimeHealthy` verdict (metrics already did).
 - MQTT broker password-only rotation was a no-op on an already-Ready node: the device never echoes the password, so `ForComparison` could not see the Secret change. The operator now persists a SHA-256 of the last-applied password on status and applies when it differs.
 - Declared channels against stock `--export-config` (no discrete `channels` key, only `channel_url`) were treated as missing and applied until `MaxApplyAttempts` / Degraded. That export shape is now unobserved: no channel apply, no Ready, no reboot loop. The bundled exporter always emits `channels`, including an empty list.
