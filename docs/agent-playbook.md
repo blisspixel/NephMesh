@@ -12,7 +12,7 @@ The layering, from most to least portable:
 
 - Shell is POSIX (`sh`). On Windows use Git Bash or WSL2; scripts avoid Bash-only and OS-specific constructs.
 - The working directory can reset between separate shell invocations, so `cd` inside each command rather than relying on a persisted directory.
-- Go 1.25+ is expected for the Go modules; Docker for package render and the device integration test; a local cluster (kind, k3d, or k3s) only for the demo.
+- Go 1.27.2 or newer is required for the Go modules (the 2026-10-11 security floor); Docker for package render and the device integration test; a local cluster (kind, k3d, or k3s) only for the demo.
 
 ## One command to validate everything
 

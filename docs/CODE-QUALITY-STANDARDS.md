@@ -11,7 +11,7 @@ Two principles run through everything:
 
 ## Already enforced (the current floor)
 
-- Go: `go build`, `go vet`, `golangci-lint` (v2.12.2, standard set), unit tests, the race detector, and an 80% meaningful-coverage gate (generated and cmd/main excluded), plus a real integration test that drives the reconcile loop against a live `meshtasticd --sim`. Native fuzzing of the untrusted-input parsers, and `govulncheck` reachability scanning on every module.
+- Go: `go build`, `go vet`, `golangci-lint` (v2.14.0, standard set), unit tests, the race detector, and an 80% meaningful-coverage gate (generated and cmd/main excluded), plus a real integration test that drives the reconcile loop against a live `meshtasticd --sim`. Native fuzzing of the untrusted-input parsers, and `govulncheck` reachability scanning on every module.
 - Repo gates: license headers, writing style (no emojis, em dashes, or attribution), manifest control-surface exposure, the transmit interlock, SHA-pinned GitHub Actions (`hack/check-actions.sh`), ShellCheck on the gate scripts, and kpt package render. DCO sign-off. One command runs them all: `sh hack/check-all.sh`.
 - Containers: multi-stage, `CGO_ENABLED=0`, non-root. Manifests: non-root, dropped capabilities, no privilege escalation, seccomp, NetworkPolicy isolation.
 

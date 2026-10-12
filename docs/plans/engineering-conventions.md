@@ -68,7 +68,7 @@ Deliberate differences from upstream, and why:
 
 ## 2. Go conventions
 
-- Go 1.25.x (match the nephio repo; porch is on 1.26 but we consume porch, not build it).
+- Go 1.27.2 minimum (2026-10-11 security exception to the upstream Go 1.25.x baseline; see [compatibility posture](../reference/nephio-compatibility.md#security-floor-2026-10-11)).
 - `sigs.k8s.io/controller-runtime v0.22.x`, `k8s.io/* v0.34.x`.
 - kpt function SDK: `github.com/kptdev/krm-functions-sdk/go/fn` (kptdev org, not
   GoogleContainerTools). Kptfile types from `github.com/kptdev/kpt/pkg/api/kptfile/v1`.
@@ -179,7 +179,7 @@ Fragments to write (Phase 0 stubs, filled in as their consumers land):
 
 ## 7. Image conventions
 
-- Two-stage builds: digest-pinned `golang:1.25.x-alpine` build stage, `CGO_ENABLED=0`, final stage
+- Two-stage builds: digest-pinned `golang:1.27.2-alpine` build stage, `CGO_ENABLED=0`, final stage
   `gcr.io/distroless/static:nonroot`, also digest-pinned. Non-Go images (the spectrum sensor needs
   SoapySDR native libs) use a minimal Debian-slim or distroless-base final stage, still two-stage
   and digest-pinned; static distroless is the default, not a straitjacket.

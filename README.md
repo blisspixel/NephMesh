@@ -24,7 +24,7 @@ The accurate framing of the value, and the honest limits, is "desired-state mana
 
 ## Status
 
-Pre-alpha. Shipped: **0.1.0** (virtual mesh), **0.2.0** (operator on `meshtasticd --sim`), **0.2.1** (channels, airtime, doctrine). Everything after 0.2.1 is Unreleased. The flagship config surface (region, preset, role, owner, MQTT, channels) is proven on sim in CI and on owned hardware. The engineering is still ahead of installability: the operator image is unpublished, and the Porch register/propose/approve/pull/apply gate has not been run. Next work, in order: [roadmap, What comes next](docs/roadmap.md#what-comes-next-recommended-order-reviewed-2026-08-13).
+Pre-alpha. Latest source release: **0.2.2** (reconcile fixes, CI reliability, and documentation), following **0.1.0** (virtual mesh), **0.2.0** (operator on `meshtasticd --sim`), and **0.2.1** (channels, airtime, doctrine). The flagship config surface (region, preset, role, owner, MQTT, channels) is proven on sim in CI and on owned hardware. The engineering is still ahead of installability: the operator image is unpublished, and the Porch register/propose/approve/pull/apply gate has not been run. Next work, in order: [roadmap, What comes next](docs/roadmap.md#what-comes-next-recommended-order-reviewed-2026-08-13).
 
 | You can run today | What it proves |
 |---|---|

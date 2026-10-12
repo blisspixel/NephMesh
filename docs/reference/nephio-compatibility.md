@@ -92,16 +92,28 @@ library skew that only matters if NephMesh ever imports Nephio Go types.
   is the Nephio move (intent expressed as KRM data, reconciled continuously) applied one
   layer lower, to the radio substrate. It is meant to be expressible as KRM so it fits
   the same Porch and specializer machinery.
-- **Engineering conventions.** Apache-2.0 file headers, DCO sign-off, golden tests with
-  testify, and Go 1.25.x, per AGENTS.md and the codebase research.
+- **Engineering conventions.** Apache-2.0 file headers, DCO sign-off and golden tests
+  with testify, per AGENTS.md and the codebase research. The compiler security
+  exception below raises NephMesh's minimum Go version to 1.27.2.
+
+## Security floor 2026-10-11
+
+NephMesh requires Go 1.27.2 and `golang.org/x/net v0.60.0` to address the current
+standard-library and HTTP/2 networking advisories. For example,
+[GO-2026-6617](https://pkg.go.dev/vuln/GO-2026-6617) identifies these fixed versions.
+Both module directives, CI and Go image build stages enforce the compiler floor.
+This deliberately supersedes the Go 1.25.x engineering baseline while preserving
+the dated August upstream observations above. The tested Kubernetes v0.34 and
+controller-runtime v0.22 library lines remain unchanged. The interoperability
+boundary is still KRM data and packaging; no direct Nephio Go imports are added.
 
 ## Where NephMesh deliberately diverges, and why
 
 - **Group domain `mesh.nephmesh.io`, not `*.nephio.org`.** NephMesh is not affiliated
   with Nephio, so it does not put resources in the `nephio.org` group. The `.io` group
   is provisional and kept at `v1alpha1` so a later rename stays cheap.
-- **Newer Kubernetes libraries.** NephMesh tracks the latest GA line
-  (`k8s.io v0.34.x`, `controller-runtime v0.22.x`, `go 1.25.x`), which is ahead of the
+- **Newer Kubernetes libraries.** NephMesh pins the tested library lines
+  (`k8s.io v0.34.x`, `controller-runtime v0.22.x`, with Go 1.27.2 minimum), which are ahead of the
   upstream `api` module's `v0.30.1` / `v0.18.5` and of Nephio R6's supported Kubernetes
   ceiling (max v1.32.0). This is a forward
   skew, not a lag. It is fine because NephMesh interops at the KRM and package boundary,
