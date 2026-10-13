@@ -25,7 +25,7 @@ COPY operators/meshtastic-operator/ operators/meshtastic-operator/
 WORKDIR /src/operators/meshtastic-operator
 RUN CGO_ENABLED=0 go build -o /out/meshtastic-operator ./cmd
 
-FROM python:3.13-slim
+FROM python:3.14-slim
 ARG MESHTASTIC_VERSION=2.7.11
 RUN useradd --create-home --uid 65532 app
 USER 65532
