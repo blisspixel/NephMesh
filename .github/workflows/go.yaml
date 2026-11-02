@@ -20,9 +20,9 @@ name: go
 on:
   push:
     branches: [main]
-    paths: ["api/**", "operators/**", ".github/workflows/go.yaml"]
+    paths: ["api/**", "operators/**", ".github/workflows/go.yaml", "CHANGELOG.md", "README.md"]
   pull_request:
-    paths: ["api/**", "operators/**", ".github/workflows/go.yaml"]
+    paths: ["api/**", "operators/**", ".github/workflows/go.yaml", "CHANGELOG.md", "README.md"]
 
 # Least privilege: these jobs only read the checked-out code. The default
 # GITHUB_TOKEN can be broader, so scope it down to limit blast radius.

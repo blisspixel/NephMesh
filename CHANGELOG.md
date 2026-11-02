@@ -4,6 +4,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-11-02
+
 ### Security
 
 - Raise both modules' Go minimum, all Go CI jobs, and both Go image build stages from 1.27.2 to 1.27.3. This addresses GO-2026-6809 (`crypto/x509` distrusts compromised intermediate certificates). `golang.org/x/net` stays at v0.60.0. Kubernetes v0.34 and controller-runtime v0.22 stay on their tested lines.
