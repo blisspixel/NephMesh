@@ -4,6 +4,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+### Changed
+
+- `nephmeshctl` prints text on a terminal and JSON when stdout is a pipe, for every subcommand. `-o json` or `-o text` forces either. A single positional path is the same as `-f`. Help fits 80 columns and lists plan, spectrum, advise, decode, resilience, and version. `version`, `-V`, and `--version` print the module version and a 12-character commit when the build recorded one.
+- Spectrum text is an 80-column table. A covered band also gets one block-character strip (ASCII `_.-=#` when `TERM=dumb` or the locale is not UTF-8). The peak cell is yellow only when that peak clears the occupancy margin. `-o json` is still `[]BandStats`, with no strip and no colour.
+- Plan text uses plain words (`feasible: 1 node at MEDIUM_SLOW in US`, `airtime: within budget, about N% of the 25% budget`). Reason codes stay in the JSON.
+- Errors name the problem and a next step. An unreachable Ollama says to start `ollama serve` or pass `-ollama-url`. The Go error chain is only in `-o json`. Unknown commands do not reprint the usage. On a terminal, the problem is red and a quoted command in the next step is cyan. `NO_COLOR` and `TERM=dumb` stay plain. JSON is never coloured.
+- `reconcile-demo` colours by meaning: `ready` and `converged` green, drift and a pending reboot yellow, an error red. A true value is not green merely for being true.
+- CI and the phase-1 Meshtastic CLI image use Python 3.14. meshtastic 2.7.11 requires Python <3.15, so 3.14 is the newest release those pins can use.
+- `CLAUDE.md` is the one line `@AGENTS.md`. `AGENTS.md` records the start-tidy, stop-tidy session rule, and `.claude/settings.json` reports repository state at session start without changing it.
+
+### Fixed
+
+- `nephmeshctl plan` on a document whose kind is not `CommunicationIntent` exits 2 with `expected kind CommunicationIntent, got MeshtasticNode`. A bare spec is still accepted. A `---` inside a block, folded, or quoted scalar stays one document. A second document, including a separator with a trailing comment, is still rejected.
+- `nephmeshctl plan examples/regional-intent.yaml` reads that file. A path argument no longer leaves the command waiting on stdin. If stdin is a terminal and no file was given, the command refuses instead of blocking.
+- Resilience reduction keeps a configured receiver that never delivered. `-receivers`, or the probe `SUMMARY` receiver list, is the population, so that node is `0/N` and the report includes an overall delivered/expected line. Inferring receivers from receipts alone is labeled observed-only. Held-up and survived thresholds are unchanged. `demo/resilience` passes the same receiver list to the probe and the reducer.
+
 ## [0.2.2] - 2026-10-11
 
 ### Changed

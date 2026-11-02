@@ -90,7 +90,10 @@ sleep 14
 log "4/5 Measure delivery, then destroy the management plane mid-run"
 # The probe runs in the surviving monitor (meshcli) and writes its event log
 # incrementally, so even a truncated run leaves usable data.
-docker exec -d meshcli sh -c 'python /probe.py --sender sim1 --receivers sim2,sim3 --count 24 --interval 3 > /probe.jsonl 2>/probe.err'
+# One receiver list for the probe and the reducer, so a silent node stays in
+# the denominator instead of disappearing from an inferred population.
+RECEIVERS=sim2,sim3
+docker exec -d meshcli sh -c "python /probe.py --sender sim1 --receivers ${RECEIVERS} --count 24 --interval 3 > /probe.jsonl 2>/probe.err"
 echo "  probe running; measuring baseline..."
 sleep 40
 # Perturbation time from the SAME (container) clock the probe timestamps with, so
@@ -115,6 +118,6 @@ docker exec meshcli grep -q '^SUMMARY' /probe.jsonl 2>/dev/null || {
 docker cp meshcli:/probe.jsonl "$WORK/probe.jsonl" >/dev/null
 grep -q '^EVENT' "$WORK/probe.jsonl" || {
     echo "  the probe produced no events (it may have failed to reach the nodes); cannot judge"; exit 1; }
-"$WORK/nephmeshctl.exe" resilience -at "$KILL_T" -f "$WORK/probe.jsonl" -o text
+"$WORK/nephmeshctl.exe" resilience -at "$KILL_T" -f "$WORK/probe.jsonl" -receivers "$RECEIVERS" -o text
 echo
 echo "Tear down with: sh demo/resilience/down.sh"

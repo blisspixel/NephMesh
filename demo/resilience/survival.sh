@@ -59,8 +59,11 @@ log "3/4 Run one probe across three offered-load phases"
 # degraded: 1 msg / 1s (over budget, the channel saturates and drops at the sender)
 # adapted:  1 msg / 3s (admission control paces back within budget)
 # The probe prints a BOUNDARY line at each phase transition.
+# Same receiver list for the probe and the reducer. A node that never delivers
+# still counts; inferring the population from receipts would hide it.
+RECEIVERS=sim2,sim3
 docker exec meshcli sh -c \
-  'python /probe.py --sender sim1 --receivers sim2,sim3 --schedule "3:10,1:20,3:10" > /survival.jsonl 2>/dev/null'
+  "python /probe.py --sender sim1 --receivers ${RECEIVERS} --schedule '3:10,1:20,3:10' > /survival.jsonl 2>/dev/null"
 docker cp meshcli:/survival.jsonl "$WORK/survival.jsonl" >/dev/null
 grep -q '^EVENT' "$WORK/survival.jsonl" || {
     echo "  the probe produced no events (it may have failed to reach the nodes); cannot judge"; exit 1; }
@@ -73,7 +76,7 @@ echo "  phase boundaries (Unix seconds): ${BOUNDS}"
 
 log "4/4 Verdict: baseline vs degraded vs adapted delivery"
 "$WORK/nephmeshctl.exe" resilience -f "$WORK/survival.jsonl" \
-    -phases "$BOUNDS" -labels "baseline,degraded,adapted" -o text
+    -phases "$BOUNDS" -labels "baseline,degraded,adapted" -receivers "$RECEIVERS" -o text
 echo
 echo "The airtime model predicts the collapse: at LONG_FAST (~559 ms time-on-air),"
 echo "1 msg/3s is ~19% channel utilization (under the 25% ceiling) but 1 msg/1s is"

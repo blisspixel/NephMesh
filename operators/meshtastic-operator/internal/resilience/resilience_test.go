@@ -31,8 +31,8 @@ func TestParseEventsTakesMarkedLinesOnly(t *testing.T) {
 		`EVENT {"ev": "sent", "seq": 0, "node": "sim1", "t": 1}`, // event
 		`EVENT {"ev": "recv", "seq": 0, "node": "sim2", "t": 1.2}`,
 		`EVENT {"ev": "bogus", "seq": 9, "node": "x", "t": 5}`, // wrong ev, dropped
-		`EVENT {not json}`,                                     // malformed, skipped
-		`SUMMARY {"sent": 1, "delivered": 1}`,                  // summary ignored
+		`EVENT {not json}`,                    // malformed, skipped
+		`SUMMARY {"sent": 1, "delivered": 1}`, // summary ignored
 	}, "\n")
 	evs, err := ParseEvents(strings.NewReader(in))
 	require.NoError(t, err)
@@ -93,7 +93,55 @@ func TestReduceInfersReceiversFromReceipts(t *testing.T) {
 	evs := events(4, recv, 150)
 	r := Reduce(evs, 2, 0.1, nil) // no explicit receivers
 	assert.Equal(t, []string{"sim2", "sim3"}, r.Receivers)
+	assert.Equal(t, "observed", r.ReceiverScope)
 	assert.True(t, r.HeldUp)
+	assert.Contains(t, r.Text(), "observed receivers only")
+	assert.Contains(t, r.Text(), "never-observed nodes cannot be evaluated")
+}
+
+func TestSilentReceiverStaysInBothReducers(t *testing.T) {
+	// Four sends, two on each side of t=2. sim2 receives all four. sim3 is
+	// configured and silent, so the aggregate is 4/8 and sim3 is 0/4.
+	var evs []Event
+	for i := 0; i < 4; i++ {
+		evs = append(evs, Event{Ev: "sent", Seq: i, Node: "sim1", T: float64(i)})
+		evs = append(evs, Event{Ev: "recv", Seq: i, Node: "sim2", T: float64(i) + 0.1})
+	}
+	recv := []string{"sim2", "sim3"}
+	r := Reduce(evs, 2, 0.1, recv)
+	assert.Equal(t, "declared", r.ReceiverScope)
+	assert.Equal(t, 8, r.Before.Expected+r.After.Expected)
+	assert.Equal(t, 4, r.Before.Delivered+r.After.Delivered)
+	assert.Contains(t, r.Text(), "sim3 0/4")
+	assert.Contains(t, r.Text(), "sim2 4/4")
+
+	phases := ReducePhases(evs, []float64{2}, []string{"before", "after"}, 0.1, recv)
+	require.True(t, phases.Valid)
+	assert.Equal(t, 8, phases.Phases[0].Window.Expected+phases.Phases[1].Window.Expected)
+	assert.Equal(t, 4, phases.Phases[0].Window.Delivered+phases.Phases[1].Window.Delivered)
+	assert.Contains(t, phases.Text(), "sim3 0/4")
+}
+
+func TestProbeSummaryAgreesWithReducer(t *testing.T) {
+	log := strings.Join([]string{
+		`EVENT {"ev":"sent","seq":0,"node":"sim1","t":0}`,
+		`EVENT {"ev":"recv","seq":0,"node":"sim2","t":0.1}`,
+		`EVENT {"ev":"sent","seq":1,"node":"sim1","t":1}`,
+		`EVENT {"ev":"recv","seq":1,"node":"sim2","t":1.1}`,
+		`EVENT {"ev":"sent","seq":2,"node":"sim1","t":2}`,
+		`EVENT {"ev":"recv","seq":2,"node":"sim2","t":2.1}`,
+		`EVENT {"ev":"sent","seq":3,"node":"sim1","t":3}`,
+		`EVENT {"ev":"recv","seq":3,"node":"sim2","t":3.1}`,
+		`SUMMARY {"sender":"sim1","receivers":["sim2","sim3"],"sent":4,"expected":8,"delivered":4}`,
+	}, "\n")
+	evs, declared, ok, err := ParseProbe(strings.NewReader(log))
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, []string{"sim2", "sim3"}, declared)
+	r := Reduce(evs, 2, 0.1, declared)
+	assert.Equal(t, 4, r.Before.Delivered+r.After.Delivered)
+	assert.Equal(t, 8, r.Before.Expected+r.After.Expected)
+	assert.Contains(t, r.Text(), "sim3 0/4")
 }
 
 func TestReduceCreditsANodeAtMostOncePerMessage(t *testing.T) {

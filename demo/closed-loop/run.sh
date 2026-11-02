@@ -81,14 +81,16 @@ sense() {
     done
     sleep 6
     ssh -o BatchMode=yes "$SENSOR_SSH" 'cat /tmp/cl_sweep.csv' > "$_csv" 2>/dev/null
-    "$NEPHMESHCTL" spectrum -f "$_csv" -o text | grep "^${BAND}" || true
+    # The first matching line is the table row. A spectrum strip for the same
+    # band follows it and is not the row these extractors parse.
+    "$NEPHMESHCTL" spectrum -f "$_csv" -o text | grep "^${BAND} " | head -1 || true
     rm -f "$_csv"
 }
 
-# Field extractors from a band line like:
-#   ism-915-us  902.000-928.000 MHz: ... peak -19.4 dB @ 906.500 MHz
-peakDbmOf() { printf '%s' "$1" | grep -oE 'peak -?[0-9.]+ dB' | grep -oE '\-?[0-9.]+' | head -1; }
-freqMhzOf() { printf '%s' "$1" | grep -oE '@ [0-9.]+ MHz' | grep -oE '[0-9.]+' | head -1; }
+# Field extractors from a table row like:
+#   ism-915-us   902.000-928.000   32.3% 9/26      -95.0  -17.2 @ 906.500
+peakDbmOf() { printf '%s' "$1" | grep -oE '\-?[0-9.]+ @' | grep -oE '\-?[0-9.]+' | head -1; }
+freqMhzOf() { printf '%s' "$1" | grep -oE '@ [0-9.]+' | grep -oE '[0-9.]+' | head -1; }
 
 log "SENSE: sweep ${FREQ_MIN}-${FREQ_MAX} MHz with the mesh on the air"
 SENSE_LINE="$(sense)"

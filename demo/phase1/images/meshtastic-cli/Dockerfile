@@ -19,7 +19,8 @@
 # workload pods. Phase 4 publishes the equivalent image to a registry with a
 # digest pin; the demo builds it locally and loads it into the cluster.
 
-FROM python:3.13-slim
+# meshtastic 2.7.11 requires Python <3.15, so 3.14 is the newest release this image can use.
+FROM python:3.14-slim
 
 ARG MESHTASTIC_VERSION=2.7.11
 ARG PYYAML_VERSION=6.0.2

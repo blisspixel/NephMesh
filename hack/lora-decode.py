@@ -25,7 +25,7 @@ SoapySDR/osmosdr device string (so an RTL-SDR works as well as a HackRF), and
 every LoRa PHY parameter is a flag, defaulting to Meshtastic's US LONG_FAST
 channel. Run it with the Python that GNU Radio uses (the installer prints it):
 
-    /usr/bin/python3.10 hack/lora-decode.py --freq 906.875e6 | nephmeshctl decode
+    /usr/bin/python3.10 hack/lora-decode.py --freq 906.875e6 | nephmeshctl decode -o text
 
 Then key a Meshtastic node and watch its sender node id appear, read straight off
 the air by a receiver that was never told what the node is.

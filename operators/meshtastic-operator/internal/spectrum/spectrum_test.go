@@ -143,10 +143,57 @@ func TestRenderTextSummarizesBands(t *testing.T) {
 		{Band: Band{Name: "ism-915-us", LowHz: 902e6, HighHz: 928e6}, BinCount: 20, OccupiedBins: 3, OccupancyPercent: 15, NoiseFloorDB: -90, MaxDB: -48, PeakFreqHz: 909e6},
 		{Band: Band{Name: "ism-433", LowHz: 433.05e6, HighHz: 434.79e6}, BinCount: 0},
 	}
-	txt := RenderText(stats)
+	txt := RenderText(stats, nil, TextStyle{})
 	assert.Contains(t, txt, "ism-915-us")
-	assert.Contains(t, txt, "occupancy 15.0%")
+	assert.Contains(t, txt, "15.0% 3/20")
 	assert.Contains(t, txt, "not covered")
+	for _, line := range strings.Split(txt, "\n") {
+		assert.LessOrEqual(t, len(line), 80, line)
+	}
+}
+
+func TestRenderStripFitsAndColorsOnlyThePeak(t *testing.T) {
+	bins := []Bin{
+		{FreqHz: 902.5e6, PowerDB: -95},
+		{FreqHz: 910.5e6, PowerDB: -48},
+		{FreqHz: 920.5e6, PowerDB: -94},
+	}
+	stats := Analyze(bins, []Band{{Name: "ism-915-us", LowHz: 902e6, HighHz: 928e6}}, DefaultOptions())
+	require.NotEmpty(t, stats)
+	plain := RenderText(stats, bins, TextStyle{})
+	assert.Contains(t, plain, "▁")
+	assert.NotContains(t, plain, "\x1b")
+	for _, line := range strings.Split(plain, "\n") {
+		assert.LessOrEqual(t, len([]rune(stripANSI(line))), 80, line)
+	}
+
+	ascii := RenderText(stats, bins, TextStyle{ASCII: true})
+	assert.NotContains(t, ascii, "▁")
+	assert.Contains(t, ascii, "#")
+
+	colored := RenderText(stats, bins, TextStyle{ANSI: true})
+	assert.Equal(t, 1, strings.Count(colored, ansiYellow))
+}
+
+func TestRenderStripDoesNotColorAPeakInsideTheNoise(t *testing.T) {
+	bins := []Bin{{FreqHz: 910.5e6, PowerDB: -90}, {FreqHz: 911.5e6, PowerDB: -90}}
+	stats := Analyze(bins, []Band{{Name: "ism-915-us", LowHz: 902e6, HighHz: 928e6}}, DefaultOptions())
+	txt := RenderText(stats, bins, TextStyle{ANSI: true, ASCII: true})
+	assert.NotContains(t, txt, ansiYellow)
+}
+
+func stripANSI(s string) string {
+	for {
+		i := strings.Index(s, "\x1b[")
+		if i < 0 {
+			return s
+		}
+		j := strings.IndexByte(s[i:], 'm')
+		if j < 0 {
+			return s[:i]
+		}
+		s = s[:i] + s[i+j+1:]
+	}
 }
 
 func TestPercentile(t *testing.T) {

@@ -95,15 +95,19 @@ go run ./operators/meshtastic-operator/cmd/nephmeshctl spectrum -f sweep.csv -o 
 ```
 
 Expected shape (numbers depend on your RF environment; this is a real 3-second
-integrated capture from the validation host):
+integrated capture from the validation host, reformatted by the current table
+renderer, with no spectrum strip because the saved row has no per-bin series):
 
 ```
-ism-433      433.050-434.790 MHz: not covered by this sweep
-ism-868-eu   863.000-870.000 MHz: not covered by this sweep
-ism-915-us   902.000-928.000 MHz: occupancy 32.3% (4936/15288 bins), noise -69.1 dB, peak -52.0 dB @ 906.500 MHz
+band         range MHz         occupancy      noise dB  peak dB @ MHz
+ism-433      433.050-434.790   not covered
+ism-868-eu   863.000-870.000   not covered
+ism-915-us   902.000-928.000   32.3% 4936/15288    -69.1  -52.0 @ 906.500
 ```
 
-JSON (`-o json`) is the machine form for an agent or a downstream exporter.
+A live sweep also prints one strip under each covered band. The strip is
+display only. JSON (`-o json`) is the machine form for an agent or a downstream
+exporter, and it does not include the strip.
 
 ## 4. What to check
 

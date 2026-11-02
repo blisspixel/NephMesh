@@ -174,7 +174,7 @@ func main() {
 	for step := 1; step <= 15; step++ {
 		out, err := reconcile.Converge(ctx, dev, desired, chans, state)
 		if err != nil {
-			fmt.Printf("  step %-2d error: %v\n", step, err)
+			fmt.Printf("  step %-2d %s: %v\n", step, paintLiteral("error", "red"), err)
 			os.Exit(1)
 		}
 
@@ -187,12 +187,17 @@ func main() {
 		case out.Ready:
 			note = "  <- converged"
 		}
-		fmt.Printf("  step %-2d reachable=%-5t inSync=%-5t rebootPending=%-5t ready=%-5t%s\n",
-			step, out.Reachable, out.ConfigInSync, out.RebootPending, out.Ready, note)
+		fmt.Printf("  step %-2d %s %s %s %s%s\n",
+			step,
+			paintStatus("reachable", out.Reachable, statusRole(!out.Reachable, "yellow")),
+			paintStatus("inSync", out.ConfigInSync, syncRole(out.ConfigInSync, out.Ready)),
+			paintStatus("rebootPending", out.RebootPending, statusRole(out.RebootPending, "yellow")),
+			paintStatus("ready", out.Ready, statusRole(out.Ready, "green")),
+			note)
 
 		state = out.NextState()
 		if out.Ready {
-			fmt.Printf("\nconverged: node %s, config in sync, Ready=true\n", out.Info.NodeID)
+			fmt.Printf("\n%s: node %s, config in sync, Ready=true\n", paintLiteral("converged", "green"), out.Info.NodeID)
 			for _, ch := range chans.Compare {
 				for _, live := range out.LiveChannels {
 					if live.Index == ch.Index && live.Name == ch.Name && live.PSKHash == ch.PSKHash {
@@ -207,4 +212,58 @@ func main() {
 
 	fmt.Println("\ndid not converge within the step budget")
 	os.Exit(1)
+}
+
+// Colour follows the field readout: green is a converged state, yellow is a
+// pending reboot or drift. A true value is not green merely for being true.
+// NO_COLOR and TERM=dumb, and a non-terminal stdout, stay plain.
+func demoColor() bool {
+	if os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" {
+		return false
+	}
+	st, err := os.Stdout.Stat()
+	if err != nil || st.Mode()&os.ModeCharDevice == 0 {
+		return false
+	}
+	return true
+}
+
+func statusRole(active bool, role string) string {
+	if active {
+		return role
+	}
+	return ""
+}
+
+func syncRole(inSync, ready bool) string {
+	switch {
+	case ready && inSync:
+		return "green"
+	case !inSync:
+		return "yellow"
+	default:
+		return ""
+	}
+}
+
+func paintStatus(name string, value bool, role string) string {
+	return paintLiteral(fmt.Sprintf("%s=%-5t", name, value), role)
+}
+
+func paintLiteral(text, role string) string {
+	if !demoColor() {
+		return text
+	}
+	code := ""
+	switch role {
+	case "green":
+		code = "\x1b[32m"
+	case "yellow":
+		code = "\x1b[33m"
+	case "red":
+		code = "\x1b[31m"
+	default:
+		return text
+	}
+	return code + text + "\x1b[0m"
 }

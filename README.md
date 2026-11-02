@@ -40,7 +40,7 @@ Held frozen: `CommunicationIntent` actuation, an enforceable `ChannelBudget`, a 
 
 ![NephMesh's reconcile loop driving a live meshtasticd sim to convergence](docs/media/operator-reconcile.png)
 
-*NephMesh's real reconcile loop (the `Converge` state machine and CLI-backed device client the controller uses), run against a live `meshtasticd --sim` via the `cmd/reconcile-demo` tool. Step 1 detects drift, applies only the minimal config, and reboots the device; step 2 re-verifies and reports `Ready` with the device's real node id. Captured from an actual run, not a mock-up.*
+*NephMesh's real reconcile loop (the `Converge` state machine and CLI-backed device client the controller uses), run against a live `meshtasticd --sim` via `cmd/reconcile-demo`. Step 1 detects drift, applies only that change, and reboots. Step 2 re-verifies to `Ready`. Green is a converged state (`inSync` once Ready, `ready=true`, and `converged`). Yellow is drift or a pending reboot. `reachable=true` stays plain. Captured from an actual run on 2026-11-02. The node id is the one that sim generated.*
 
 ![The operator applying a config change to a physical Meshtastic T-Deck over USB and re-verifying to Ready](docs/media/operator-hardware-apply.png)
 
