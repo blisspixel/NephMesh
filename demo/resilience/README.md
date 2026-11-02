@@ -118,6 +118,14 @@ The verdict logic is pure and unit-tested (`internal/resilience`, exposed as
 probe's event log at the perturbation and reports delivery ratio and latency before
 and after, so any run, not just this one, is judged the same way.
 
+Pass the probe's receiver list to the reducer (`-receivers`, or the `SUMMARY`
+line the probe writes). A configured receiver that never delivers stays in the
+denominator and is listed as `0/N`. Without that list the report says it covers
+observed receivers only, and a silent node cannot be evaluated. `held up` means
+delivery stayed near the baseline. It is not a claim that every receiver, or
+every mission objective, succeeded. The numbers above are the 2026-08-10 run.
+They are not a new hardware measurement.
+
 ## Survival under congestion, demonstrated (the airtime commons, measured)
 
 `survival.sh` shows, with numbers, that the shared channel has a finite airtime

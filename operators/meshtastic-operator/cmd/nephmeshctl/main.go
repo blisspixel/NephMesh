@@ -66,7 +66,7 @@ func fprint(w io.Writer, a ...any)                 { _, _ = fmt.Fprint(w, a...) 
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		usage(stderr)
+		fprint(stderr, rootUsage)
 		return exitUsage
 	}
 	switch args[0] {
@@ -80,142 +80,142 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runDecode(args[1:], stdin, stdout, stderr)
 	case "resilience":
 		return runResilience(args[1:], stdin, stdout, stderr)
+	case "version", "-V", "--version":
+		fprintln(stdout, versionString())
+		return exitOK
 	case "-h", "--help", "help":
-		usage(stdout)
+		fprint(stdout, rootUsage)
 		return exitOK
 	default:
-		fprintf(stderr, "unknown command %q\n", args[0])
-		usage(stderr)
-		return exitUsage
+		return cliError(stdout, stderr, "", "", fmt.Sprintf("unknown command %q", args[0]), "Run 'nephmeshctl -h'.", nil)
 	}
+}
+
+func prepare(fs *flag.FlagSet, formatFlag *string, args []string, stdin io.Reader, stdout, stderr io.Writer, cmd string) (format, path string, code int, ok bool) {
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return "", "", exitOK, false
+		}
+		return "", "", exitUsage, false
+	}
+	format, err := chooseFormat(*formatFlag, isTerminal(stdout))
+	if err != nil {
+		return "", "", cliError(stdout, stderr, "", cmd, err.Error(), "Pass -o json or -o text.", err), false
+	}
+	path, err = resolveInputPath(fs, fs.Lookup("f").Value.String(), isTerminal(stdin))
+	if err != nil {
+		return "", "", cliError(stdout, stderr, format, cmd, err.Error(), inputNextStep(err), err), false
+	}
+	return format, path, exitOK, true
 }
 
 func runPlan(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("plan", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	file := fs.String("f", "-", "CommunicationIntent file to read (YAML or JSON); - is stdin")
-	format := fs.String("o", "json", "output format: json or text")
+	_ = fs.String("f", "-", "CommunicationIntent path")
+	formatFlag := fs.String("o", "", "json or text")
 	fs.Usage = func() {
-		fprintln(stderr, "usage: nephmeshctl plan [-f file] [-o json|text]")
-		fprintln(stderr, "  Dry-run a CommunicationIntent through the report-only compiler.")
-		fs.PrintDefaults()
+		commandHelp(stderr, "plan [-f file] [-o json|text]",
+			"Dry-run a CommunicationIntent. Nothing is applied.",
+			[]string{
+				"-f file       CommunicationIntent path (default: stdin)",
+				"-o json|text  text on a terminal, json when piped",
+			})
 	}
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return exitOK
-		}
-		return exitUsage
+	format, path, code, ok := prepare(fs, formatFlag, args, stdin, stdout, stderr, "plan")
+	if !ok {
+		return code
 	}
-	if *format != "json" && *format != "text" {
-		fprintf(stderr, "invalid -o %q: want json or text\n", *format)
-		return exitUsage
-	}
-
-	data, err := readInput(*file, stdin)
+	data, err := readInput(path, stdin)
 	if err != nil {
-		fprintf(stderr, "read intent: %v\n", err)
-		return exitUsage
+		return failRead(stdout, stderr, format, "plan", err)
 	}
-
 	out, err := plan.Run(data)
 	if err != nil {
-		fprintf(stderr, "plan: %v\n", err)
-		return exitUsage
+		next := "Check the file is one CommunicationIntent."
+		if strings.Contains(err.Error(), "expected kind") {
+			next = "Pass a CommunicationIntent, for example examples/regional-intent.yaml."
+		}
+		if strings.Contains(err.Error(), "multiple YAML documents") {
+			next = "Pass one CommunicationIntent document."
+		}
+		if errors.Is(err, plan.ErrEmptyInput) {
+			next = "Pass -f with a CommunicationIntent, or pipe one document."
+		}
+		return cliError(stdout, stderr, format, "plan", err.Error(), next, err)
 	}
-
-	if *format == "text" {
-		fprint(stdout, out.Text())
-		return exitOK
-	}
-	enc := json.NewEncoder(stdout)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(out); err != nil {
-		fprintf(stderr, "encode: %v\n", err)
-		return exitUsage
-	}
-	return exitOK
+	return writeOut(stdout, stderr, format, out, colorizeReport(out.Text(), allowColor(isTerminal(stdout))))
 }
 
 func runSpectrum(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("spectrum", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	file := fs.String("f", "-", "rtl_power/hackrf_sweep CSV to read; - is stdin")
-	format := fs.String("o", "json", "output format: json or text")
-	margin := fs.Float64("margin-db", spectrum.DefaultOptions().ThresholdMarginDB, "dB above the noise floor a bin must be to count as occupied")
-	percentile := fs.Float64("noise-percentile", spectrum.DefaultOptions().NoiseFloorPercentile, "per-band percentile taken as the noise floor (0..100)")
+	_ = fs.String("f", "-", "sweep CSV path")
+	formatFlag := fs.String("o", "", "json or text")
+	margin := fs.Float64("margin-db", spectrum.DefaultOptions().ThresholdMarginDB, "dB above the noise floor")
+	percentile := fs.Float64("noise-percentile", spectrum.DefaultOptions().NoiseFloorPercentile, "noise-floor percentile")
 	fs.Usage = func() {
-		fprintln(stderr, "usage: nephmeshctl spectrum [-f file] [-o json|text] [-margin-db N] [-noise-percentile N]")
-		fprintln(stderr, "  Reduce a receive-only SDR sweep to per-band occupancy. See docs/guides/spectrum-validation.md.")
-		fs.PrintDefaults()
+		commandHelp(stderr, "spectrum [-f file] [-o json|text]",
+			"Per-band occupancy from a receive-only sweep CSV.",
+			[]string{
+				"-f file              sweep CSV path (default: stdin)",
+				"-o json|text         text on a terminal, json when piped",
+				"-margin-db N         dB above the noise floor counts as occupied",
+				"-noise-percentile N  noise-floor percentile, 0 to 100",
+			})
 	}
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return exitOK
-		}
-		return exitUsage
+	format, path, code, ok := prepare(fs, formatFlag, args, stdin, stdout, stderr, "spectrum")
+	if !ok {
+		return code
 	}
-	if *format != "json" && *format != "text" {
-		fprintf(stderr, "invalid -o %q: want json or text\n", *format)
-		return exitUsage
-	}
-
-	data, err := readInput(*file, stdin)
+	data, err := readInput(path, stdin)
 	if err != nil {
-		fprintf(stderr, "read sweep: %v\n", err)
-		return exitUsage
+		return failRead(stdout, stderr, format, "spectrum", err)
 	}
 	opts := spectrum.Options{ThresholdMarginDB: *margin, NoiseFloorPercentile: *percentile}
-	stats, err := spectrum.Sense(bytes.NewReader(data), spectrum.DefaultBands(), opts)
+	bins, err := spectrum.ParseSweep(bytes.NewReader(data))
 	if err != nil {
-		fprintf(stderr, "spectrum: %v\n", err)
-		return exitUsage
+		return cliError(stdout, stderr, format, "spectrum", err.Error(), "Pass an rtl_power or hackrf_sweep CSV.", err)
 	}
-
-	if *format == "text" {
-		fprint(stdout, spectrum.RenderText(stats))
-		return exitOK
-	}
-	enc := json.NewEncoder(stdout)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(stats); err != nil {
-		fprintf(stderr, "encode: %v\n", err)
-		return exitUsage
-	}
-	return exitOK
+	stats := spectrum.Analyze(bins, spectrum.DefaultBands(), opts)
+	style := spectrum.TextStyle{ASCII: !unicodeOK(), ANSI: allowColor(isTerminal(stdout))}
+	return writeOut(stdout, stderr, format, stats, spectrum.RenderText(stats, bins, style))
 }
 
 func runAdvise(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("advise", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	file := fs.String("f", "-", "rtl_power/hackrf_sweep CSV to reason over; - is stdin")
+	_ = fs.String("f", "-", "sweep CSV path")
 	bandName := fs.String("band", "ism-915-us", "band to advise on")
 	ollamaURL := fs.String("ollama-url", "http://localhost:11434", "local Ollama server")
 	model := fs.String("model", "llama3.2:3b", "Ollama model")
 	preset := fs.String("preset", "LONG_FAST", "current modem preset")
 	region := fs.String("region", "US", "region")
-	approved := fs.String("approved", "LONG_FAST,MEDIUM_SLOW,LONG_MODERATE", "comma-separated approved presets")
-	numGPU := fs.Int("num-gpu", -1, "GPU layers for Ollama (0 forces CPU for a capable model on a memory-tight edge host; -1 lets Ollama decide)")
-	format := fs.String("o", "text", "output format: json or text")
+	approved := fs.String("approved", "LONG_FAST,MEDIUM_SLOW,LONG_MODERATE", "approved presets")
+	numGPU := fs.Int("num-gpu", -1, "GPU layers")
+	formatFlag := fs.String("o", "", "json or text")
 	fs.Usage = func() {
-		fprintln(stderr, "usage: nephmeshctl advise [-f file] [-ollama-url URL] [-model M] [-preset P] [-approved list]")
-		fprintln(stderr, "  Ask a local LLM to reason over sensed spectrum and propose a report-only action.")
-		fs.PrintDefaults()
+		commandHelp(stderr, "advise [-f file] [-model M]",
+			"Ask a local model for a report-only action.",
+			[]string{
+				"-f file         sweep CSV (default: stdin)",
+				"-band name      band to advise on (default ism-915-us)",
+				"-ollama-url URL local Ollama server",
+				"-model name     Ollama model (default llama3.2:3b)",
+				"-preset name    current modem preset",
+				"-region code    regulatory region",
+				"-approved list  comma-separated approved presets",
+				"-num-gpu N      GPU layers (0 is CPU, -1 lets Ollama decide)",
+				"-o json|text    text on a terminal, json when piped",
+			})
 	}
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return exitOK
-		}
-		return exitUsage
+	format, path, code, ok := prepare(fs, formatFlag, args, stdin, stdout, stderr, "advise")
+	if !ok {
+		return code
 	}
-	if *format != "json" && *format != "text" {
-		fprintf(stderr, "invalid -o %q: want json or text\n", *format)
-		return exitUsage
-	}
-
-	data, err := readInput(*file, stdin)
+	data, err := readInput(path, stdin)
 	if err != nil {
-		fprintf(stderr, "read sweep: %v\n", err)
-		return exitUsage
+		return failRead(stdout, stderr, format, "advise", err)
 	}
 
 	// Locate the target band, then build the sensed situation: occupancy and peak
@@ -228,14 +228,12 @@ func runAdvise(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 	}
 	if !found {
-		fprintf(stderr, "unknown band %q\n", *bandName)
-		return exitUsage
+		return cliError(stdout, stderr, format, "advise", fmt.Sprintf("unknown band %q", *bandName), "Pass -band with one of ism-433, ism-868-eu, ism-915-us.", nil)
 	}
 	stats := spectrum.Analyze(mustBins(bytes.NewReader(data)), []spectrum.Band{band}, spectrum.DefaultOptions())
 	series, serr := spectrum.ParseSweepSeries(bytes.NewReader(data))
 	if serr != nil {
-		fprintf(stderr, "advise: %v\n", serr)
-		return exitUsage
+		return cliError(stdout, stderr, format, "advise", serr.Error(), "Pass an rtl_power or hackrf_sweep CSV.", serr)
 	}
 	emissions := spectrum.Classify(series, band, spectrum.DefaultClassifyOptions())
 
@@ -249,28 +247,23 @@ func runAdvise(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	client := advisor.NewOllama(*ollamaURL, *model)
 	client.NumGPU = *numGPU
-	rec, raw, err := advisor.New(client).Advise(context.Background(), sit)
+	rec, _, err := advisor.New(client).Advise(context.Background(), sit)
 	if err != nil {
-		fprintf(stderr, "advise: %v\n", err)
-		return exitUsage
+		if isUnreachable(err) {
+			return cliError(stdout, stderr, format, "advise",
+				fmt.Sprintf("no Ollama server at %s", *ollamaURL),
+				"Start it with 'ollama serve', or pass -ollama-url.", err)
+		}
+		return cliError(stdout, stderr, format, "advise", "the model request failed", "Check -model and -ollama-url.", err)
 	}
 
-	if *format == "json" {
-		enc := json.NewEncoder(stdout)
-		enc.SetIndent("", "  ")
-		if err := enc.Encode(rec); err != nil {
-			fprintf(stderr, "encode: %v\n", err)
-			return exitUsage
-		}
-		return exitOK
-	}
-	fprintf(stdout, "recommendation: %s", rec.Action)
+	var text strings.Builder
+	fmt.Fprintf(&text, "recommendation: %s", rec.Action)
 	if rec.TargetPreset != "" {
-		fprintf(stdout, " -> %s", rec.TargetPreset)
+		fmt.Fprintf(&text, " -> %s", rec.TargetPreset)
 	}
-	fprintf(stdout, " (confidence %s)\n  rationale: %s\n", rec.Confidence, rec.Rationale)
-	_ = raw
-	return exitOK
+	fmt.Fprintf(&text, " (confidence %s)\n  rationale: %s\n", rec.Confidence, rec.Rationale)
+	return writeOut(stdout, stderr, format, rec, colorizeReport(text.String(), allowColor(isTerminal(stdout))))
 }
 
 // runDecode reads decoded LoRa payloads as hex (one packet per line, as the SDR
@@ -280,28 +273,23 @@ func runAdvise(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 func runDecode(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("decode", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	file := fs.String("f", "-", "file of hex LoRa payloads, one per line; - is stdin")
-	format := fs.String("o", "text", "output format: json or text")
+	_ = fs.String("f", "-", "hex payload file")
+	formatFlag := fs.String("o", "", "json or text")
 	fs.Usage = func() {
-		fprintln(stderr, "usage: nephmeshctl decode [-f file] [-o json|text]")
-		fprintln(stderr, "  Parse Meshtastic packet headers from decoded LoRa payloads (hex, one per line).")
-		fs.PrintDefaults()
+		commandHelp(stderr, "decode [-f file] [-o json|text]",
+			"Meshtastic headers from decoded LoRa payloads.",
+			[]string{
+				"-f file       hex payloads, one per line (default: stdin)",
+				"-o json|text  text on a terminal, json when piped",
+			})
 	}
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return exitOK
-		}
-		return exitUsage
+	format, path, code, ok := prepare(fs, formatFlag, args, stdin, stdout, stderr, "decode")
+	if !ok {
+		return code
 	}
-	if *format != "json" && *format != "text" {
-		fprintf(stderr, "invalid -o %q: want json or text\n", *format)
-		return exitUsage
-	}
-
-	data, err := readInput(*file, stdin)
+	data, err := readInput(path, stdin)
 	if err != nil {
-		fprintf(stderr, "read: %v\n", err)
-		return exitUsage
+		return failRead(stdout, stderr, format, "decode", err)
 	}
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
@@ -330,7 +318,7 @@ func runDecode(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			continue
 		}
 		seen++
-		if *format == "json" {
+		if format == "json" {
 			if err := enc.Encode(h); err != nil {
 				fprintf(stderr, "encode: %v\n", err)
 				return exitUsage
@@ -341,8 +329,7 @@ func runDecode(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			h.FromID(), h.ToID(), h.ID, h.HopLimit, h.HopStart, h.ChannelHash, ackStr(h))
 	}
 	if seen == 0 {
-		fprintln(stderr, "no valid packets decoded")
-		return exitUsage
+		return cliError(stdout, stderr, format, "decode", "no valid packets decoded", "Pass hex payloads, one per line.", nil)
 	}
 	return exitOK
 }
@@ -373,63 +360,55 @@ func splitCSV(s string) []string {
 	return out
 }
 
-// readInput reads the intent from a file, or from stdin when the path is "-".
-func readInput(path string, stdin io.Reader) ([]byte, error) {
-	if path == "-" {
-		return io.ReadAll(stdin)
-	}
-	return os.ReadFile(path)
-}
-
 func runResilience(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("resilience", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	file := fs.String("f", "-", "delivery-probe event log (JSONL from demo/resilience/probe.py); - is stdin")
-	at := fs.Float64("at", 0, "perturbation time, Unix seconds: before/after mode (messages before it vs after)")
-	phasesCSV := fs.String("phases", "", "multi-phase mode: comma-separated boundary times (Unix seconds), ascending; used with -labels")
-	labelsCSV := fs.String("labels", "baseline,degraded,adapted", "phase labels for -phases; count must be len(phases)+1")
-	tolerance := fs.Float64("tolerance", 0.1, "largest delivery-ratio drop from baseline still counted as unchanged")
-	receiversCSV := fs.String("receivers", "", "comma-separated receiver nodes; inferred from the log when empty")
-	format := fs.String("o", "text", "output format: json or text")
+	_ = fs.String("f", "-", "probe log path")
+	at := fs.Float64("at", 0, "perturbation time")
+	phasesCSV := fs.String("phases", "", "boundary times")
+	labelsCSV := fs.String("labels", "baseline,degraded,adapted", "phase labels")
+	tolerance := fs.Float64("tolerance", 0.1, "unchanged drop")
+	receiversCSV := fs.String("receivers", "", "receiver nodes")
+	formatFlag := fs.String("o", "", "json or text")
 	fs.Usage = func() {
-		fprintln(stderr, "usage: nephmeshctl resilience (-at UNIXTIME | -phases T1,T2 -labels a,b,c) [-f file] [-tolerance F] [-receivers list] [-o json|text]")
-		fprintln(stderr, "  Reduce a delivery-probe log to a verdict around a perturbation: -at for a")
-		fprintln(stderr, "  before/after split, -phases for a baseline/degraded/adapted timeline. See demo/resilience.")
-		fs.PrintDefaults()
+		commandHelp(stderr, "resilience (-at T | -phases T,T)",
+			"Delivery before and after a perturbation.",
+			[]string{
+				"-f file        probe log (default: stdin)",
+				"-at SECONDS    before/after split, Unix seconds",
+				"-phases T,T    ascending boundary times",
+				"-labels A,B,C  phase names (default baseline,degraded,adapted)",
+				"-tolerance F   delivery drop still counted as unchanged",
+				"-receivers A,B names (default: probe summary, else observed)",
+				"-o json|text   text on a terminal, json when piped",
+			})
 	}
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return exitOK
-		}
-		return exitUsage
-	}
-	if *format != "json" && *format != "text" {
-		fprintf(stderr, "invalid -o %q: want json or text\n", *format)
-		return exitUsage
+	format, path, code, ok := prepare(fs, formatFlag, args, stdin, stdout, stderr, "resilience")
+	if !ok {
+		return code
 	}
 	usePhases := *phasesCSV != ""
 	if usePhases && *at > 0 {
-		fprintln(stderr, "use -at (before/after) or -phases (multi-phase), not both")
-		return exitUsage
+		return cliError(stdout, stderr, format, "resilience", "both -at and -phases were set", "Use one of them.", nil)
 	}
 	if !usePhases && *at <= 0 {
-		fprintln(stderr, "set -at (before/after) or -phases (multi-phase timeline)")
-		return exitUsage
+		return cliError(stdout, stderr, format, "resilience", "no split time was set", "Pass -at or -phases.", nil)
 	}
 
-	data, err := readInput(*file, stdin)
+	data, err := readInput(path, stdin)
 	if err != nil {
-		fprintf(stderr, "read probe log: %v\n", err)
-		return exitUsage
+		return failRead(stdout, stderr, format, "resilience", err)
 	}
-	events, err := resilience.ParseEvents(bytes.NewReader(data))
+	events, declared, hasDeclared, err := resilience.ParseProbe(bytes.NewReader(data))
 	if err != nil {
-		fprintf(stderr, "parse probe log: %v\n", err)
-		return exitUsage
+		return cliError(stdout, stderr, format, "resilience", "cannot parse the probe log", "Pass the probe's event log.", err)
 	}
 	var receivers []string
-	if *receiversCSV != "" {
+	switch {
+	case *receiversCSV != "":
 		receivers = splitCSV(*receiversCSV)
+	case hasDeclared:
+		receivers = declared
 	}
 
 	var payload any
@@ -439,16 +418,15 @@ func runResilience(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 		for _, s := range splitCSV(*phasesCSV) {
 			v, perr := strconv.ParseFloat(s, 64)
 			if perr != nil {
-				fprintf(stderr, "invalid -phases value %q: %v\n", s, perr)
-				return exitUsage
+				return cliError(stdout, stderr, format, "resilience", fmt.Sprintf("invalid -phases value %q", s), "Pass ascending Unix times, comma-separated.", perr)
 			}
 			boundaries = append(boundaries, v)
 		}
 		labels := splitCSV(*labelsCSV)
 		if len(labels) != len(boundaries)+1 {
-			fprintf(stderr, "-labels has %d entries but -phases has %d boundaries; -labels must have %d (one per phase). Pass -labels to match.\n",
-				len(labels), len(boundaries), len(boundaries)+1)
-			return exitUsage
+			return cliError(stdout, stderr, format, "resilience",
+				fmt.Sprintf("-labels has %d entries but -phases has %d boundaries", len(labels), len(boundaries)),
+				fmt.Sprintf("Pass -labels with %d names, one per phase.", len(boundaries)+1), nil)
 		}
 		report := resilience.ReducePhases(events, boundaries, labels, *tolerance, receivers)
 		payload, text = report, report.Text()
@@ -457,33 +435,18 @@ func runResilience(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 		payload, text = report, report.Text()
 	}
 
-	if *format == "text" {
+	return writeOut(stdout, stderr, format, payload, colorizeReport(text, allowColor(isTerminal(stdout))))
+}
+
+func writeOut(stdout, stderr io.Writer, format string, payload any, text string) int {
+	if format == "text" {
 		fprint(stdout, text)
 		return exitOK
 	}
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(payload); err != nil {
-		fprintf(stderr, "encode: %v\n", err)
-		return exitUsage
+		return cliError(stdout, stderr, format, "", "cannot encode the result", "Retry, or pass -o text.", err)
 	}
 	return exitOK
-}
-
-func usage(w io.Writer) {
-	fprintln(w, "nephmeshctl: the NephMesh command-line interface")
-	fprintln(w, "")
-	fprintln(w, "usage:")
-	fprintln(w, "  nephmeshctl plan [-f file] [-o json|text]       dry-run a CommunicationIntent")
-	fprintln(w, "  nephmeshctl spectrum [-f file] [-o json|text]   reduce an SDR sweep to per-band occupancy")
-	fprintln(w, "  nephmeshctl advise [-f file] [-model M]          ask a local LLM to propose a report-only action")
-	fprintln(w, "  nephmeshctl decode [-f file]                     read Meshtastic packet headers off decoded LoRa payloads")
-	fprintln(w, "  nephmeshctl resilience -at T [-f file]           split a delivery-probe log at a perturbation, before vs after")
-	fprintln(w, "")
-	fprintln(w, "plan reads a CommunicationIntent (the same document you would apply to a")
-	fprintln(w, "cluster) and reports feasibility, the selected preset, fleet airtime, and the")
-	fprintln(w, "proposed MeshtasticNode specs.")
-	fprintln(w, "")
-	fprintln(w, "spectrum reads a receive-only rtl_power/hackrf_sweep CSV and reports per-band")
-	fprintln(w, "occupancy, noise floor, and peak power. Both need no cluster and no hardware.")
 }

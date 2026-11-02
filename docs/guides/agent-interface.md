@@ -45,12 +45,12 @@ cd operators/meshtastic-operator
 go build -o nephmeshctl ./cmd/nephmeshctl
 ```
 
-Use it, from a file or stdin, as JSON (default, for machines) or text (for people):
+Use it from a file or stdin. On a terminal the verdict is plain text. A pipe or a redirect gets JSON, which is what a script should parse. `-o json` or `-o text` forces either one. A single positional path is the same as `-f`.
 
 ```sh
-./nephmeshctl plan -f ../../examples/regional-intent.yaml            # JSON
-./nephmeshctl plan -f ../../examples/regional-intent.yaml -o text    # summary
-cat intent.yaml | ./nephmeshctl plan                                 # stdin
+./nephmeshctl plan -f ../../examples/regional-intent.yaml            # text in a terminal
+./nephmeshctl plan ../../examples/regional-intent.yaml -o json       # JSON
+cat intent.yaml | ./nephmeshctl plan                                 # JSON, because this is a pipe
 ```
 
 Exit code is 0 for any successful evaluation (the verdict, feasible or not, is in

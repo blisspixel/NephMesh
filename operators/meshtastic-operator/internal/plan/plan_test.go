@@ -18,6 +18,7 @@ package plan
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -167,14 +168,55 @@ func TestOutputTextRendersVerdict(t *testing.T) {
 	out, err := Run([]byte(fullIntentYAML))
 	require.NoError(t, err)
 	txt := out.Text()
-	assert.Contains(t, txt, "FEASIBLE")
-	assert.Contains(t, txt, "MEDIUM_SLOW")
+	assert.Contains(t, txt, "feasible: 1 node at MEDIUM_SLOW in US")
 	assert.Contains(t, txt, "within budget")
 	assert.Contains(t, txt, "relief-01")
+	assert.NotContains(t, txt, "Renderable")
+	assert.NotContains(t, txt, "WithinBudget")
+	assert.NotContains(t, txt, "node(s)")
 
 	infeasible, err := Run([]byte("spec:\n  region: US\n  approvedModemPresets: [NOPE]\n  nodes: [{name: n1, connection: {tcp: {host: 10.0.0.1}}}]\n"))
 	require.NoError(t, err)
-	assert.Contains(t, infeasible.Text(), "INFEASIBLE")
+	assert.Contains(t, infeasible.Text(), "infeasible:")
+	assert.NotContains(t, infeasible.Text(), "UnknownPreset")
+}
+
+func TestRunRejectsWrongKind(t *testing.T) {
+	_, err := Run([]byte("apiVersion: mesh.nephmesh.io/v1alpha1\nkind: MeshtasticNode\nmetadata:\n  name: field-01\nspec:\n  region: US\n"))
+	require.Error(t, err)
+	assert.EqualError(t, err, "expected kind CommunicationIntent, got MeshtasticNode")
+}
+
+func TestRunBlockScalarSeparatorIsOneDocument(t *testing.T) {
+	doc := strings.Replace(fullIntentYAML, "metadata:\n  name: regional-relief\n",
+		"metadata:\n  name: regional-relief\n  annotations:\n    note: |\n      ---\n", 1)
+	out, err := Run([]byte(doc))
+	require.NoError(t, err)
+	assert.True(t, out.Feasible)
+	assert.Equal(t, 1, out.NodeCount)
+}
+
+func TestRunFoldedAndQuotedSeparatorAreOneDocument(t *testing.T) {
+	folded := strings.Replace(fullIntentYAML, "metadata:\n  name: regional-relief\n",
+		"metadata:\n  name: regional-relief\n  annotations:\n    note: >\n      ---\n", 1)
+	out, err := Run([]byte(folded))
+	require.NoError(t, err)
+	assert.True(t, out.Feasible)
+
+	quoted := strings.Replace(fullIntentYAML, "metadata:\n  name: regional-relief\n",
+		"metadata:\n  name: regional-relief\n  annotations:\n    note: \"---\"\n", 1)
+	out, err = Run([]byte(quoted))
+	require.NoError(t, err)
+	assert.True(t, out.Feasible)
+}
+
+func TestRunRejectsSeparatorWithTrailingComment(t *testing.T) {
+	multi := "spec:\n  region: US\n  approvedModemPresets: [LONG_FAST]\n  nodes: [{name: n1, connection: {tcp: {host: 10.0.0.1}}}]\n" +
+		"--- # second intent\n" +
+		"spec:\n  region: EU\n  approvedModemPresets: [LONG_FAST]\n  nodes: [{name: n2, connection: {tcp: {host: 10.0.0.2}}}]\n"
+	_, err := Run([]byte(multi))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "multiple YAML documents")
 }
 
 func TestOutputMarshalsStableShape(t *testing.T) {

@@ -24,13 +24,17 @@ limitations under the License.
 package plan
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 
+	yamlv3 "gopkg.in/yaml.v3"
 	"sigs.k8s.io/yaml"
 
 	intentv1alpha1 "github.com/blisspixel/nephmesh/api/intent/v1alpha1"
+	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/airtime"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/intent"
 )
 
@@ -84,8 +88,13 @@ func ParseSpec(data []byte) (intentv1alpha1.CommunicationIntentSpec, error) {
 	}
 	// sigs.k8s.io/yaml decodes only the first document and silently drops the rest,
 	// so a file with several intents would get a partial verdict with no warning.
-	// Reject multi-document input explicitly; plan evaluates one intent at a time.
-	if hasSecondDocument(data) {
+	// Count documents with a real YAML parser: a "---" inside a block or quoted
+	// scalar is content, not a boundary. Plan evaluates one intent at a time.
+	n, err := yamlDocumentCount(data)
+	if err != nil {
+		return spec, fmt.Errorf("parse intent: %w", err)
+	}
+	if n > 1 {
 		return spec, errors.New("multiple YAML documents provided; plan evaluates one CommunicationIntent at a time")
 	}
 
@@ -95,6 +104,9 @@ func ParseSpec(data []byte) (intentv1alpha1.CommunicationIntentSpec, error) {
 	var probe map[string]any
 	if err := yaml.Unmarshal(data, &probe); err != nil {
 		return spec, fmt.Errorf("parse intent: %w", err)
+	}
+	if kind, _ := probe["kind"].(string); kind != "" && kind != "CommunicationIntent" {
+		return spec, fmt.Errorf("expected kind CommunicationIntent, got %s", kind)
 	}
 	if _, hasSpec := probe["spec"]; hasSpec {
 		var obj intentv1alpha1.CommunicationIntent
@@ -138,53 +150,65 @@ func FromResult(r intent.Result) Output {
 	}
 }
 
-// Text renders the verdict as a short human-readable summary for a terminal. The
-// machine contract is the JSON Output; this is for a person reading the CLI.
+// Text renders the verdict in plain words for a person. Reason codes stay on the
+// JSON Output; this view does not print them. Colour, if any, is applied by the
+// CLI to the verdict word only.
 func (o Output) Text() string {
 	var b strings.Builder
-	verdict := "INFEASIBLE"
+	ceiling := int(airtime.RecommendedChannelUtilizationPercent)
 	if o.Feasible {
-		verdict = "FEASIBLE"
-	}
-	fmt.Fprintf(&b, "%s (%s): %s\n", verdict, o.Reason, o.Message)
-	if o.Feasible {
-		fmt.Fprintf(&b, "  preset:  %s\n", o.SelectedPreset)
-		fmt.Fprintf(&b, "  nodes:   %d\n", o.NodeCount)
+		region := ""
+		if len(o.ProposedNodes) > 0 {
+			region = o.ProposedNodes[0].Spec.Region
+		}
+		fmt.Fprintf(&b, "feasible: %s at %s in %s\n", countNoun(o.NodeCount, "node"), o.SelectedPreset, region)
+	} else {
+		fmt.Fprintf(&b, "infeasible: %s\n", o.Message)
 	}
 	switch {
 	case !o.Airtime.Evaluated:
-		fmt.Fprintf(&b, "  airtime: not evaluated (%s)\n", o.Airtime.Reason)
+		fmt.Fprintf(&b, "airtime: not evaluated\n")
 	case o.Airtime.WithinBudget:
-		fmt.Fprintf(&b, "  airtime: within budget, floor ~%d%% (%s)\n", o.Airtime.PredictedUtilizationPercent, o.Airtime.Reason)
+		fmt.Fprintf(&b, "airtime: within budget, about %d%% of the %d%% budget\n", o.Airtime.PredictedUtilizationPercent, ceiling)
 	default:
-		fmt.Fprintf(&b, "  airtime: OVER BUDGET, floor ~%d%% (%s)\n", o.Airtime.PredictedUtilizationPercent, o.Airtime.Reason)
+		fmt.Fprintf(&b, "airtime: over budget, about %d%% of the %d%% budget\n", o.Airtime.PredictedUtilizationPercent, ceiling)
 	}
 	for _, n := range o.ProposedNodes {
-		fmt.Fprintf(&b, "  node %s -> region=%s preset=%s role=%s\n", n.Name, n.Spec.Region, n.Spec.ModemPreset, n.Spec.Role)
+		role := n.Spec.Role
+		if role == "" {
+			role = "-"
+		}
+		fmt.Fprintf(&b, "  %s  %s  %s  %s\n", n.Name, n.Spec.Region, n.Spec.ModemPreset, role)
 	}
 	return b.String()
 }
 
-// hasSecondDocument reports whether the input contains a YAML document separator
-// ("---" on its own line) that begins a second document, that is, one appearing
-// after real content. A leading separator before any content is the ordinary
-// single-document form and is not counted. A "---" inside a quoted or block
-// scalar is not on its own line, so it does not false-positive.
-func hasSecondDocument(data []byte) bool {
-	seenContent := false
-	for _, line := range strings.Split(string(data), "\n") {
-		trimmed := strings.TrimSpace(strings.TrimRight(line, "\r"))
-		if trimmed == "---" {
-			if seenContent {
-				return true
-			}
-			continue // a separator before any content just opens the first document
-		}
-		if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
-			seenContent = true
-		}
+func countNoun(n int, singular string) string {
+	if n == 1 {
+		return "1 " + singular
 	}
-	return false
+	return fmt.Sprintf("%d %ss", n, singular)
+}
+
+// yamlDocumentCount reports how many YAML documents the input contains.
+// Decoding (rather than scanning for a "---" line) keeps a separator inside a
+// block, folded, or quoted scalar from looking like a second document. A
+// leading "---" is the ordinary start of one document. A separator with a
+// trailing comment is a real boundary.
+func yamlDocumentCount(data []byte) (int, error) {
+	dec := yamlv3.NewDecoder(bytes.NewReader(data))
+	n := 0
+	for {
+		var node yamlv3.Node
+		err := dec.Decode(&node)
+		if errors.Is(err, io.EOF) {
+			return n, nil
+		}
+		if err != nil {
+			return 0, err
+		}
+		n++
+	}
 }
 
 // trimSpace reports the input with leading and trailing ASCII whitespace removed,

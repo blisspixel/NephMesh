@@ -50,46 +50,80 @@ type Event struct {
 }
 
 // ParseEvents reads the probe's output and returns its events. Each event is the
-// JSON object following an "EVENT " marker; every other line (the SUMMARY line,
-// stray logs) is ignored, and a single malformed event is skipped rather than
-// failing the whole reduction.
+// JSON object following an "EVENT " marker. The SUMMARY line is not an event
+// (see ParseProbe). A single malformed event is skipped rather than failing the
+// whole reduction.
 func ParseEvents(r io.Reader) ([]Event, error) {
-	const marker = "EVENT "
-	var out []Event
+	events, _, _, err := ParseProbe(r)
+	return events, err
+}
+
+// ParseProbe reads events and, when the probe wrote a SUMMARY with a receiver
+// list, that declared population. declared is nil and ok is false when the log
+// has no usable receiver list. A malformed SUMMARY is ignored, the same way a
+// malformed event is skipped.
+func ParseProbe(r io.Reader) (events []Event, declared []string, ok bool, err error) {
+	const eventMarker = "EVENT "
+	const summaryMarker = "SUMMARY "
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	for sc.Scan() {
 		line := sc.Text()
-		if !strings.HasPrefix(line, marker) {
-			continue
-		}
-		var e Event
-		if err := json.Unmarshal([]byte(line[len(marker):]), &e); err != nil {
-			continue
-		}
-		if e.Ev == "sent" || e.Ev == "recv" {
-			out = append(out, e)
+		switch {
+		case strings.HasPrefix(line, eventMarker):
+			var e Event
+			if jerr := json.Unmarshal([]byte(line[len(eventMarker):]), &e); jerr != nil {
+				continue
+			}
+			if e.Ev == "sent" || e.Ev == "recv" {
+				events = append(events, e)
+			}
+		case strings.HasPrefix(line, summaryMarker):
+			var sum struct {
+				Receivers []string `json:"receivers"`
+			}
+			if jerr := json.Unmarshal([]byte(line[len(summaryMarker):]), &sum); jerr != nil {
+				continue
+			}
+			if len(sum.Receivers) > 0 {
+				declared = append([]string(nil), sum.Receivers...)
+				ok = true
+			}
 		}
 	}
-	return out, sc.Err()
+	return events, declared, ok, sc.Err()
+}
+
+// ReceiverDelivery is one receiver's receipts against the messages originated in
+// a window. Sent is that originated count, so a configured receiver that never
+// delivers is 0/Sent instead of disappearing from the report.
+type ReceiverDelivery struct {
+	Node      string `json:"node"`
+	Delivered int    `json:"delivered"`
+	Sent      int    `json:"sent"`
 }
 
 // Window is the delivery outcome for the messages originated in one time span.
 type Window struct {
-	Sent          int     `json:"sent"`
-	Expected      int     `json:"expected"`
-	Delivered     int     `json:"delivered"`
-	DeliveryRatio float64 `json:"deliveryRatio"`
-	LatencyMsP50  float64 `json:"latencyMsP50"`
-	LatencyMsMax  float64 `json:"latencyMsMax"`
+	Sent          int                `json:"sent"`
+	Expected      int                `json:"expected"`
+	Delivered     int                `json:"delivered"`
+	DeliveryRatio float64            `json:"deliveryRatio"`
+	LatencyMsP50  float64            `json:"latencyMsP50"`
+	LatencyMsMax  float64            `json:"latencyMsMax"`
+	ByReceiver    []ReceiverDelivery `json:"byReceiver,omitempty"`
 }
 
 // Report compares delivery before and after a perturbation.
 type Report struct {
-	Receivers     []string `json:"receivers"`
-	PerturbationT float64  `json:"perturbationT"`
-	Before        Window   `json:"before"`
-	After         Window   `json:"after"`
+	Receivers []string `json:"receivers"`
+	// ReceiverScope is "declared" when the caller named the population, including
+	// receivers with zero receipts, and "observed" when it was inferred from
+	// receipt events. An observed scope cannot evaluate a node that stayed silent.
+	ReceiverScope string  `json:"receiverScope"`
+	PerturbationT float64 `json:"perturbationT"`
+	Before        Window  `json:"before"`
+	After         Window  `json:"after"`
 	// Tolerance is the largest before-minus-after delivery-ratio drop still
 	// treated as unchanged (measurement noise, not a real regression).
 	Tolerance float64 `json:"tolerance"`
@@ -108,27 +142,29 @@ type Report struct {
 // is credited at most once per message, so delivered never exceeds expected.
 func Reduce(events []Event, perturbationT, tolerance float64, receivers []string) Report {
 	sentT, recvBySeq, resolved := index(events, receivers)
+	beforeCount := zeroCounts(resolved)
+	afterCount := zeroCounts(resolved)
 
 	var beforeLat, afterLat []float64
 	var before, after Window
 	for seq, ts := range sentT {
-		w, lat := &before, &beforeLat
+		w, lat, counts := &before, &beforeLat, beforeCount
 		if ts >= perturbationT {
-			w, lat = &after, &afterLat
+			w, lat, counts = &after, &afterLat, afterCount
 		}
 		w.Sent++
 		w.Expected += len(resolved)
-		for _, tr := range recvBySeq[seq] {
-			w.Delivered++
-			*lat = append(*lat, (tr-ts)*1000)
-		}
+		creditReceivers(w, lat, counts, resolved, recvBySeq[seq], ts)
 	}
 	finalize(&before, beforeLat)
 	finalize(&after, afterLat)
+	before.ByReceiver = deliveries(before.Sent, resolved, beforeCount)
+	after.ByReceiver = deliveries(after.Sent, resolved, afterCount)
 
 	drop := before.DeliveryRatio - after.DeliveryRatio
 	return Report{
 		Receivers:     resolved,
+		ReceiverScope: scopeOf(receivers),
 		PerturbationT: perturbationT,
 		Before:        before,
 		After:         after,
@@ -216,10 +252,12 @@ type Phase struct {
 // timeline and a machine-checkable survival verdict measured against the first
 // (baseline) phase.
 type PhaseReport struct {
-	Receivers  []string  `json:"receivers"`
-	Boundaries []float64 `json:"boundaries"`
-	Phases     []Phase   `json:"phases"`
-	Tolerance  float64   `json:"tolerance"`
+	Receivers []string `json:"receivers"`
+	// ReceiverScope is "declared" or "observed". See Report.ReceiverScope.
+	ReceiverScope string    `json:"receiverScope"`
+	Boundaries    []float64 `json:"boundaries"`
+	Phases        []Phase   `json:"phases"`
+	Tolerance     float64   `json:"tolerance"`
 	// Valid is false when the inputs are ill-formed (labels count is not
 	// boundaries+1, boundaries are not ascending, or a phase has no originated
 	// traffic to judge); a pure report, never a panic.
@@ -237,7 +275,7 @@ type PhaseReport struct {
 // Valid=false rather than panicking. receivers nil is inferred from receipts.
 func ReducePhases(events []Event, boundaries []float64, labels []string,
 	tolerance float64, receivers []string) PhaseReport {
-	rep := PhaseReport{Boundaries: boundaries, Tolerance: tolerance}
+	rep := PhaseReport{Boundaries: boundaries, Tolerance: tolerance, ReceiverScope: scopeOf(receivers)}
 	if len(labels) != len(boundaries)+1 {
 		return rep
 	}
@@ -252,22 +290,24 @@ func ReducePhases(events []Event, boundaries []float64, labels []string,
 	n := len(labels)
 	windows := make([]Window, n)
 	lats := make([][]float64, n)
+	counts := make([]map[string]int, n)
+	for i := range counts {
+		counts[i] = zeroCounts(resolved)
+	}
 	for seq, ts := range sentT {
 		// Phase index = number of boundaries at or below ts (inclusive phase
 		// start): a message sent exactly at boundary Tk belongs to the later phase.
 		i := sort.Search(len(boundaries), func(k int) bool { return boundaries[k] > ts })
 		windows[i].Sent++
 		windows[i].Expected += len(resolved)
-		for _, tr := range recvBySeq[seq] {
-			windows[i].Delivered++
-			lats[i] = append(lats[i], (tr-ts)*1000)
-		}
+		creditReceivers(&windows[i], &lats[i], counts[i], resolved, recvBySeq[seq], ts)
 	}
 
 	rep.Valid = true
 	rep.Phases = make([]Phase, n)
 	for i := range windows {
 		finalize(&windows[i], lats[i])
+		windows[i].ByReceiver = deliveries(windows[i].Sent, resolved, counts[i])
 		var start, end *float64
 		if i > 0 {
 			start = &boundaries[i-1]
@@ -302,7 +342,7 @@ func ReducePhases(events []Event, boundaries []float64, labels []string,
 // Text renders the labeled delivery timeline and the survival verdict.
 func (r PhaseReport) Text() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "airtime-commons survival report (receivers: %s)\n", strings.Join(r.Receivers, ", "))
+	writeScope(&b, "airtime-commons survival report", r.ReceiverScope, r.Receivers)
 	if !r.Valid {
 		fmt.Fprintln(&b, "  invalid: phase labels/boundaries mismatch, or a phase had no traffic")
 		return b.String()
@@ -324,6 +364,14 @@ func (r PhaseReport) Text() string {
 		}
 		fmt.Fprintf(&b, "  %-9s delivery %5.1f%% (%d/%d), latency p50 %.0f ms%s\n",
 			p.Label, p.Window.DeliveryRatio*100, p.Window.Delivered, p.Window.Expected, p.Window.LatencyMsP50, note)
+		if line := formatDeliveries(p.Window.ByReceiver); line != "" {
+			fmt.Fprintf(&b, "    %s\n", line)
+		}
+	}
+	delivered, expected := overallCounts(phaseWindows(r.Phases))
+	fmt.Fprintf(&b, "  overall %d/%d\n", delivered, expected)
+	if line := formatDeliveries(sumDeliveries(r.Receivers, phaseWindows(r.Phases))); line != "" {
+		fmt.Fprintf(&b, "  receivers: %s\n", line)
 	}
 	var verdict string
 	switch {
@@ -337,6 +385,7 @@ func (r PhaseReport) Text() string {
 		verdict = "delivery held across all phases (no degradation to recover from)"
 	}
 	fmt.Fprintf(&b, "  verdict: %s\n", verdict)
+	fmt.Fprintln(&b, "  note: the verdict compares delivery with the baseline. It does not prove every receiver succeeded.")
 	return b.String()
 }
 
@@ -355,13 +404,21 @@ func finalize(w *Window, lat []float64) {
 // Text renders the report for a person.
 func (r Report) Text() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "control-plane-independence report (receivers: %s)\n", strings.Join(r.Receivers, ", "))
+	writeScope(&b, "control-plane-independence report", r.ReceiverScope, r.Receivers)
 	line := func(name string, w Window) {
 		fmt.Fprintf(&b, "  %-6s delivery %5.1f%% (%d/%d), latency p50 %.0f ms, max %.0f ms\n",
 			name, w.DeliveryRatio*100, w.Delivered, w.Expected, w.LatencyMsP50, w.LatencyMsMax)
+		if counts := formatDeliveries(w.ByReceiver); counts != "" {
+			fmt.Fprintf(&b, "    %s\n", counts)
+		}
 	}
 	line("before", r.Before)
 	line("after", r.After)
+	delivered, expected := overallCounts([]Window{r.Before, r.After})
+	fmt.Fprintf(&b, "  overall %d/%d\n", delivered, expected)
+	if counts := formatDeliveries(sumDeliveries(r.Receivers, []Window{r.Before, r.After})); counts != "" {
+		fmt.Fprintf(&b, "  receivers: %s\n", counts)
+	}
 	var verdict string
 	switch {
 	case r.HeldUp:
@@ -372,5 +429,99 @@ func (r Report) Text() string {
 		verdict = "delivery fell after the perturbation"
 	}
 	fmt.Fprintf(&b, "  verdict: %s\n", verdict)
+	fmt.Fprintln(&b, "  note: held up means delivery stayed near the baseline, not that every receiver succeeded.")
 	return b.String()
+}
+
+func writeScope(b *strings.Builder, title, scope string, receivers []string) {
+	names := joinNames(receivers)
+	if scope == "observed" {
+		fmt.Fprintf(b, "%s (observed receivers only: %s)\n", title, names)
+		fmt.Fprintln(b, "  never-observed nodes cannot be evaluated")
+		return
+	}
+	fmt.Fprintf(b, "%s (receivers: %s)\n", title, names)
+}
+
+func joinNames(names []string) string {
+	if len(names) == 0 {
+		return "none"
+	}
+	return strings.Join(names, ", ")
+}
+
+func scopeOf(receivers []string) string {
+	if len(receivers) == 0 {
+		return "observed"
+	}
+	return "declared"
+}
+
+func zeroCounts(receivers []string) map[string]int {
+	out := make(map[string]int, len(receivers))
+	for _, n := range receivers {
+		out[n] = 0
+	}
+	return out
+}
+
+// creditReceivers counts each in-scope receipt once. recvTimes is the earliest
+// receipt per node for this message; nodes absent from it did not deliver.
+func creditReceivers(w *Window, lat *[]float64, counts map[string]int, resolved []string, recvTimes map[string]float64, sentT float64) {
+	for _, name := range resolved {
+		tr, ok := recvTimes[name]
+		if !ok {
+			continue
+		}
+		w.Delivered++
+		*lat = append(*lat, (tr-sentT)*1000)
+		counts[name]++
+	}
+}
+
+func deliveries(sent int, resolved []string, counts map[string]int) []ReceiverDelivery {
+	out := make([]ReceiverDelivery, len(resolved))
+	for i, n := range resolved {
+		out[i] = ReceiverDelivery{Node: n, Delivered: counts[n], Sent: sent}
+	}
+	return out
+}
+
+func sumDeliveries(resolved []string, windows []Window) []ReceiverDelivery {
+	sent := 0
+	counts := map[string]int{}
+	for _, w := range windows {
+		sent += w.Sent
+		for _, d := range w.ByReceiver {
+			counts[d.Node] += d.Delivered
+		}
+	}
+	return deliveries(sent, resolved, counts)
+}
+
+func formatDeliveries(rows []ReceiverDelivery) string {
+	if len(rows) == 0 {
+		return ""
+	}
+	parts := make([]string, len(rows))
+	for i, d := range rows {
+		parts[i] = fmt.Sprintf("%s %d/%d", d.Node, d.Delivered, d.Sent)
+	}
+	return strings.Join(parts, ", ")
+}
+
+func overallCounts(windows []Window) (delivered, expected int) {
+	for _, w := range windows {
+		delivered += w.Delivered
+		expected += w.Expected
+	}
+	return delivered, expected
+}
+
+func phaseWindows(phases []Phase) []Window {
+	out := make([]Window, len(phases))
+	for i, p := range phases {
+		out[i] = p.Window
+	}
+	return out
 }

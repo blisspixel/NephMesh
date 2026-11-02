@@ -225,24 +225,6 @@ func Sense(r io.Reader, bands []Band, opts Options) ([]BandStats, error) {
 	return Analyze(bins, bands, opts), nil
 }
 
-// RenderText renders per-band stats as a short human-readable table. The machine
-// contract is the JSON form of []BandStats; this is for a person at a terminal.
-func RenderText(stats []BandStats) string {
-	var b strings.Builder
-	for _, s := range stats {
-		if s.BinCount == 0 {
-			fmt.Fprintf(&b, "%-12s %.3f-%.3f MHz: not covered by this sweep\n",
-				s.Band.Name, s.Band.LowHz/1e6, s.Band.HighHz/1e6)
-			continue
-		}
-		fmt.Fprintf(&b, "%-12s %.3f-%.3f MHz: occupancy %.1f%% (%d/%d bins), noise %.1f dB, peak %.1f dB @ %.3f MHz\n",
-			s.Band.Name, s.Band.LowHz/1e6, s.Band.HighHz/1e6,
-			s.OccupancyPercent, s.OccupiedBins, s.BinCount,
-			s.NoiseFloorDB, s.MaxDB, s.PeakFreqHz/1e6)
-	}
-	return b.String()
-}
-
 // percentile returns the p-th percentile (0..100) of the values using nearest
 // rank, guarding empty input and out-of-range p.
 func percentile(values []float64, p float64) float64 {
