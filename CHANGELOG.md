@@ -4,6 +4,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+### Security
+
+- Raise both modules' Go minimum, all Go CI jobs, and both Go image build stages from 1.27.2 to 1.27.3. This addresses GO-2026-6809 (`crypto/x509` distrusts compromised intermediate certificates). `golang.org/x/net` stays at v0.60.0. Kubernetes v0.34 and controller-runtime v0.22 stay on their tested lines.
+
 ### Changed
 
 - `nephmeshctl` prints text on a terminal and JSON when stdout is a pipe, for every subcommand. `-o json` or `-o text` forces either. A single positional path is the same as `-f`. Help fits 80 columns and lists plan, spectrum, advise, decode, resilience, and version. `version`, `-V`, and `--version` print the module version and a 12-character commit when the build recorded one.
