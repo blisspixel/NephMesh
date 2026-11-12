@@ -26,6 +26,8 @@ import (
 	"os"
 	"runtime/debug"
 	"strings"
+
+	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/buildinfo"
 )
 
 const (
@@ -110,20 +112,21 @@ func chooseFormat(explicit string, terminal bool) (string, error) {
 }
 
 func versionString() string {
-	info, ok := debug.ReadBuildInfo()
-	if !ok {
-		return "nephmeshctl unknown"
-	}
-	ver := info.Main.Version
-	if ver == "" {
-		ver = "unknown"
-	}
+	// go build records no module version, so ReadBuildInfo says "(devel)".
+	// The release constant is what a tag checkout reports. A module-aware
+	// install that stamped a real version keeps that stamp.
+	ver := buildinfo.Version
 	rev := ""
-	for _, s := range info.Settings {
-		if s.Key == "vcs.revision" && s.Value != "" {
-			rev = s.Value
-			if len(rev) > 12 {
-				rev = rev[:12]
+	if info, ok := debug.ReadBuildInfo(); ok {
+		if v := info.Main.Version; v != "" && v != "(devel)" {
+			ver = v
+		}
+		for _, s := range info.Settings {
+			if s.Key == "vcs.revision" && s.Value != "" {
+				rev = s.Value
+				if len(rev) > 12 {
+					rev = rev[:12]
+				}
 			}
 		}
 	}

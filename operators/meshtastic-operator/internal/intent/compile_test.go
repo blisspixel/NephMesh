@@ -59,7 +59,7 @@ func TestCompileRendersProposedNodes(t *testing.T) {
 func TestCompileInfeasibleEmptyApprovedSet(t *testing.T) {
 	r := Compile(intentv1alpha1.CommunicationIntentSpec{
 		Region: "US",
-		Nodes:  []intentv1alpha1.NodeTarget{{Name: "n1"}},
+		Nodes:  []intentv1alpha1.NodeTarget{{Name: "n1", Connection: tcp("10.0.0.1")}},
 	})
 	assert.False(t, r.Feasible, "no approved preset is infeasible, not an error")
 	assert.Equal(t, intentv1alpha1.ReasonNoApprovedSet, r.Reason)
@@ -70,7 +70,7 @@ func TestCompileInfeasibleUnknownPreset(t *testing.T) {
 	r := Compile(intentv1alpha1.CommunicationIntentSpec{
 		Region:               "US",
 		ApprovedModemPresets: []string{"NOT_A_PRESET", "ALSO_BAD"},
-		Nodes:                []intentv1alpha1.NodeTarget{{Name: "n1"}},
+		Nodes:                []intentv1alpha1.NodeTarget{{Name: "n1", Connection: tcp("10.0.0.1")}},
 	})
 	assert.False(t, r.Feasible, "an approved set with no known preset is infeasible")
 	assert.Equal(t, intentv1alpha1.ReasonUnknownPreset, r.Reason)
@@ -80,7 +80,7 @@ func TestCompileSelectsFirstKnownPreset(t *testing.T) {
 	r := Compile(intentv1alpha1.CommunicationIntentSpec{
 		Region:               "US",
 		ApprovedModemPresets: []string{"BOGUS", "LONG_FAST"},
-		Nodes:                []intentv1alpha1.NodeTarget{{Name: "n1"}},
+		Nodes:                []intentv1alpha1.NodeTarget{{Name: "n1", Connection: tcp("10.0.0.1")}},
 	})
 	require.True(t, r.Feasible)
 	assert.Equal(t, "LONG_FAST", r.SelectedPreset, "skips the unknown preset to find a known one")

@@ -181,8 +181,67 @@ func TestVersion(t *testing.T) {
 	var out, errBuf bytes.Buffer
 	code := run([]string{"--version"}, strings.NewReader(""), &out, &errBuf)
 	assert.Equal(t, exitOK, code)
-	assert.Contains(t, out.String(), "nephmeshctl ")
+	assert.Contains(t, out.String(), "nephmeshctl 0.2.4")
+	assert.NotContains(t, out.String(), "(devel)")
 	assert.Empty(t, errBuf.String())
+}
+
+func TestPlanRefusesCRDAndDeviceViolations(t *testing.T) {
+	base := "spec:\n  region: US\n  role: CLIENT\n  approvedModemPresets: [LONG_FAST]\n  nodes:\n    - name: a\n      connection: {tcp: {host: h}}\n      owner: {shortName: AB}\n"
+	cases := []struct {
+		name   string
+		doc    string
+		reason string
+	}{
+		{"region MARS", strings.Replace(base, "region: US", "region: MARS", 1), "InvalidRegion"},
+		{"role OVERLORD", strings.Replace(base, "role: CLIENT", "role: OVERLORD", 1), "InvalidRole"},
+		{"short name", strings.Replace(base, "shortName: AB", "shortName: TOOLONGNAME", 1), "ShortNameTooLong"},
+		{"channel 99", "spec:\n  region: US\n  approvedModemPresets: [LONG_FAST]\n  channels:\n    - {index: 99, name: x}\n  nodes:\n    - {name: a, connection: {tcp: {host: h}}}\n", "ChannelIndexOutOfRange"},
+		{"negative traffic", "spec:\n  region: US\n  approvedModemPresets: [LONG_FAST]\n  expectedTraffic: {messagesPerMinutePerNode: -5}\n  nodes:\n    - {name: a, connection: {tcp: {host: h}}}\n", "MessagesPerMinuteOutOfRange"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var out, errBuf bytes.Buffer
+			code := run([]string{"plan", "-o", "json"}, strings.NewReader(tc.doc), &out, &errBuf)
+			require.Equal(t, exitOK, code, errBuf.String())
+			var m map[string]any
+			require.NoError(t, json.Unmarshal(out.Bytes(), &m))
+			assert.Equal(t, false, m["feasible"])
+			assert.Equal(t, tc.reason, m["reason"])
+		})
+	}
+}
+
+func TestPlanWithinBudgetNullWhenNotEvaluated(t *testing.T) {
+	doc := "spec:\n  region: US\n  approvedModemPresets: [LONG_FAST]\n  nodes:\n    - {name: a, connection: {tcp: {host: h}}}\n"
+	var out, errBuf bytes.Buffer
+	code := run([]string{"plan", "-o", "json"}, strings.NewReader(doc), &out, &errBuf)
+	require.Equal(t, exitOK, code, errBuf.String())
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(out.Bytes(), &m))
+	assert.Equal(t, true, m["feasible"])
+	air := m["airtime"].(map[string]any)
+	assert.Equal(t, false, air["evaluated"])
+	assert.Nil(t, air["withinBudget"])
+	assert.Equal(t, "NoExpectedTraffic", air["reason"])
+
+	var text bytes.Buffer
+	code = run([]string{"plan", "-o", "text"}, strings.NewReader(doc), &text, &errBuf)
+	require.Equal(t, exitOK, code)
+	assert.Contains(t, text.String(), "airtime: not evaluated")
+	assert.NotContains(t, text.String(), "over budget")
+}
+
+func TestPlanWarnsOnUnknownField(t *testing.T) {
+	doc := "spec:\n  region: US\n  frobnicate: 1\n  approvedModemPresets: [LONG_FAST]\n  nodes:\n    - {name: a, connection: {tcp: {host: h}}}\n"
+	var out, errBuf bytes.Buffer
+	code := run([]string{"plan", "-o", "json"}, strings.NewReader(doc), &out, &errBuf)
+	require.Equal(t, exitOK, code, errBuf.String())
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(out.Bytes(), &m))
+	assert.Equal(t, true, m["feasible"])
+	warns := m["warnings"].([]any)
+	assert.Contains(t, warns, "unknown field spec.frobnicate")
 }
 
 func TestPlanPositionalFile(t *testing.T) {
@@ -266,6 +325,10 @@ func TestAllowColorHonorsEnv(t *testing.T) {
 	t.Setenv("TERM", "dumb")
 	assert.False(t, allowColor(true))
 	assert.False(t, unicodeOK())
+	// unicodeOK reads LC_ALL, then LC_CTYPE, then LANG. Clear the first two so
+	// the LANG cases below are what the assertion measures.
+	t.Setenv("LC_ALL", "")
+	t.Setenv("LC_CTYPE", "")
 	t.Setenv("TERM", "xterm")
 	t.Setenv("LANG", "C")
 	assert.False(t, unicodeOK())

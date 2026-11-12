@@ -112,6 +112,53 @@ func TestToolsCallPlanIntentString(t *testing.T) {
 	assert.Equal(t, "MEDIUM_SLOW", out["selectedPreset"])
 }
 
+func TestToolsCallPlanIntentRefusesDeviceAndCRDViolations(t *testing.T) {
+	s := New("nephmesh-mcp", "test")
+	// The issue repro: several refusals in one bare spec. The first field
+	// order violation is the region.
+	combined := `{"name":"plan_intent","arguments":{"intent":{"region":"MARS","role":"OVERLORD","channels":[{"index":99,"name":"x"}],"nodes":[{"name":"a","connection":{"tcp":{"host":"h"}},"owner":{"shortName":"TOOLONG"}}],"approvedModemPresets":["LONG_FAST"]}}}`
+	m, _ := handle(t, s, `{"jsonrpc":"2.0","id":20,"method":"tools/call","params":`+combined+`}`)
+	res := m["result"].(map[string]any)
+	assert.Equal(t, false, res["isError"], "infeasible is a verdict, not a tool error")
+	out := planResult(t, res)
+	assert.Equal(t, false, out["feasible"])
+	assert.Equal(t, "InvalidRegion", out["reason"])
+
+	shortName := `{"name":"plan_intent","arguments":{"intent":{"region":"US","approvedModemPresets":["LONG_FAST"],"nodes":[{"name":"a","connection":{"tcp":{"host":"h"}},"owner":{"shortName":"TOOLONG"}}]}}}`
+	m, _ = handle(t, s, `{"jsonrpc":"2.0","id":21,"method":"tools/call","params":`+shortName+`}`)
+	out = planResult(t, m["result"].(map[string]any))
+	assert.Equal(t, false, out["feasible"])
+	assert.Equal(t, "ShortNameTooLong", out["reason"])
+
+	channel := `{"name":"plan_intent","arguments":{"intent":{"region":"US","approvedModemPresets":["LONG_FAST"],"channels":[{"index":99,"name":"x"}],"nodes":[{"name":"a","connection":{"tcp":{"host":"h"}}}]}}}`
+	m, _ = handle(t, s, `{"jsonrpc":"2.0","id":22,"method":"tools/call","params":`+channel+`}`)
+	out = planResult(t, m["result"].(map[string]any))
+	assert.Equal(t, false, out["feasible"])
+	assert.Equal(t, "ChannelIndexOutOfRange", out["reason"])
+}
+
+func TestToolsCallPlanIntentWithinBudgetNullWhenNotEvaluated(t *testing.T) {
+	s := New("nephmesh-mcp", "test")
+	params := `{"name":"plan_intent","arguments":{"intent":{"region":"US","approvedModemPresets":["LONG_FAST"],"nodes":[{"name":"a","connection":{"tcp":{"host":"h"}}}]}}}`
+	m, _ := handle(t, s, `{"jsonrpc":"2.0","id":23,"method":"tools/call","params":`+params+`}`)
+	res := m["result"].(map[string]any)
+	assert.Equal(t, false, res["isError"])
+	out := planResult(t, res)
+	assert.Equal(t, true, out["feasible"])
+	air := out["airtime"].(map[string]any)
+	assert.Equal(t, false, air["evaluated"])
+	assert.Nil(t, air["withinBudget"])
+	assert.Equal(t, "NoExpectedTraffic", air["reason"])
+}
+
+func planResult(t *testing.T, res map[string]any) map[string]any {
+	t.Helper()
+	text := res["content"].([]any)[0].(map[string]any)["text"].(string)
+	var out map[string]any
+	require.NoError(t, json.Unmarshal([]byte(text), &out))
+	return out
+}
+
 func TestToolsCallPlanIntentInlineObject(t *testing.T) {
 	s := New("nephmesh-mcp", "test")
 	// The intent is an inlined JSON object, not a string.

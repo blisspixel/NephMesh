@@ -18,7 +18,7 @@
 # Build context is the repo root so the sibling api module resolves through the
 # go.mod replace directive.
 
-FROM golang:1.27.3-alpine AS build
+FROM golang:1.27.4-alpine AS build
 WORKDIR /src
 COPY api/ api/
 COPY operators/meshtastic-operator/ operators/meshtastic-operator/

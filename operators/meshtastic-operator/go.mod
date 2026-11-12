@@ -1,6 +1,6 @@
 module github.com/blisspixel/nephmesh/operators/meshtastic-operator
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/blisspixel/nephmesh/api v0.0.0-00010101000000-000000000000

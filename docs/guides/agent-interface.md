@@ -28,13 +28,22 @@ see `examples/regional-intent.yaml`). Output is a stable JSON object:
 | `reason`, `message` | A stable token and a human explanation of the verdict. |
 | `selectedPreset` | The modem preset chosen from the approved set (first known). |
 | `nodeCount` | How many nodes the intent renders to. |
-| `airtime` | Fleet airtime verdict: `evaluated`, `withinBudget`, `predictedUtilizationPercent`, and a `reason`/`message`. Evaluated only when the intent declares `expectedTraffic`. |
+| `airtime` | Fleet airtime verdict: `evaluated`, `withinBudget` (null when not evaluated), `predictedUtilizationPercent`, and a `reason`/`message`. Evaluated only when the intent declares `expectedTraffic`. |
 | `proposedNodes` | The rendered per-device `MeshtasticNode` specs. Report-only: what the operator would create, not created. |
+| `warnings` | Unknown fields the apiserver would prune. Absent when there are none. |
 
 `feasible` and `airtime.withinBudget` are distinct verdicts: an intent can be
 renderable but over the airtime budget. The airtime number is a conservative
 floor (mesh rebroadcast ignored), so `withinBudget: false` is authoritative while
-`true` is advisory.
+`true` is advisory. When airtime was not evaluated, `withinBudget` is null.
+Read `evaluated` first: null means the fleet was not checked, not that it is
+over budget.
+
+`feasible: false` also covers an intent the CRD would reject at admission, or
+a region or role no Meshtastic device accepts. The `reason` names the first
+violation (for example `InvalidRegion`, `ShortNameTooLong`,
+`ChannelIndexOutOfRange`). Fields the schema does not define are listed in
+`warnings` and do not, by themselves, make the plan infeasible.
 
 ## nephmeshctl plan
 

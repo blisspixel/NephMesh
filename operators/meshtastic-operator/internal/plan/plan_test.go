@@ -60,7 +60,8 @@ func TestRunFullObjectYAML(t *testing.T) {
 	assert.Equal(t, "relief-01", out.ProposedNodes[0].Name)
 	assert.Equal(t, "MEDIUM_SLOW", out.ProposedNodes[0].Spec.ModemPreset)
 	assert.True(t, out.Airtime.Evaluated)
-	assert.True(t, out.Airtime.WithinBudget)
+	require.NotNil(t, out.Airtime.WithinBudget)
+	assert.True(t, *out.Airtime.WithinBudget)
 }
 
 func TestRunBareSpec(t *testing.T) {
@@ -79,6 +80,17 @@ nodes:
 	assert.True(t, out.Feasible)
 	assert.Equal(t, "SHORT_FAST", out.SelectedPreset)
 	assert.False(t, out.Airtime.Evaluated, "no expectedTraffic means airtime is not evaluated")
+	assert.Nil(t, out.Airtime.WithinBudget, "an unevaluated budget is null, not false")
+	raw, err := json.Marshal(out)
+	require.NoError(t, err)
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(raw, &m))
+	air := m["airtime"].(map[string]any)
+	assert.Equal(t, false, air["evaluated"])
+	assert.Nil(t, air["withinBudget"])
+	assert.Equal(t, intentv1alpha1.ReasonAirtimeNotEvaluated, air["reason"])
+	assert.NotContains(t, out.Text(), "over budget")
+	assert.Contains(t, out.Text(), "not evaluated")
 }
 
 func TestRunJSONInput(t *testing.T) {
@@ -122,8 +134,12 @@ spec:
 	require.NoError(t, err)
 	assert.True(t, out.Feasible, "renderable")
 	assert.True(t, out.Airtime.Evaluated)
-	assert.False(t, out.Airtime.WithinBudget, "over budget by the floor")
+	require.NotNil(t, out.Airtime.WithinBudget)
+	assert.False(t, *out.Airtime.WithinBudget, "over budget by the floor")
 	assert.Positive(t, out.Airtime.PredictedUtilizationPercent)
+	raw, err := json.Marshal(out.Airtime)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), `"withinBudget":false`)
 }
 
 func TestRunRejectsMultipleDocuments(t *testing.T) {
@@ -145,13 +161,22 @@ func TestRunLeadingSeparatorIsSingleDocument(t *testing.T) {
 	assert.True(t, out.Feasible)
 }
 
-func TestRunZeroTrafficReportsNotEvaluated(t *testing.T) {
-	// expectedTraffic present but with a non-positive rate (reachable offline where
-	// CRD admission does not apply) must read as not-evaluated, not "within budget".
-	out, err := Run([]byte("spec:\n  region: US\n  approvedModemPresets: [MEDIUM_SLOW]\n  expectedTraffic: {messagesPerMinutePerNode: 0}\n  nodes: [{name: n1, connection: {tcp: {host: 10.0.0.1}}}]\n"))
-	require.NoError(t, err)
-	assert.True(t, out.Feasible)
-	assert.False(t, out.Airtime.Evaluated, "zero traffic is not a meaningful declaration")
+func TestRunNonPositiveTrafficIsInfeasible(t *testing.T) {
+	// The CRD minimum is 1. Zero and negative rates are refusals, and the
+	// unevaluated airtime verdict must not read as over budget.
+	for _, rate := range []string{"0", "-5"} {
+		t.Run(rate, func(t *testing.T) {
+			doc := "spec:\n  region: US\n  approvedModemPresets: [MEDIUM_SLOW]\n  expectedTraffic: {messagesPerMinutePerNode: " + rate + "}\n  nodes: [{name: n1, connection: {tcp: {host: 10.0.0.1}}}]\n"
+			out, err := Run([]byte(doc))
+			require.NoError(t, err)
+			assert.False(t, out.Feasible)
+			assert.Equal(t, intentv1alpha1.ReasonMessagesPerMinuteOutOfRange, out.Reason)
+			assert.False(t, out.Airtime.Evaluated)
+			assert.Nil(t, out.Airtime.WithinBudget)
+			assert.NotContains(t, out.Text(), "over budget")
+			assert.Contains(t, out.Text(), "not evaluated")
+		})
+	}
 }
 
 func TestRunEmptyInput(t *testing.T) {
@@ -217,6 +242,41 @@ func TestRunRejectsSeparatorWithTrailingComment(t *testing.T) {
 	_, err := Run([]byte(multi))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "multiple YAML documents")
+}
+
+func TestRunRefusesIssueRepros(t *testing.T) {
+	base := "spec:\n  region: US\n  role: CLIENT\n  approvedModemPresets: [MEDIUM_SLOW]\n  nodes:\n    - name: a\n      connection: {tcp: {host: h}}\n      owner: {shortName: AB}\n"
+	cases := []struct {
+		name   string
+		doc    string
+		reason string
+	}{
+		{"region MARS", strings.Replace(base, "region: US", "region: MARS", 1), intentv1alpha1.ReasonInvalidRegion},
+		{"role OVERLORD", strings.Replace(base, "role: CLIENT", "role: OVERLORD", 1), intentv1alpha1.ReasonInvalidRole},
+		{"short name", strings.Replace(base, "shortName: AB", "shortName: TOOLONGNAME", 1), intentv1alpha1.ReasonShortNameTooLong},
+		{"channel 99", strings.Replace(base, "approvedModemPresets: [MEDIUM_SLOW]\n", "approvedModemPresets: [MEDIUM_SLOW]\n  channels:\n    - {index: 99, name: x}\n", 1), intentv1alpha1.ReasonChannelIndexOutOfRange},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := Run([]byte(tc.doc))
+			require.NoError(t, err)
+			assert.False(t, out.Feasible)
+			assert.Equal(t, tc.reason, out.Reason)
+			assert.Contains(t, out.Text(), "infeasible:")
+			assert.NotContains(t, out.Text(), tc.reason)
+		})
+	}
+}
+
+func TestRunWarnsOnUnknownField(t *testing.T) {
+	doc := "apiVersion: intent.nephmesh.io/v1alpha1\nkind: CommunicationIntent\nmetadata:\n  name: regional\n  annotations:\n    note: kept\nspec:\n  region: US\n  frobnicate: 1\n  approvedModemPresets: [LONG_FAST]\n  nodes:\n    - name: n1\n      connection:\n        tcp:\n          host: 10.0.0.1\n          bogus: 1\n"
+	out, err := Run([]byte(doc))
+	require.NoError(t, err)
+	assert.True(t, out.Feasible, "an unknown field is pruned, not a refusal")
+	assert.Contains(t, out.Warnings, "unknown field spec.frobnicate")
+	assert.Contains(t, out.Warnings, "unknown field spec.nodes[0].connection.tcp.bogus")
+	assert.Contains(t, out.Text(), "warning: unknown field spec.frobnicate")
+	assert.NotContains(t, out.Text(), "annotations")
 }
 
 func TestOutputMarshalsStableShape(t *testing.T) {
