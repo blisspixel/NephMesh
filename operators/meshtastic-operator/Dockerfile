@@ -26,7 +26,7 @@ WORKDIR /src/operators/meshtastic-operator
 RUN CGO_ENABLED=0 go build -o /out/meshtastic-operator ./cmd
 
 # meshtastic 2.7.11 requires Python <3.15, so 3.14 is the newest release this image can use.
-FROM python:3.14-slim
+FROM python:3.15-slim
 ARG MESHTASTIC_VERSION=2.7.11
 RUN useradd --create-home --uid 65532 app
 USER 65532
