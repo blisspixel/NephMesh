@@ -21,7 +21,7 @@ against a simulated radio running real Meshtastic firmware, no RF and no board.
 ## Prerequisites
 
 - `docker`
-- `go` (1.27.3 or newer)
+- `go` (1.27.4 or newer)
 - the Meshtastic CLI and library: `pip install "meshtastic[cli]"`
 
 If your CLI and python are not `meshtastic` and `python` on your PATH, set
