@@ -25,8 +25,8 @@ Or call the `plan_intent` tool on `nephmesh-mcp` (stdio). Input is the intent as
 
 ## How to read the result
 
-- `feasible` is renderability, not "this will work on the air."
-- `airtime.withinBudget` is a separate verdict. `false` is authoritative (the floor already oversubscribes). `true` is advisory.
+- `feasible` is renderability, not "this will work on the air." `false` with a `reason` means the CRD or a device would refuse the intent. `warnings` name unknown fields.
+- `airtime.withinBudget` is a separate verdict. It is null when airtime was not evaluated. Read `evaluated` first. `false` is authoritative (the floor already oversubscribes). `true` is advisory.
 - `proposedNodes` are what the operator would create. They are not created.
 
 Do not `kubectl apply` those specs unless the user explicitly asked to actuate, and even then the operator's RBAC is the report-only gate. Autonomous writes stay behind ADR 0002.

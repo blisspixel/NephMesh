@@ -4,6 +4,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-11-12
+
+### Fixed
+
+- `nephmeshctl plan` and MCP `plan_intent` report `feasible: false` with a specific reason when the intent would be refused by CommunicationIntent admission or by a Meshtastic device. That includes an unknown region (`InvalidRegion`, for example MARS), an unknown role (`InvalidRole`), a shortName longer than 4 characters (`ShortNameTooLong`), a channel index outside 0..7 (`ChannelIndexOutOfRange`), and the other schema bounds (lengths, list sizes, connection shape, traffic range). The first violation is the reason. Unknown fields are listed in `warnings` and do not by themselves flip `feasible`: the apiserver prunes them.
+- When fleet airtime is not evaluated, JSON `airtime.withinBudget` is null. It is no longer false. `false` remains the authoritative over-budget verdict, and `true` remains advisory. Read `evaluated` first. Clients that treated `withinBudget: false` as over budget even when `evaluated` was false should treat null as not evaluated. Text output was already `airtime: not evaluated`.
+
+### Changed
+
+- `nephmeshctl version` and the MCP `serverInfo.version` report `0.2.4` for a source build (`go build`). They no longer report `(devel)` or `dev`.
+
 ## [0.2.3] - 2026-11-02
 
 ### Security

@@ -29,14 +29,12 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/buildinfo"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/mcpserver"
 )
 
-// version is the advertised server version; overridden at release via -ldflags.
-var version = "dev"
-
 func main() {
-	s := mcpserver.New("nephmesh-mcp", version)
+	s := mcpserver.New("nephmesh-mcp", buildinfo.Version)
 	if err := s.Serve(os.Stdin, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "nephmesh-mcp: %v\n", err)
 		os.Exit(1)

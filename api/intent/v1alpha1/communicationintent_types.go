@@ -168,6 +168,30 @@ const (
 	ReasonUnknownPreset = "UnknownModemPreset"
 	ReasonNoTargetNodes = "NoTargetNodes"
 	ReasonDuplicateNode = "DuplicateNodeName"
+
+	// Structural and device refusals. The CRD enforces bounds and patterns at
+	// admission; region and role stay open strings there so a firmware addition
+	// does not require a CRD release. The offline compiler applies both, because
+	// plan has no apiserver and a device will not run an unknown region or role.
+	ReasonInvalidRegion               = "InvalidRegion"
+	ReasonInvalidRole                 = "InvalidRole"
+	ReasonTooManyPresets              = "TooManyModemPresets"
+	ReasonTooManyChannels             = "TooManyChannels"
+	ReasonChannelIndexOutOfRange      = "ChannelIndexOutOfRange"
+	ReasonDuplicateChannel            = "DuplicateChannelIndex"
+	ReasonChannelNameTooLong          = "ChannelNameTooLong"
+	ReasonPSKSecretKeyRequired        = "PSKSecretKeyRequired"
+	ReasonMessagesPerMinuteOutOfRange = "MessagesPerMinuteOutOfRange"
+	ReasonPayloadBytesOutOfRange      = "PayloadBytesOutOfRange"
+	ReasonTooManyNodes                = "TooManyNodes"
+	ReasonNodeNameInvalid             = "NodeNameInvalid"
+	ReasonConnectionInvalid           = "ConnectionInvalid"
+	ReasonHostInvalid                 = "HostInvalid"
+	ReasonPortOutOfRange              = "PortOutOfRange"
+	ReasonSerialDeviceInvalid         = "SerialDeviceInvalid"
+	ReasonGatewayDestInvalid          = "GatewayDestInvalid"
+	ReasonShortNameTooLong            = "ShortNameTooLong"
+	ReasonLongNameTooLong             = "LongNameTooLong"
 )
 
 // Airtime-budget condition and reasons. This is the fleet-wide airtime check the

@@ -58,15 +58,22 @@ type Output struct {
 	// ProposedNodes is the rendered MeshtasticNode specs. Report-only: these are
 	// what the operator would create, not created.
 	ProposedNodes []intentv1alpha1.ProposedNode `json:"proposedNodes,omitempty"`
+	// Warnings names fields the CRD schema does not define. The apiserver prunes
+	// them; they do not by themselves make the plan infeasible.
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // AirtimeOutput is the fleet airtime verdict. When Evaluated is false the intent
-// declared no expectedTraffic. When true, PredictedUtilizationPercent is a
-// conservative floor (mesh rebroadcast ignored), so WithinBudget=false is
-// authoritative and WithinBudget=true is advisory.
+// declared no expectedTraffic (or the estimate could not be made) and
+// WithinBudget is nil, which JSON encodes as null. When Evaluated is true,
+// PredictedUtilizationPercent is a conservative floor (mesh rebroadcast ignored),
+// so WithinBudget false is authoritative and true is advisory. A client must
+// read Evaluated first: null is not an over-budget verdict.
 type AirtimeOutput struct {
-	Evaluated                   bool   `json:"evaluated"`
-	WithinBudget                bool   `json:"withinBudget"`
+	Evaluated bool `json:"evaluated"`
+	// WithinBudget is nil when airtime was not evaluated. The field is always
+	// present in JSON so a client cannot mistake an absent bool for false.
+	WithinBudget                *bool  `json:"withinBudget"`
 	PredictedUtilizationPercent int    `json:"predictedUtilizationPercent"`
 	Reason                      string `json:"reason,omitempty"`
 	Message                     string `json:"message,omitempty"`
@@ -76,15 +83,16 @@ type AirtimeOutput struct {
 var ErrEmptyInput = errors.New("no intent provided")
 
 // ParseSpec reads a CommunicationIntent from YAML or JSON bytes and returns its
-// spec. It accepts either a full CommunicationIntent object (the same document an
-// operator would apply, with a spec field) or a bare spec, so an agent can pass
-// whichever it has. Structural CRD validation (field patterns, list bounds) is
-// enforced by the apiserver at admission; this offline path runs the semantic
-// compiler, which is what determines feasibility.
-func ParseSpec(data []byte) (intentv1alpha1.CommunicationIntentSpec, error) {
+// spec plus unknown-field warnings. It accepts either a full CommunicationIntent
+// object (the same document an operator would apply, with a spec field) or a bare
+// spec, so an agent can pass whichever it has. Unknown fields are warnings: a
+// structural schema prunes them at admission rather than rejecting the object.
+// Bounds, patterns, and the known Meshtastic region and role sets are enforced
+// by intent.Compile, which is what makes an intent infeasible.
+func ParseSpec(data []byte) (intentv1alpha1.CommunicationIntentSpec, []string, error) {
 	var spec intentv1alpha1.CommunicationIntentSpec
 	if len(trimSpace(data)) == 0 {
-		return spec, ErrEmptyInput
+		return spec, nil, ErrEmptyInput
 	}
 	// sigs.k8s.io/yaml decodes only the first document and silently drops the rest,
 	// so a file with several intents would get a partial verdict with no warning.
@@ -92,10 +100,10 @@ func ParseSpec(data []byte) (intentv1alpha1.CommunicationIntentSpec, error) {
 	// scalar is content, not a boundary. Plan evaluates one intent at a time.
 	n, err := yamlDocumentCount(data)
 	if err != nil {
-		return spec, fmt.Errorf("parse intent: %w", err)
+		return spec, nil, fmt.Errorf("parse intent: %w", err)
 	}
 	if n > 1 {
-		return spec, errors.New("multiple YAML documents provided; plan evaluates one CommunicationIntent at a time")
+		return spec, nil, errors.New("multiple YAML documents provided; plan evaluates one CommunicationIntent at a time")
 	}
 
 	// Detect a full object (has a top-level spec) versus a bare spec by probing
@@ -103,32 +111,34 @@ func ParseSpec(data []byte) (intentv1alpha1.CommunicationIntentSpec, error) {
 	// works through the same path.
 	var probe map[string]any
 	if err := yaml.Unmarshal(data, &probe); err != nil {
-		return spec, fmt.Errorf("parse intent: %w", err)
+		return spec, nil, fmt.Errorf("parse intent: %w", err)
 	}
 	if kind, _ := probe["kind"].(string); kind != "" && kind != "CommunicationIntent" {
-		return spec, fmt.Errorf("expected kind CommunicationIntent, got %s", kind)
+		return spec, nil, fmt.Errorf("expected kind CommunicationIntent, got %s", kind)
 	}
 	if _, hasSpec := probe["spec"]; hasSpec {
 		var obj intentv1alpha1.CommunicationIntent
 		if err := yaml.Unmarshal(data, &obj); err != nil {
-			return spec, fmt.Errorf("parse CommunicationIntent: %w", err)
+			return spec, nil, fmt.Errorf("parse CommunicationIntent: %w", err)
 		}
-		return obj.Spec, nil
+		return obj.Spec, unknownFields(probe), nil
 	}
 	if err := yaml.Unmarshal(data, &spec); err != nil {
-		return spec, fmt.Errorf("parse CommunicationIntent spec: %w", err)
+		return spec, nil, fmt.Errorf("parse CommunicationIntent spec: %w", err)
 	}
-	return spec, nil
+	return spec, unknownFields(probe), nil
 }
 
 // Run parses an intent and compiles it into the stable Output. It is the whole
 // offline dry-run: parse, then the pure report-only compiler.
 func Run(data []byte) (Output, error) {
-	spec, err := ParseSpec(data)
+	spec, warnings, err := ParseSpec(data)
 	if err != nil {
 		return Output{}, err
 	}
-	return FromResult(intent.Compile(spec)), nil
+	out := FromResult(intent.Compile(spec))
+	out.Warnings = warnings
+	return out, nil
 }
 
 // FromResult projects the internal compiler Result onto the stable wire Output.
@@ -141,7 +151,7 @@ func FromResult(r intent.Result) Output {
 		NodeCount:      len(r.Proposed),
 		Airtime: AirtimeOutput{
 			Evaluated:                   r.Airtime.Evaluated,
-			WithinBudget:                r.Airtime.WithinBudget,
+			WithinBudget:                withinBudgetPointer(r.Airtime.Evaluated, r.Airtime.WithinBudget),
 			PredictedUtilizationPercent: r.Airtime.PredictedUtilizationPercent,
 			Reason:                      r.Airtime.Reason,
 			Message:                     r.Airtime.Message,
@@ -168,7 +178,7 @@ func (o Output) Text() string {
 	switch {
 	case !o.Airtime.Evaluated:
 		fmt.Fprintf(&b, "airtime: not evaluated\n")
-	case o.Airtime.WithinBudget:
+	case o.Airtime.withinBudget():
 		fmt.Fprintf(&b, "airtime: within budget, about %d%% of the %d%% budget\n", o.Airtime.PredictedUtilizationPercent, ceiling)
 	default:
 		fmt.Fprintf(&b, "airtime: over budget, about %d%% of the %d%% budget\n", o.Airtime.PredictedUtilizationPercent, ceiling)
@@ -180,7 +190,24 @@ func (o Output) Text() string {
 		}
 		fmt.Fprintf(&b, "  %s  %s  %s  %s\n", n.Name, n.Spec.Region, n.Spec.ModemPreset, role)
 	}
+	for _, w := range o.Warnings {
+		fmt.Fprintf(&b, "warning: %s\n", w)
+	}
 	return b.String()
+}
+
+// withinBudgetPointer is nil when airtime was not evaluated, so JSON emits
+// null instead of a false over-budget verdict.
+func withinBudgetPointer(evaluated, within bool) *bool {
+	if !evaluated {
+		return nil
+	}
+	v := within
+	return &v
+}
+
+func (a AirtimeOutput) withinBudget() bool {
+	return a.WithinBudget != nil && *a.WithinBudget
 }
 
 func countNoun(n int, singular string) string {

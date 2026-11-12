@@ -156,7 +156,10 @@ func TestCommunicationIntentReportsInfeasible(t *testing.T) {
 		Spec: intentv1alpha1.CommunicationIntentSpec{
 			Region:               "US",
 			ApprovedModemPresets: []string{"NOT_A_PRESET"},
-			Nodes:                []intentv1alpha1.NodeTarget{{Name: "n1"}},
+			Nodes: []intentv1alpha1.NodeTarget{{
+				Name:       "n1",
+				Connection: meshv1alpha1.ConnectionSpec{TCP: &meshv1alpha1.TCPConnection{Host: "10.0.0.1"}},
+			}},
 		},
 	}
 	c := fake.NewClientBuilder().

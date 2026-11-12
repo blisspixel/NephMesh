@@ -61,32 +61,16 @@ type AirtimeResult struct {
 
 // Compile lowers a CommunicationIntent to proposed MeshtasticNode specs, or
 // reports why it cannot. It is pure and side-effect-free. Following the doctrine's
-// lexicographic order, it first rejects an intent that cannot be satisfied (no
+// lexicographic order, it first rejects an intent that cannot be satisfied: a
+// field the CRD would refuse, a region or role no Meshtastic device accepts, no
 // target nodes, no approved preset, or an approved set with no preset the airtime
-// model recognizes), then renders. The selected preset is the first approved one
+// model recognizes. It then renders. The selected preset is the first approved one
 // that is a known Meshtastic modem preset, so the strategic layer owns the
 // approved SET and the compiler owns the selection. Infeasibility is a reported
-// verdict, not an error.
+// verdict, not an error. The first violation is the reason.
 func Compile(spec intentv1alpha1.CommunicationIntentSpec) Result {
-	if len(spec.Nodes) == 0 {
-		return Result{Reason: intentv1alpha1.ReasonNoTargetNodes, Message: "no target nodes to render"}
-	}
-	// The CRD enforces unique node names via a list-map key, but this pure path
-	// also runs offline via the CLI where that admission check has not applied.
-	// Reject duplicates here so two targets never render to one colliding
-	// MeshtasticNode and never inflate the node count and the airtime floor.
-	seen := make(map[string]struct{}, len(spec.Nodes))
-	for _, n := range spec.Nodes {
-		if _, dup := seen[n.Name]; dup {
-			return Result{
-				Reason:  intentv1alpha1.ReasonDuplicateNode,
-				Message: fmt.Sprintf("duplicate node name %q: two targets cannot render to the same MeshtasticNode", n.Name),
-			}
-		}
-		seen[n.Name] = struct{}{}
-	}
-	if len(spec.ApprovedModemPresets) == 0 {
-		return Result{Reason: intentv1alpha1.ReasonNoApprovedSet, Message: "approvedModemPresets is empty; no preset to render"}
+	if reason, message := validate(spec); reason != "" {
+		return Result{Reason: reason, Message: message}
 	}
 
 	// Select the first approved preset the airtime model recognizes, so a typo'd
@@ -141,10 +125,8 @@ func evaluateAirtime(spec intentv1alpha1.CommunicationIntentSpec, preset string,
 			Message: "no expectedTraffic declared; fleet airtime not evaluated",
 		}
 	}
-	// A non-positive message rate is not a meaningful traffic declaration (the CRD
-	// requires >= 1, but this pure path also runs offline via the CLI where that
-	// admission check has not applied). Report not-evaluated rather than a
-	// reassuring but meaningless "within budget, 0%".
+	// validate already rejects a non-positive rate. Keep the guard so a missed
+	// check cannot fall through to a reassuring but meaningless "within budget, 0%".
 	if spec.ExpectedTraffic.MessagesPerMinutePerNode <= 0 {
 		return AirtimeResult{
 			Reason:  intentv1alpha1.ReasonAirtimeNotEvaluated,
