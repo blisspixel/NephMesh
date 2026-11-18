@@ -164,7 +164,7 @@ func (r *MeshtasticNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			Status:             metav1.ConditionUnknown,
 			Reason:             meshv1alpha1.ReasonChannelsUnobserved,
 			ObservedGeneration: node.Generation,
-			Message:            "device export did not include a channel set; not treating declared channels as missing",
+			Message:            "A complete active channel inventory is unavailable.",
 		})
 	} else if outcome.Reachable {
 		applyChannelsInSync(&node, desiredChannels.Compare, outcome.LiveChannels, node.Generation)
@@ -324,15 +324,16 @@ func (r *MeshtasticNodeReconciler) buildDesiredChannels(ctx context.Context, nod
 
 // applyChannelsInSync records whether the declared channels match the device.
 // Ready is gated on channel convergence in Converge; this writes the condition
-// the operator surfaces. A node that declares no channels gets no condition.
+// the operator surfaces. An observed undeclared secondary slot also needs operator attention.
 func applyChannelsInSync(node *meshv1alpha1.MeshtasticNode, desired, live []config.ChannelState, gen int64) {
-	if len(desired) == 0 {
-		// The node declares no channels; drop any prior condition so it does not
+	undeclared := config.UndeclaredSecondaryChannels(desired, live)
+	if len(desired) == 0 && len(undeclared) == 0 {
+		// The node has no declared or unexpected channels; drop any prior condition so it does not
 		// linger after channels are removed from the spec.
 		meta.RemoveStatusCondition(&node.Status.Conditions, meshv1alpha1.ConditionChannelsInSync)
 		return
 	}
-	drift := config.ChannelDrift(desired, live)
+	drift := append(config.ChannelDrift(desired, live), undeclared...)
 	status := metav1.ConditionTrue
 	reason := meshv1alpha1.ReasonChannelsInSync
 	message := "declared channels match the device"
