@@ -120,12 +120,23 @@ func TestParseExportConfigEmptyYieldsEmptyMap(t *testing.T) {
 	assert.Empty(t, cfg)
 }
 
-func TestRedactCLISecretsStripsPasswordLines(t *testing.T) {
-	in := "Set lora.region to US\nSet mqtt.password to s3cret-never-log\nConnected\n"
-	out := redactCLISecrets(in)
-	assert.NotContains(t, out, "s3cret-never-log")
-	assert.Contains(t, out, "Set lora.region to US")
-	assert.Contains(t, out, "[REDACTED]")
+func TestHelperDiagnosticsExcludeDeviceOutput(t *testing.T) {
+	for _, client := range []*CLIClient{{}, {Exporter: []string{"export"}}, {Applier: []string{"apply"}}} {
+		client.execFn = func(context.Context, string, ...string) (string, error) {
+			return "synthetic multiline device output", assert.AnError
+		}
+		var err error
+		if client.Applier != nil {
+			err = client.ApplyChannels(context.Background(), []ChannelWrite{{Index: 1}})
+		} else {
+			_, err = client.ExportConfig(context.Background())
+		}
+		require.ErrorIs(t, err, assert.AnError)
+		assert.NotContains(t, err.Error(), "synthetic")
+	}
+	_, err := parseExportConfig("synthetic: 1\nsynthetic: 2")
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "synthetic")
 }
 
 func TestLooksUnreachableMatchesKnownCLIErrors(t *testing.T) {

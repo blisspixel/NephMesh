@@ -175,20 +175,27 @@ func (c *CLIClient) run(ctx context.Context, args ...string) (string, error) {
 	if c.runFn != nil {
 		return c.runFn(ctx, args...)
 	}
-	return c.execRun(ctx, args...)
+	return c.command(ctx, c.bin(), append(c.connArgs(), args...)...)
 }
 
-func (c *CLIClient) execRun(ctx context.Context, args ...string) (string, error) {
-	full := append(c.connArgs(), args...)
-	cmd := exec.CommandContext(ctx, c.bin(), full...)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		if execErrorUnreachable(ctx, string(out), err, c.Serial != "") {
-			return string(out), ErrUnreachable
-		}
-		return string(out), fmt.Errorf("%s %s: %w: %s", c.bin(), strings.Join(full, " "), err, strings.TrimSpace(redactCLISecrets(string(out))))
+// command uses device output to classify transport failures. Only successful
+// calls return the output because helpers can print an entire configuration.
+func (c *CLIClient) command(ctx context.Context, name string, args ...string) (string, error) {
+	var out string
+	var err error
+	if c.execFn != nil {
+		out, err = c.execFn(ctx, name, args...)
+	} else {
+		data, execErr := exec.CommandContext(ctx, name, args...).CombinedOutput()
+		out, err = string(data), execErr
 	}
-	return string(out), nil
+	if err != nil {
+		if execErrorUnreachable(ctx, out, err, c.Serial != "") {
+			return "", ErrUnreachable
+		}
+		return "", fmt.Errorf("%s: %w", name, err)
+	}
+	return out, nil
 }
 
 // runExporter runs the configured exporter with the transport connection flag,
@@ -202,24 +209,7 @@ func (c *CLIClient) runExporter(ctx context.Context) (string, error) {
 	args := append(append([]string(nil), c.Exporter[1:]...), conn, value)
 	ctx, cancel := withExecTimeout(ctx, c.execTimeout())
 	defer cancel()
-	var (
-		out string
-		err error
-	)
-	if c.execFn != nil {
-		out, err = c.execFn(ctx, c.Exporter[0], args...)
-	} else {
-		cmd := exec.CommandContext(ctx, c.Exporter[0], args...)
-		b, e := cmd.CombinedOutput()
-		out, err = string(b), e
-	}
-	if err != nil {
-		if execErrorUnreachable(ctx, out, err, c.Serial != "") {
-			return out, ErrUnreachable
-		}
-		return out, fmt.Errorf("%s: %w: %s", c.Exporter[0], err, strings.TrimSpace(redactCLISecrets(out)))
-	}
-	return out, nil
+	return c.command(ctx, c.Exporter[0], args...)
 }
 
 // parseExportConfig extracts the YAML configuration document from CLI output,
@@ -231,7 +221,7 @@ func parseExportConfig(out string) (map[string]any, error) {
 	}
 	var cfg map[string]any
 	if err := yaml.Unmarshal([]byte(out), &cfg); err != nil {
-		return nil, fmt.Errorf("parsing exported config: %w", err)
+		return nil, errors.New("device export contains invalid configuration YAML")
 	}
 	if cfg == nil {
 		cfg = map[string]any{}
@@ -348,9 +338,7 @@ func pskDirective(key secret.Value) string {
 	return "base64:" + base64.StdEncoding.EncodeToString([]byte(key.Reveal()))
 }
 
-// runApplier runs the channel-apply helper with the connection flag and the
-// channels file path. Any error reports the helper and its output, which by
-// contract never contains key material, and the file path, never its contents.
+// runApplier passes the channel file path to the helper.
 func (c *CLIClient) runApplier(ctx context.Context, channelsFile string) error {
 	conn := "--host"
 	value := c.Host
@@ -360,24 +348,8 @@ func (c *CLIClient) runApplier(ctx context.Context, channelsFile string) error {
 	args := append(append([]string(nil), c.Applier[1:]...), conn, value, "--channels-file", channelsFile)
 	ctx, cancel := withExecTimeout(ctx, c.execTimeout())
 	defer cancel()
-	var (
-		out string
-		err error
-	)
-	if c.execFn != nil {
-		out, err = c.execFn(ctx, c.Applier[0], args...)
-	} else {
-		cmd := exec.CommandContext(ctx, c.Applier[0], args...)
-		b, e := cmd.CombinedOutput()
-		out, err = string(b), e
-	}
-	if err != nil {
-		if execErrorUnreachable(ctx, out, err, c.Serial != "") {
-			return ErrUnreachable
-		}
-		return fmt.Errorf("%s: applying channels: %w: %s", c.Applier[0], err, strings.TrimSpace(redactCLISecrets(out)))
-	}
-	return nil
+	_, err := c.command(ctx, c.Applier[0], args...)
+	return err
 }
 
 // Reboot runs `meshtastic --reboot`.
@@ -451,20 +423,6 @@ func firstNodeID(s string) string {
 }
 
 // parseFloatMetric pulls a numeric JSON field value out of --info output.
-// redactCLISecrets strips CLI lines that echo write-only values. The Meshtastic
-// CLI prints every YAML leaf as "Set mqtt.password to <value>" while parsing
-// --configure; that must never reach a log line or a returned error.
-func redactCLISecrets(out string) string {
-	lines := strings.Split(out, "\n")
-	for i, line := range lines {
-		low := strings.ToLower(line)
-		if strings.Contains(low, "password") || strings.Contains(low, "psk") {
-			lines[i] = "[REDACTED]"
-		}
-	}
-	return strings.Join(lines, "\n")
-}
-
 func parseFloatMetric(out, key string) *float64 {
 	m := regexp.MustCompile(`"` + key + `"\s*:\s*(-?[0-9]+(?:\.[0-9]+)?)`).FindStringSubmatch(out)
 	if m == nil {
