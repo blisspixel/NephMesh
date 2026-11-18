@@ -146,14 +146,6 @@ func SecretsFingerprint(passwordHash string, chans []ChannelState) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// ChannelSetPresent reports whether the export carried a channels list (even
-// an empty one). Stock --export-config omits this key (it emits channel_url
-// instead), which is distinct from "the device has no channels".
-func ChannelSetPresent(export map[string]any) bool {
-	_, ok := export["channels"].([]any)
-	return ok
-}
-
 // DesiredChannels projects the spec's declared channels into comparable state.
 // The keys are not in the spec (they live in Secrets), so the caller resolves
 // each channel's key and passes its hash by index; a channel with no entry in
@@ -183,25 +175,25 @@ func DesiredChannels(spec meshv1alpha1.MeshtasticNodeSpec, pskHashByIndex map[in
 // LiveChannels reads the channels the exporter emitted under the top-level
 // "channels" key of a live export. The exporter emits each key as a hash
 // (pskHash), never the raw key, so the operator compares without the key ever
-// leaving the device. Malformed entries are skipped rather than failing the
-// whole export, matching the tolerant parsing the field diff already uses.
+// leaving the device. A nil result means the inventory was absent or ambiguous.
+// A non-nil empty result means the exporter observed no active slots.
 func LiveChannels(export map[string]any) []ChannelState {
 	raw, ok := export["channels"].([]any)
 	if !ok {
 		return nil
 	}
 	out := make([]ChannelState, 0, len(raw))
+	var seen [8]bool
 	for _, item := range raw {
 		m, ok := item.(map[string]any)
 		if !ok {
-			continue
+			return nil
 		}
 		idx, ok := toInt32(m["index"])
-		if !ok {
-			// An unparseable index would otherwise default to slot 0 and either
-			// mask a real channel-0 drift or fabricate one; skip it instead.
-			continue
+		if !ok || idx < 0 || idx >= int32(len(seen)) || seen[idx] {
+			return nil
 		}
+		seen[idx] = true
 		out = append(out, ChannelState{
 			Index:           idx,
 			Name:            toString(m["name"]),
@@ -248,10 +240,20 @@ func ChannelDrift(desired, live []ChannelState) []string {
 	return paths
 }
 
-// ChannelsConverged reports whether every declared channel already matches the
-// device.
-func ChannelsConverged(desired, live []ChannelState) bool {
-	return len(ChannelDrift(desired, live)) == 0
+// UndeclaredSecondaryChannels reports active secondary slots outside the spec.
+// These observations must never be passed to the device as requested writes.
+func UndeclaredSecondaryChannels(desired, live []ChannelState) []string {
+	declared := make(map[int32]bool, len(desired))
+	for _, ch := range desired {
+		declared[ch.Index] = true
+	}
+	var slots []string
+	for _, ch := range live {
+		if ch.Index > 0 && !declared[ch.Index] {
+			slots = append(slots, fmt.Sprintf("channel[%d].undeclared", ch.Index))
+		}
+	}
+	return slots
 }
 
 func toString(v any) string {
@@ -292,11 +294,11 @@ func toBool(v any) bool {
 func toInt32(v any) (int32, bool) {
 	switch n := v.(type) {
 	case int:
-		return int32(n), true
+		return int32(n), int(int32(n)) == n
 	case int32:
 		return n, true
 	case int64:
-		return int32(n), true
+		return int32(n), int64(int32(n)) == n
 	case float64:
 		i := int32(n)
 		if float64(i) != n {
@@ -304,7 +306,7 @@ func toInt32(v any) (int32, bool) {
 		}
 		return i, true
 	case string:
-		i, err := strconv.Atoi(strings.TrimSpace(n))
+		i, err := strconv.ParseInt(strings.TrimSpace(n), 10, 32)
 		if err != nil {
 			return 0, false
 		}

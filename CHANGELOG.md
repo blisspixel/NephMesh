@@ -4,6 +4,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-11-18
+
+### Security
+
+- The operator keeps helper output and configuration parser details out of errors, Kubernetes conditions and logs. Failed commands retain their process error and device reachability classification.
+- An active secondary channel outside the node specification blocks readiness and is identified by slot number. The operator continues managing declared settings and leaves undeclared slots under manual control. A missing or ambiguous inventory yields an unknown channel condition. Use the bundled exporter to observe active slots.
+
 ## [0.2.4] - 2026-11-12
 
 ### Security

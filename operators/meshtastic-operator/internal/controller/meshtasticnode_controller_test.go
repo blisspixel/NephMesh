@@ -277,6 +277,17 @@ func TestAirtimeHealthyConditionFromTelemetry(t *testing.T) {
 	assert.Nil(t, meta.FindStatusCondition(fresh.Status.Conditions, meshv1alpha1.ConditionAirtimeHealthy))
 }
 
+func TestLastDeclarationRemovedWithActiveSecondary(t *testing.T) {
+	node := &meshv1alpha1.MeshtasticNode{}
+	applyChannelsInSync(node, nil, []config.ChannelState{{Index: 2, Name: "fixture", PSKHash: "private-fixture"}}, 3)
+	cond := meta.FindStatusCondition(node.Status.Conditions, meshv1alpha1.ConditionChannelsInSync)
+	require.NotNil(t, cond)
+	assert.Equal(t, metav1.ConditionFalse, cond.Status)
+	assert.Contains(t, cond.Message, "channel[2].undeclared")
+	assert.NotContains(t, cond.Message, "fixture")
+	assert.EqualValues(t, 3, cond.ObservedGeneration)
+}
+
 func TestChannelsInSyncCondition(t *testing.T) {
 	node := newNode()
 	desired := []config.ChannelState{{Index: 0, Name: "ops", PSKHash: "h1"}}

@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	meshv1alpha1 "github.com/blisspixel/nephmesh/api/mesh/v1alpha1"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/config"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/device"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/secret"
@@ -208,6 +209,54 @@ func TestPasswordOnlyRotationApplies(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, out2.Ready)
 	assert.Equal(t, 0, dev2.Applies, "an unchanged password is not reapplied")
+}
+
+func TestUndeclaredActiveSecondaryIsReportedWithoutDeviceWrites(t *testing.T) {
+	live := desiredUS()
+	live["channels"] = []any{map[string]any{"index": 0}, map[string]any{"index": 3}}
+	dev := device.NewFake(live, 0)
+	for _, desired := range []DesiredChannels{{Compare: []config.ChannelState{{Index: 0}}}, {}} {
+		out, err := Converge(context.Background(), dev, desiredUS(), desired, State{ApplyAttempts: MaxApplyAttempts})
+		require.NoError(t, err)
+		assert.False(t, out.Ready)
+		assert.False(t, out.ConfigInSync)
+		assert.False(t, out.Degraded)
+		assert.Equal(t, []string{"channel[3].undeclared"}, out.Drift)
+		assert.Zero(t, out.ApplyAttempts)
+		assert.Equal(t, DriftCheckInterval, out.Requeue)
+	}
+	assert.Zero(t, dev.Applies)
+	assert.Zero(t, dev.ChannelApplies)
+	assert.Zero(t, dev.Reboots)
+
+	out, err := Converge(context.Background(), stubClient{live: desiredUS()}, desiredUS(), DesiredChannels{}, State{})
+	require.NoError(t, err)
+	assert.False(t, out.Ready)
+	assert.True(t, out.ChannelsUnobserved)
+}
+
+func TestUndeclaredSlotAllowsDeclaredRepairs(t *testing.T) {
+	live := map[string]any{"channels": []any{map[string]any{"index": 3}}}
+	dev := device.NewFake(live, 0)
+	chans := DesiredChannels{
+		Compare: []config.ChannelState{{Index: 1, Name: "managed", PSKHash: config.PSKHash(config.DefaultPSKShorthand)}},
+		Write:   []device.ChannelWrite{{Index: 1, Name: "managed"}},
+	}
+	prior := State{}
+	for i := 0; i < 4; i++ {
+		out, err := Converge(context.Background(), dev, desiredUS(), chans, prior)
+		require.NoError(t, err)
+		assert.False(t, out.Ready)
+		assert.Contains(t, out.Drift, "channel[3].undeclared")
+		if i >= 2 {
+			assert.False(t, out.RebootPending)
+			assert.Equal(t, meshv1alpha1.ReasonUndeclaredChannels, out.Reason)
+		}
+		prior = out.NextState()
+	}
+	assert.Equal(t, 1, dev.Applies)
+	assert.Equal(t, 1, dev.ChannelApplies)
+	assert.Equal(t, 2, dev.Reboots)
 }
 
 func TestUnobservedIsNotDegradedByLeftoverAttempts(t *testing.T) {

@@ -155,25 +155,24 @@ def main() -> int:
         # slots (role 0) are skipped. Wrapped so a device that does not stream
         # channels does not break the export.
         try:
-            channels = []
-            for ch in iface.localNode.channels or []:
-                if ch.role == 0:  # DISABLED
-                    continue
-                s = ch.settings
-                psk_hash = _psk_hash(bytes(s.psk))
-                channels.append(
-                    {
-                        "index": int(ch.index),
-                        "name": s.name,
-                        "pskHash": psk_hash,
-                        "uplinkEnabled": bool(s.uplink_enabled),
-                        "downlinkEnabled": bool(s.downlink_enabled),
-                    }
-                )
-            # Always emit the key, even when empty, so the operator can tell
-            # "device has no channels" from stock --export-config (which omits
-            # discrete channels entirely and would otherwise reboot-loop).
-            doc["channels"] = channels
+            observed = iface.localNode.channels
+            if observed is not None:
+                channels = []
+                for ch in observed:
+                    if ch.role == 0:  # DISABLED
+                        continue
+                    s = ch.settings
+                    psk_hash = _psk_hash(bytes(s.psk))
+                    channels.append(
+                        {
+                            "index": int(ch.index),
+                            "name": s.name,
+                            "pskHash": psk_hash,
+                            "uplinkEnabled": bool(s.uplink_enabled),
+                            "downlinkEnabled": bool(s.downlink_enabled),
+                        }
+                    )
+                doc["channels"] = channels
         except Exception:  # noqa: BLE001 - channels are best-effort
             pass
     finally:

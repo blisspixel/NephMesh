@@ -57,11 +57,15 @@ func TestDefaultPSKNormalization(t *testing.T) {
 	assert.Equal(t, DefaultPSKShorthand, NormalizePSK(expanded))
 }
 
-func TestChannelSetPresent(t *testing.T) {
-	assert.False(t, ChannelSetPresent(map[string]any{}), "stock export omits the key")
-	assert.False(t, ChannelSetPresent(map[string]any{"channels": "wrong"}))
-	assert.True(t, ChannelSetPresent(map[string]any{"channels": []any{}}), "empty list is present")
-	assert.True(t, ChannelSetPresent(map[string]any{"channels": []any{map[string]any{"index": 0}}}))
+func TestIncompleteChannelInventoryIsUnknown(t *testing.T) {
+	for _, rows := range [][]any{
+		{"unreadable"}, {map[string]any{}}, {map[string]any{"index": int64(1) << 32}},
+		{map[string]any{"index": "4294967297"}}, {map[string]any{"index": 8}},
+		{map[string]any{"index": -1}}, {map[string]any{"index": 1}, map[string]any{"index": 1}},
+	} {
+		assert.Nil(t, LiveChannels(map[string]any{"channels": rows}))
+	}
+	assert.NotNil(t, LiveChannels(map[string]any{"channels": []any{}}))
 }
 
 func TestLiveChannelsNormalizesExpandedDefaultHash(t *testing.T) {
@@ -153,11 +157,10 @@ func TestToBoolAcceptsYAMLAndJSONShapes(t *testing.T) {
 	assert.False(t, toBool(nil))
 }
 
-func TestLiveChannelsParsesAndSkipsBadEntries(t *testing.T) {
+func TestLiveChannelsParsesObservedSlots(t *testing.T) {
 	export := map[string]any{
 		"channels": []any{
 			map[string]any{"index": 2, "name": "ops", "pskHash": "bbb", "uplinkEnabled": true},
-			"not-a-map", // skipped
 			map[string]any{"index": int64(0), "name": "primary", "pskHash": "aaa"},
 			map[string]any{"index": float64(1), "downlinkEnabled": true}, // yaml/json numbers
 		},
@@ -165,7 +168,7 @@ func TestLiveChannelsParsesAndSkipsBadEntries(t *testing.T) {
 
 	got := LiveChannels(export)
 
-	assert.Len(t, got, 3, "the non-map entry is skipped, not fatal")
+	require.Len(t, got, 3)
 	assert.Equal(t, int32(0), got[0].Index, "sorted by index")
 	assert.Equal(t, "aaa", got[0].PSKHash)
 	assert.Equal(t, int32(1), got[1].Index)
@@ -187,7 +190,7 @@ func TestChannelDriftDetectsEachField(t *testing.T) {
 	live := []ChannelState{
 		{Index: 0, Name: "primary", PSKHash: "aaa"},                                                 // matches
 		{Index: 1, Name: "operations", PSKHash: "ccc", UplinkEnabled: false, DownlinkEnabled: true}, // name + psk + uplink drift
-		{Index: 5, Name: "extra"}, // not declared, ignored
+		{Index: 5, Name: "extra"},                                                                   // not declared, ignored
 	}
 
 	drift := ChannelDrift(desired, live)
@@ -195,7 +198,6 @@ func TestChannelDriftDetectsEachField(t *testing.T) {
 	assert.Equal(t, []string{
 		"channel[1].name", "channel[1].psk", "channel[1].uplinkEnabled",
 	}, drift)
-	assert.False(t, ChannelsConverged(desired, live))
 }
 
 func TestChannelDriftMissingChannel(t *testing.T) {
@@ -204,12 +206,12 @@ func TestChannelDriftMissingChannel(t *testing.T) {
 	assert.Equal(t, []string{"channel[3]"}, drift, "a declared channel absent from the device is drift")
 }
 
-func TestChannelsConvergedWhenAllMatch(t *testing.T) {
+func TestUndeclaredSlotIsReportedSeparatelyFromWrites(t *testing.T) {
 	desired := []ChannelState{{Index: 0, Name: "primary", PSKHash: "aaa", UplinkEnabled: true}}
 	live := []ChannelState{
 		{Index: 0, Name: "primary", PSKHash: "aaa", UplinkEnabled: true},
 		{Index: 1, Name: "unmanaged"}, // extra live channel does not fight a partial spec
 	}
-	assert.True(t, ChannelsConverged(desired, live))
+	assert.Equal(t, []string{"channel[1].undeclared"}, UndeclaredSecondaryChannels(desired, live))
 	assert.Empty(t, ChannelDrift(desired, live))
 }

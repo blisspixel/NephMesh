@@ -85,8 +85,8 @@ type Outcome struct {
 	// as last-applied (empty when no password is declared). The controller
 	// writes it to status so a Secret-only rotation is visible next step.
 	MQTTPasswordHash string
-	// ChannelsUnobserved is true when the node declares channels but the export
-	// did not include a channel set (stock --export-config). Converge does not
+	// ChannelsUnobserved is true when the export
+	// did not include a complete channel set. Converge does not
 	// treat that as missing-channel drift, which would apply-and-reboot forever.
 	ChannelsUnobserved bool
 }
@@ -188,14 +188,15 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 	if writeOnlyDrift {
 		scalarDrift = append(scalarDrift, "module_config.mqtt.password")
 	}
-	channelsUnknown := len(chans.Compare) > 0 && !config.ChannelSetPresent(live)
+	channelsUnknown := liveChannels == nil
 	var channelDrift []string
 	if !channelsUnknown {
 		channelDrift = config.ChannelDrift(chans.Compare, liveChannels)
 	}
 	scalarConverged := len(scalarDrift) == 0
-	channelsConverged := !channelsUnknown && len(channelDrift) == 0
-	allDrift := append(append([]string{}, scalarDrift...), channelDrift...)
+	undeclared := config.UndeclaredSecondaryChannels(chans.Compare, liveChannels)
+	channelsConverged := !channelsUnknown && len(channelDrift) == 0 && len(undeclared) == 0
+	allDrift := append(append(scalarDrift, channelDrift...), undeclared...)
 
 	if scalarConverged && channelsConverged {
 		if info.NodeID == "" {
@@ -221,7 +222,7 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 		}, nil
 	}
 
-	// Declared channels but the export had no channel set: do not apply
+	// The export had no complete channel set: do not apply
 	// channels (that would reboot-loop against stock --export-config) and do
 	// not report Ready. Handle this before the apply bound: unobserved is not
 	// an apply, so a leftover attempt count must not hide it as Degraded.
@@ -236,6 +237,16 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 			CurrentModemPreset: currentPreset,
 			MQTTPasswordHash:   prior.MQTTPasswordHash,
 			ChannelsUnobserved: true,
+		}, nil
+	}
+
+	// Undeclared active slots are report-only. Applying the declared slots
+	// would leave the extra slot active and repeatedly reboot the device.
+	if scalarConverged && len(channelDrift) == 0 && len(undeclared) > 0 {
+		return Outcome{
+			Reachable: true, Reason: meshv1alpha1.ReasonUndeclaredChannels,
+			Requeue: DriftCheckInterval, Info: info, LiveChannels: liveChannels,
+			CurrentModemPreset: currentPreset, Drift: allDrift, MQTTPasswordHash: passwordHash,
 		}, nil
 	}
 
@@ -298,7 +309,7 @@ func Converge(ctx context.Context, dev device.Client, desired map[string]any, ch
 		appliedHash = passwordHash
 	}
 	return Outcome{
-		Reachable: true, ConfigInSync: scalarConverged && !writeOnlyDrift, RebootPending: true,
+		Reachable: true, ConfigInSync: scalarConverged && len(undeclared) == 0, RebootPending: true,
 		Reason: meshv1alpha1.ReasonConfigApplied, Requeue: RebootWait,
 		ApplyAttempts:      prior.ApplyAttempts + 1,
 		Info:               info,

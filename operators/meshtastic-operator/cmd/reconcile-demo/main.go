@@ -37,6 +37,7 @@ import (
 	"strings"
 	"time"
 
+	meshv1alpha1 "github.com/blisspixel/nephmesh/api/mesh/v1alpha1"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/airtime"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/config"
 	"github.com/blisspixel/nephmesh/operators/meshtastic-operator/internal/device"
@@ -113,8 +114,7 @@ func main() {
 	var desired map[string]any
 	var chans reconcile.DesiredChannels
 	if *observe {
-		// An empty intent converges immediately with no apply, so a real board
-		// is never modified. Export first to show its current config.
+		// An empty intent only observes the device. Export its current config first.
 		desired = map[string]any{}
 		live, err := dev.ExportConfig(ctx)
 		if err != nil {
@@ -194,6 +194,15 @@ func main() {
 			paintStatus("rebootPending", out.RebootPending, statusRole(out.RebootPending, "yellow")),
 			paintStatus("ready", out.Ready, statusRole(out.Ready, "green")),
 			note)
+
+		if out.Reason == meshv1alpha1.ReasonUndeclaredChannels {
+			fmt.Printf("active secondary slots outside the intent: %s\n", strings.Join(out.Drift, ", "))
+			os.Exit(1)
+		}
+		if out.ChannelsUnobserved && !out.RebootPending {
+			fmt.Println("channel inventory unavailable; use -exporter with the bundled mesh-export.py")
+			os.Exit(1)
+		}
 
 		state = out.NextState()
 		if out.Ready {

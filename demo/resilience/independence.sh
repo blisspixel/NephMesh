@@ -74,12 +74,13 @@ docker rm -f operator >/dev/null 2>&1 || true
 docker run -d --name operator --network "$NET" python:3.13-slim sleep infinity >/dev/null
 docker exec operator pip install -q meshtastic >/dev/null 2>&1
 docker cp "$WORK/reconcile-demo" operator:/reconcile-demo >/dev/null
+docker cp "$MOD/hack/mesh-export.py" operator:/mesh-export.py >/dev/null
 docker exec operator chmod +x /reconcile-demo
 # Apply a benign owner change (no preset change, so it does not disturb the
 # channel) through the operator's real reconcile loop: export, diff, apply drift,
 # reboot, re-verify. sim1 reboots once here, before measurement starts.
 # Capture the reconcile output so a failure is surfaced, not laundered.
-recon="$(docker exec operator /reconcile-demo -host sim1 -bin meshtastic \
+recon="$(docker exec operator /reconcile-demo -host sim1 -bin meshtastic -exporter "python /mesh-export.py" \
     -owner "NephMesh Field 01" -owner-short NF01 2>&1)"
 echo "$recon" | grep -E 'step|converged' | tail -6
 echo "$recon" | grep -q 'converged' || {

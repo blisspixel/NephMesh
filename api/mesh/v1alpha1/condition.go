@@ -38,9 +38,9 @@ const (
 	ConditionAirtimeHealthy = "AirtimeHealthy"
 	// ConditionChannelsInSync is True when every channel the spec declares
 	// matches the device (name, uplink, downlink, and key compared by hash),
-	// False when any declared channel drifts, and Unknown when the export did
-	// not include a channel set (stock --export-config emits channel_url, not
-	// discrete channels). Ready is gated on channel convergence in Converge.
+	// False when a declared channel drifts or an undeclared secondary slot is
+	// active, and Unknown when the active inventory is unavailable or ambiguous.
+	// Ready requires a complete inventory.
 	ConditionChannelsInSync = "ChannelsInSync"
 	// ConditionAirtimeBudget is True when a declared modem-preset change is
 	// predicted to keep the channel within the recommended utilization ceiling,
@@ -76,6 +76,7 @@ const (
 
 	ReasonChannelsInSync     = "ChannelsInSync"
 	ReasonChannelsDrifted    = "ChannelsDrifted"
+	ReasonUndeclaredChannels = "UndeclaredChannels"
 	ReasonChannelsUnobserved = "ChannelsUnobserved"
 
 	ReasonAirtimeBudgetOK       = "WithinBudget"

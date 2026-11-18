@@ -181,7 +181,7 @@ func TestVersion(t *testing.T) {
 	var out, errBuf bytes.Buffer
 	code := run([]string{"--version"}, strings.NewReader(""), &out, &errBuf)
 	assert.Equal(t, exitOK, code)
-	assert.Contains(t, out.String(), "nephmeshctl 0.2.4")
+	assert.Contains(t, out.String(), "nephmeshctl 0.2.5")
 	assert.NotContains(t, out.String(), "(devel)")
 	assert.Empty(t, errBuf.String())
 }
