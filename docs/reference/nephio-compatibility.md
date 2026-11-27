@@ -98,7 +98,8 @@ library skew that only matters if NephMesh ever imports Nephio Go types.
 
 ## Security floor 2026-10-11
 
-NephMesh requires Go 1.27.4 and `golang.org/x/net v0.60.0`. The 2026-10-11 floor
+NephMesh requires Go 1.27.4. The operator image audit on 2026-11-27 moved both
+modules to `golang.org/x/net v0.63.0` for CVE-2026-78661. The 2026-10-11 floor
 was Go 1.27.2 for the standard-library and HTTP/2 advisories, for example
 [GO-2026-6617](https://pkg.go.dev/vuln/GO-2026-6617). On 2026-11-02 the compiler
 floor moved to Go 1.27.3 so `crypto/x509` distrusts the compromised intermediates
