@@ -52,7 +52,11 @@ Each working milestone earns a 0.x release, by demonstrated capability rather th
 
 Phases 6 and 7 are not 1.0 gates: the closed loop and the cellular leg are research features and can mature after 1.0.
 
-## What comes next (recommended order, reviewed 2026-08-13)
+<a id="what-comes-next-recommended-order-reviewed-2026-08-13"></a>
+
+## What comes next
+
+Reviewed 2026-11-26 for source release 0.2.6.
 
 This list is the source of "what do I do tomorrow." The longer Order of operations below is the lifetime spine. When the two disagree, this list wins. Stages already done (channels on hardware) stay checked there; they are not next.
 
@@ -66,7 +70,7 @@ In order:
 2. **Close the 0.3 Porch gate** (installability) end to end (register, propose, approve, pull, apply). Hardware-free. This is the credibility proof that Nephio-native is real rather than a rendered Kptfile.
 3. **Two-cluster control-plane independence** (uniqueness). `demo/resilience` already showed 100% delivery after destroying the management plane on a UDP-multicast sim mesh. The load-bearing remainder is two kind (or kind plus an SBC) clusters: delete the management cluster, MDR unchanged. This is the claim a 5G NF package cannot make.
 4. **One scripted three-witness capture** (uniqueness) from the repo: intent change, reconcile, SDR peak move, with the airtime model, radio telemetry, and sweep agreeing. The substance ran by hand on 2026-08-09 (peak moved 906.5 to 903.5 MHz, then restored). The gap is a stranger-runnable script with no baked-in lab addresses.
-5. **Hygiene that belongs in the core, not the frontier:** detect day-2 MQTT-password-only rotation (stored hash, like channels); do not reboot-loop if someone uses stock `--export-config` without the bundled exporter; pair server-side apply for status with the planned k8s / controller-runtime bump.
+5. **Controller status updates.** The API and operator now use Kubernetes v0.37.3 and controller-runtime v0.25.3. Server-side apply for status remains open. The operator already detects MQTT password-only rotation and avoids repeat channel writes when stock `--export-config` omits the channel inventory.
 
 Parallel, not next: in-cluster USB device-plugin; Agent Plugins is already a directory wrap (`agent-plugin/`). An enforceable `ChannelBudget` (refuse an oversubscribed fleet) is the distinctive airtime seam; it stays report-only until this list's installability items are closed, then it is the first uniqueness increment that does not need a radio.
 

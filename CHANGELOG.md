@@ -4,6 +4,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-11-26
+
+### Changed
+
+- `nephmesh-mcp` supplies a display title, `readOnlyHint: true`, and `openWorldHint: false` for both offline tools. The CLI and MCP server identify source builds as 0.2.6.
+- `nephmeshctl advise` defaults to the local Ollama model `qwen3.5:2b`. Pull the model once before offline use, or select an installed model with `-model`.
+- Both Go modules use Kubernetes v0.37.3 and controller-runtime v0.25.3. CI uses Kubernetes 1.37.0 for envtest. Dependabot can propose grouped Kubernetes minor updates. The operator records reconcile Events through events.k8s.io/v1 with create and patch permissions. Reapply the package RBAC when upgrading.
+- The kpt runner uses Docker CLI 29.10.1. The operator and demo CLI use Python 3.14.10, the current compatible patch for Meshtastic 2.7.11, which requires Python below 3.15.
+
+### Fixed
+
+- The operator package now preserves both CRDs during namespace specialization. The API server previously rejected the rendered CRDs because the namespace function added a partial conversion webhook. CI installs the rendered CRDs before running controller tests.
+- Every pull request and push to main runs the four required Go jobs, including changes to shared lint, coverage, and generation inputs. Documentation-only pull requests also receive the checks required by branch protection.
+
 ## [0.2.5] - 2026-11-18
 
 ### Security
