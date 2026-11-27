@@ -33,7 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -68,9 +68,10 @@ type MeshtasticNodeReconciler struct {
 	// Recorder emits Kubernetes Events so operational transitions (config applied,
 	// device degraded, a missing Secret) show up in `kubectl describe`, not just in
 	// conditions. It may be nil in unit tests that do not assert on events.
-	Recorder record.EventRecorder
+	Recorder events.EventRecorder
 }
 
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=mesh.nephmesh.io,resources=meshtasticnodes,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=mesh.nephmesh.io,resources=meshtasticnodes/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=mesh.nephmesh.io,resources=meshtasticnodes/finalizers,verbs=update
@@ -355,7 +356,7 @@ func applyChannelsInSync(node *meshv1alpha1.MeshtasticNode, desired, live []conf
 // unit tests). Messages must never contain secret material.
 func (r *MeshtasticNodeReconciler) event(node *meshv1alpha1.MeshtasticNode, eventtype, reason, message string) {
 	if r.Recorder != nil {
-		r.Recorder.Event(node, eventtype, reason, message)
+		r.Recorder.Eventf(node, nil, eventtype, reason, "Reconcile", "%s", message)
 	}
 }
 

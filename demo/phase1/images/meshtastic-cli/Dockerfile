@@ -20,10 +20,10 @@
 # digest pin; the demo builds it locally and loads it into the cluster.
 
 # meshtastic 2.7.11 requires Python <3.15, so 3.14 is the newest release this image can use.
-FROM python:3.14-slim
+FROM python:3.14.10-slim
 
 ARG MESHTASTIC_VERSION=2.7.11
-ARG PYYAML_VERSION=6.0.2
+ARG PYYAML_VERSION=6.0.4
 
 # Install as an unprivileged user's site packages so the running container
 # never needs root and matches the pods' runAsNonRoot securityContext.

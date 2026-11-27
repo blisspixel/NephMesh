@@ -17,15 +17,6 @@ updates:
         update-types:
           - minor
           - patch
-    # Go's security floor is 1.27.4 as of 2026-11-12, independently of the
-    # tested k8s v0.34/controller-runtime v0.22 framework boundary.
-    # Take only their patch releases automatically; the framework major and
-    # minor jumps are a deliberate, tracked upgrade, not an auto-merge.
-    ignore:
-      - dependency-name: k8s.io/*
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
-      - dependency-name: sigs.k8s.io/controller-runtime
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     commit-message:
       prefix: "deps"
 
@@ -42,7 +33,14 @@ updates:
       prefix: "ci"
 
   - package-ecosystem: docker
-    directory: /operators/meshtastic-operator
+    directories:
+      - /operators/meshtastic-operator
+      - /demo/phase1/images/meshtastic-cli
+      - /hack/kpt
+    # The pinned Meshtastic CLI declares Python <3.15.
+    ignore:
+      - dependency-name: python
+        versions: [">=3.15"]
     schedule:
       interval: weekly
     commit-message:

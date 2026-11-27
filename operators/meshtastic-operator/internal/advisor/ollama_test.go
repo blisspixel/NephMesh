@@ -49,6 +49,26 @@ func TestOllamaCompleteRoundTrip(t *testing.T) {
 	assert.Equal(t, "sys", gotReq.System)
 }
 
+func TestOllamaThinkingMode(t *testing.T) {
+	for _, model := range []string{"qwen3.5:2b", "custom-model"} {
+		t.Run(model, func(t *testing.T) {
+			var request map[string]any
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+				_, _ = io.WriteString(w, `{"response":"{}"}`)
+			}))
+			defer server.Close()
+			_, err := NewOllama(server.URL, model).Complete(context.Background(), "sys", "user")
+			require.NoError(t, err)
+			if model == "qwen3.5:2b" {
+				assert.Equal(t, false, request["think"])
+			} else {
+				assert.NotContains(t, request, "think")
+			}
+		})
+	}
+}
+
 func TestOllamaNumGPUForcesCPUOption(t *testing.T) {
 	var opts map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

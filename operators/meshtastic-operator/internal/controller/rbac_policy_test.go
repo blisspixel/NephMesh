@@ -93,10 +93,11 @@ func TestShippedRBACMatchesLeastPrivilegeAllowlist(t *testing.T) {
 
 	// The complete allowlist: read the MeshtasticNode resources it reconciles
 	// and update their status and finalizers; read CommunicationIntents and
-	// update their status. Notably absent: any grant to create or write a
+	// update their status, and emit reconcile Events. Notably absent: any grant to create or write a
 	// MeshtasticNode from an intent, so the report-only boundary (ADR 0001) is
 	// enforced here, not merely intended. Nothing else.
 	want := []rbacv1.PolicyRule{
+		{APIGroups: []string{"events.k8s.io"}, Resources: []string{"events"}, Verbs: []string{"create", "patch"}},
 		{APIGroups: []string{"mesh.nephmesh.io"}, Resources: []string{"meshtasticnodes"}, Verbs: []string{"get", "list", "watch", "update", "patch"}},
 		{APIGroups: []string{"mesh.nephmesh.io"}, Resources: []string{"meshtasticnodes/status"}, Verbs: []string{"get", "update", "patch"}},
 		{APIGroups: []string{"mesh.nephmesh.io"}, Resources: []string{"meshtasticnodes/finalizers"}, Verbs: []string{"update"}},

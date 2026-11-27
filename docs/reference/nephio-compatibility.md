@@ -108,9 +108,9 @@ MaxBytesReader races a response header write
 ([GO-2026-6859](https://pkg.go.dev/vuln/GO-2026-6859)).
 Both module directives, CI and Go image build stages enforce the compiler floor.
 This deliberately supersedes the Go 1.25.x engineering baseline while preserving
-the dated August upstream observations above. The tested Kubernetes v0.34 and
-controller-runtime v0.22 library lines remain unchanged. The interoperability
-boundary is still KRM data and packaging; no direct Nephio Go imports are added.
+the dated August upstream observations above. On 2026-11-26 the API and operator moved to Kubernetes v0.37.3
+and controller-runtime v0.25.3. CI exercises the controllers against a Kubernetes
+1.37.0 API server. Nephio interoperability still uses KRM data and packaging.
 
 ## Where NephMesh deliberately diverges, and why
 
@@ -118,7 +118,7 @@ boundary is still KRM data and packaging; no direct Nephio Go imports are added.
   with Nephio, so it does not put resources in the `nephio.org` group. The `.io` group
   is provisional and kept at `v1alpha1` so a later rename stays cheap.
 - **Newer Kubernetes libraries.** NephMesh pins the tested library lines
-  (`k8s.io v0.34.x`, `controller-runtime v0.22.x`, with Go 1.27.4 minimum), which are ahead of the
+  (`k8s.io v0.37.x`, `controller-runtime v0.25.x`, with Go 1.27.4 minimum), which are ahead of the
   upstream `api` module's `v0.30.1` / `v0.18.5` and of Nephio R6's supported Kubernetes
   ceiling (max v1.32.0). This is a forward
   skew, not a lag. It is fine because NephMesh interops at the KRM and package boundary,

@@ -17,12 +17,15 @@
 # kpt here means local Windows or macOS runs and CI render the packages with
 # the exact same toolchain. Base is docker:cli (Alpine with the docker CLI).
 
-FROM docker:28-cli
+FROM docker:29.10.1-cli
 
 ARG KPT_VERSION=v1.0.0-beta.67
+ARG KPT_SHA256=5769ef31efb5a18a1b94e1e766443c685aabd72f9f52bfc83079e1f4b1c3d532
 RUN apk add --no-cache git curl \
-    && curl -sL "https://github.com/kptdev/kpt/releases/download/${KPT_VERSION}/kpt_linux_amd64-${KPT_VERSION#v}.tar.gz" \
-       | tar -xz -C /usr/local/bin kpt \
+    && curl -fsSL -o /tmp/kpt.tar.gz "https://github.com/kptdev/kpt/releases/download/${KPT_VERSION}/kpt_linux_amd64-${KPT_VERSION#v}.tar.gz" \
+    && echo "${KPT_SHA256}  /tmp/kpt.tar.gz" | sha256sum -c - \
+    && tar -xzf /tmp/kpt.tar.gz -C /usr/local/bin kpt \
+    && rm /tmp/kpt.tar.gz \
     && kpt version
 
 WORKDIR /work

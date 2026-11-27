@@ -69,9 +69,12 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
+	crdDir := os.Getenv("NEPHMESH_TEST_CRD_DIR")
+	if crdDir == "" {
+		crdDir = filepath.Join("..", "..", "..", "..", "api", "config", "crd", "bases")
+	}
 	env := &envtest.Environment{
-		// The generated CRD carries the CEL and OpenAPI validations under test.
-		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "..", "..", "api", "config", "crd", "bases")},
+		CRDDirectoryPaths:     []string{crdDir},
 		ErrorIfCRDPathMissing: true,
 	}
 	cfg, err := env.Start()

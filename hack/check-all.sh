@@ -31,6 +31,7 @@ done
 
 group "go modules"
 if command -v go >/dev/null 2>&1; then
+    (cd operators/meshtastic-operator && go test ../../hack/go_workflow_test.go) || fail=1
     for m in api operators/meshtastic-operator; do
         note "module: $m"
         (cd "$m" && go build ./... && go vet ./... && go test ./... >/dev/null) || fail=1

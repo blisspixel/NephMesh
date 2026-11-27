@@ -88,7 +88,7 @@ func main() {
 		Client:    mgr.GetClient(),
 		Reader:    mgr.GetAPIReader(), // uncached, for namespaced Secret reads
 		NewDevice: newCLIDevice,
-		Recorder:  mgr.GetEventRecorderFor("meshtastic-operator"),
+		Recorder:  mgr.GetEventRecorder("meshtastic-operator"),
 	}
 	if err := reconciler.SetupWithManager(mgr); err != nil {
 		log.Error(err, "unable to set up controller")

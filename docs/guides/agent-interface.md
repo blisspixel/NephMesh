@@ -81,10 +81,13 @@ classifies a sweep, hands the situation to a local Ollama server, and prints a
 report-only recommendation (hold, change preset, or investigate) with a
 rationale. The model proposes; it never actuates, and the output is validated
 against the approved preset set so a hallucination cannot escape the envelope.
+The default model as of 2026-11-26 is [qwen3.5:2b](https://ollama.com/library/qwen3.5:2b).
+Pull it once while online, then run the advisor locally.
 See the [edge advisor demo](../../demo/edge-advisor/).
 
 ```sh
-./nephmeshctl advise -f sweep.csv -model qwen2.5:14b -ollama-url http://localhost:11434
+ollama pull qwen3.5:2b
+./nephmeshctl advise -f sweep.csv
 ```
 
 ## nephmesh-mcp (Model Context Protocol)

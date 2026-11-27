@@ -181,7 +181,7 @@ func TestVersion(t *testing.T) {
 	var out, errBuf bytes.Buffer
 	code := run([]string{"--version"}, strings.NewReader(""), &out, &errBuf)
 	assert.Equal(t, exitOK, code)
-	assert.Contains(t, out.String(), "nephmeshctl 0.2.5")
+	assert.Contains(t, out.String(), "nephmeshctl 0.2.6")
 	assert.NotContains(t, out.String(), "(devel)")
 	assert.Empty(t, errBuf.String())
 }
@@ -286,6 +286,13 @@ func TestSpectrumTextFitsAndJSONIsPlain(t *testing.T) {
 	require.Equal(t, exitOK, code, jsErr.String())
 	assert.NotContains(t, js.String(), "▁")
 	assert.NotContains(t, js.String(), "\x1b")
+}
+
+func TestAdviseHelpNamesDefaultModel(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	code := run([]string{"advise", "-h"}, strings.NewReader(""), &out, &errBuf)
+	assert.Equal(t, exitOK, code)
+	assert.Contains(t, errBuf.String(), "default qwen3.5:2b")
 }
 
 func TestAdviseNamesAMissingServer(t *testing.T) {

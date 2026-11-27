@@ -42,8 +42,11 @@ type OllamaClient struct {
 	NumGPU int
 }
 
+// DefaultModel is the edge advisor model used when no override is supplied.
+const DefaultModel = "qwen3.5:2b"
+
 // NewOllama builds a client for the given base URL (for example
-// http://localhost:11434) and model (for example llama3.2:3b).
+// http://localhost:11434) and installed model.
 func NewOllama(baseURL, model string) *OllamaClient {
 	return &OllamaClient{
 		BaseURL: baseURL,
@@ -58,6 +61,7 @@ type ollamaRequest struct {
 	System  string         `json:"system"`
 	Prompt  string         `json:"prompt"`
 	Stream  bool           `json:"stream"`
+	Think   *bool          `json:"think,omitempty"`
 	Format  string         `json:"format"`
 	Options map[string]any `json:"options"`
 }
@@ -73,14 +77,19 @@ func (o *OllamaClient) Complete(ctx context.Context, system, user string) (strin
 	if o.NumGPU >= 0 {
 		options["num_gpu"] = o.NumGPU
 	}
-	body, err := json.Marshal(ollamaRequest{
+	payload := ollamaRequest{
 		Model:   o.Model,
 		System:  system,
 		Prompt:  user,
 		Stream:  false,
 		Format:  "json",
 		Options: options,
-	})
+	}
+	if o.Model == DefaultModel {
+		// The edge default can spend the entire request timeout on thinking.
+		payload.Think = new(false)
+	}
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return "", err
 	}

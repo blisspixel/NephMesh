@@ -8,6 +8,6 @@ The operator source is `operators/meshtastic-operator`; its behavior and tests a
 
 Notes:
 
-- The CRDs and ClusterRole are cluster-scoped; `set-namespace` places only the ServiceAccount and Deployment into the per-clone namespace.
+- The namespace function specializes namespaced resources and RBAC subject references. It skips the single-version CRDs so they retain their generated conversion settings.
 - The Deployment image tag is a placeholder until a release publishes the image to a registry with a digest. The image bundles the pinned Meshtastic CLI the operator execs.
 - `crd.yaml` (MeshtasticNode) and `crd-communicationintent.yaml` (CommunicationIntent) are generated from the api module (`make -C api manifests`); do not edit them by hand.

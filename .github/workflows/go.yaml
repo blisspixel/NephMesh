@@ -17,12 +17,12 @@
 
 name: go
 
+# Branch protection requires every Go job on every PR, including documentation.
+# Run the same gates after merge so new shared inputs are covered by default.
 on:
   push:
     branches: [main]
-    paths: ["api/**", "operators/**", ".github/workflows/go.yaml", "CHANGELOG.md", "README.md"]
   pull_request:
-    paths: ["api/**", "operators/**", ".github/workflows/go.yaml", "CHANGELOG.md", "README.md"]
 
 # Least privilege: these jobs only read the checked-out code. The default
 # GITHUB_TOKEN can be broader, so scope it down to limit blast radius.
@@ -31,7 +31,7 @@ permissions:
 
 jobs:
   api:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     defaults:
       run:
         working-directory: api
@@ -48,7 +48,7 @@ jobs:
         run: go test -race ./...
       - name: Vulnerability scan
         run: |
-          GOTOOLCHAIN=auto go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.10.0
           govulncheck ./...
       - name: Lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
@@ -61,7 +61,7 @@ jobs:
         run: make verify
 
   meshtastic-operator:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     defaults:
       run:
         working-directory: operators/meshtastic-operator
@@ -70,6 +70,8 @@ jobs:
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.27.4"
+      - name: Check required workflow routing
+        run: go test ../../hack/go_workflow_test.go
       - name: Build
         run: go build ./...
       - name: Vet
@@ -78,7 +80,7 @@ jobs:
         run: go test -race ./...
       - name: Vulnerability scan
         run: |
-          GOTOOLCHAIN=auto go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.10.0
           govulncheck ./...
       - name: Lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
@@ -91,8 +93,8 @@ jobs:
   integration:
     # Drives the real reconcile loop against a live meshtasticd --sim, so the
     # operator is validated against real firmware, not just the fake. Needs
-    # Docker and the Meshtastic CLI; runs only on the operator module's changes.
-    runs-on: ubuntu-latest
+    # Docker and the Meshtastic CLI.
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
@@ -101,7 +103,7 @@ jobs:
       # meshtastic 2.7.11 requires Python <3.15, so CI uses 3.14 (the newest it allows).
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.14"
+          python-version: "3.14.10"
       - name: Install the Meshtastic CLI
         run: pip install "meshtastic[cli]==2.7.11"
       - name: Start meshtasticd --sim
@@ -122,6 +124,8 @@ jobs:
         run: go test -tags integration ./internal/reconcile -run Integration -v
       - name: Build the operator image
         run: docker build -f operators/meshtastic-operator/Dockerfile -t nephmesh-operator:ci .
+      - name: Build the demo CLI image
+        run: docker build -t nephmesh-demo-cli:ci demo/phase1/images/meshtastic-cli
       - name: Build the spectrum exporter image
         run: docker build -f operators/meshtastic-operator/cmd/spectrum-exporter/Dockerfile -t nephmesh-spectrum-exporter:ci .
 
@@ -130,7 +134,7 @@ jobs:
     # CEL and OpenAPI validations reject hostile resources at admission, and the
     # reconciler's finalizer and idempotency behavior, which the fake client
     # cannot reproduce. setup-envtest provisions the control-plane binaries.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     defaults:
       run:
         working-directory: operators/meshtastic-operator
@@ -140,12 +144,20 @@ jobs:
         with:
           go-version: "1.27.4"
       - name: Provision envtest binaries
-        # setup-envtest is built with a newer Go than this module targets, so
-        # let the toolchain float for the tool install only; the test build
-        # still runs on the project's pinned 1.27.4.
         run: |
-          GOTOOLCHAIN=auto go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+          go install sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.25.3
           SETUP_ENVTEST="$(go env GOPATH)/bin/setup-envtest"
-          echo "KUBEBUILDER_ASSETS=$("$SETUP_ENVTEST" use -p path)" >> "$GITHUB_ENV"
+          assets=$("$SETUP_ENVTEST" use -p path 1.37.0)
+          test -x "$assets/kube-apiserver"
+          echo "KUBEBUILDER_ASSETS=$assets" >> "$GITHUB_ENV"
+      - name: Render the installable operator CRDs
+        working-directory: .
+        run: |
+          docker build -t nephmesh-kpt:ci hack/kpt
+          rendered="$RUNNER_TEMP/rendered-operator"
+          cp -R packages/meshtastic-operator "$rendered"
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$rendered:/work/pkg" nephmesh-kpt:ci fn render /work/pkg
+          echo "NEPHMESH_TEST_CRD_DIR=$rendered" >> "$GITHUB_ENV"
       - name: Controller envtest suite
         run: go test -tags envtest ./internal/controller/ -v
