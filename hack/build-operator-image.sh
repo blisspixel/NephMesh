@@ -13,9 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Build the meshtastic-operator image locally. Does not push, sign, or
-# generate an SBOM. Those land with the registry publish step (roadmap
-# 1.0 gap). Context is the repo root so the api module replace resolves.
+# Build a native operator image for development. The release workflow builds
+# both target platforms from the same Dockerfile and checks the OCI archive.
+# Context is the repo root so the api module replace resolves.
 #
 #   sh hack/build-operator-image.sh
 #   sh hack/build-operator-image.sh nephmesh-meshtastic-operator:dev
