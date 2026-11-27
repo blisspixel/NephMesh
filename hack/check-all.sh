@@ -49,6 +49,7 @@ fi
 group "kpt packages"
 if command -v docker >/dev/null 2>&1; then
     sh "$ROOT/hack/check-packages.sh" || fail=1
+    sh "$ROOT/hack/test-check-packages.sh" || fail=1
 else
     note "docker not installed; package render skipped"
 fi

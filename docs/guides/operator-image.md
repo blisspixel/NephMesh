@@ -1,6 +1,14 @@
 # Releasing the operator image
 
-The operator image runs on Linux amd64 and arm64. Its Go binary and the Meshtastic CLI run as UID 65532 with a read-only root filesystem. Python packages and their hashes are in `operators/meshtastic-operator/requirements.txt`. To refresh the lock, compile the pinned `meshtastic[cli]` requirement for Linux with Python 3.14. Keep the CLI version aligned with the simulated-firmware test.
+The operator image runs on Linux amd64 and arm64. Its Go binary and the Meshtastic CLI run as UID 65532 with a read-only root filesystem. Python packages and their hashes are in `operators/meshtastic-operator/requirements.txt`. To refresh the lock from the repository root, keep the CLI version aligned with the simulated-firmware test. This command reproduced the 0.2.7 dependency list with uv 0.13.9.
+
+```sh
+printf '%s\n' 'meshtastic[cli]==2.7.11' | uv pip compile --python-version 3.14 --python-platform linux \
+  --generate-hashes --no-strip-extras --no-header --no-annotate - > requirements.new
+diff -u -I '^#' operators/meshtastic-operator/requirements.txt requirements.new
+```
+
+Review changes before replacing the dependency list under the existing header.
 
 The `operator image` workflow builds one OCI archive containing both platforms. BuildKit includes an SPDX inventory from Syft and SLSA build provenance for each platform. The read-only job checks those attestations, starts both binaries, inventories the installed Python environment for pip-audit, and scans each image with Trivy. A high or critical Trivy result, a pip-audit finding, or a failed smoke test stops publication. Hadolint checks the operator Dockerfile.
 

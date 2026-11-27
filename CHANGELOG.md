@@ -4,6 +4,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-11-27
+
+### Added
+
+- The Meshtastic operator package pins a signed Linux amd64/arm64 image index. Each platform includes an SPDX inventory and build provenance. The release includes an OCI archive and its Sigstore bundle for verification and offline import. The [operations guide](docs/guides/operations.md#install) includes a kind install and simulated-radio readiness check.
+
+### Security
+
+- Image publication runs Hadolint, starts the operator and Meshtastic CLI on both architectures, checks the installed Python dependency tree with pip-audit, and gates both images on high and critical Trivy findings. The Alpine runtime uses Python 3.14.10 and hash-locked CLI dependencies. Package installation tools stay in the build stage.
+- Both Go modules use `golang.org/x/net v0.63.0` for CVE-2026-78661.
+
+### Fixed
+
+- The native kpt render gate propagates renderer failures. CI exercises an invalid Kptfile to catch a cleanup command masking the exit status.
+
 ## [0.2.6] - 2026-11-26
 
 ### Changed

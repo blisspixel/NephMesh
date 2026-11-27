@@ -48,7 +48,7 @@ Each working milestone earns a 0.x release, by demonstrated capability rather th
 - The `MeshtasticNode` CRD API is stable (no breaking changes planned) and versioned accordingly
 - Packages install against a stock Nephio release without patches, and the pinned release is documented
 - CI runs the simulated-radio test suite green on every commit
-- Docs cover install, upgrade, and teardown, not just the happy path (the operations runbook, `docs/guides/operations.md`, covers declaring a node, observing it through conditions/events/metrics, troubleshooting, and day-2 key rotation, decommission, and upgrade; the one gap it names honestly is that the operator image is not yet published to a registry, so install still builds it)
+- The [operations runbook](guides/operations.md) covers installation from a signed image, declaring and observing a node, troubleshooting, key rotation, decommission and upgrade.
 
 Phases 6 and 7 are not 1.0 gates: the closed loop and the cellular leg are research features and can mature after 1.0.
 
@@ -56,23 +56,20 @@ Phases 6 and 7 are not 1.0 gates: the closed loop and the cellular leg are resea
 
 ## What comes next
 
-Reviewed 2026-11-26 for source release 0.2.6.
+Reviewed 2026-11-27 for release 0.2.7.
 
 This list is the source of "what do I do tomorrow." The longer Order of operations below is the lifetime spine. When the two disagree, this list wins. Stages already done (channels on hardware) stay checked there; they are not next.
 
 The flagship config surface is proven on sim and on owned hardware (TCP gateway radio and USB handheld: region, role, channels, two-way LoRa text). The engineering is still ahead of installability. The next work is to make what exists reproducible for a stranger, not to add radios or autonomy. Lab hostnames, addresses, and device ids stay out of the repo; scripts take environment variables.
 
-Items 1 and 2 are **installability** (a stranger can run what exists). Items 3 and 4 are **uniqueness** (the claims MeshMonitor and a Nephio 5G package cannot copy). Item 5 is hygiene.
+Release 0.2.7 completed the operator image step. The package pins the signed index, and the release includes an archive for offline import. The [install guide](guides/operations.md#install) covers the verified kind path. The remaining steps are listed in dependency order.
 
-In order:
+1. **Close the 0.3 Porch gate** (installability) end to end (register, propose, approve, pull, apply). Hardware-free. This is the credibility proof that Nephio-native is real rather than a rendered Kptfile.
+2. **Two-cluster control-plane independence** (uniqueness). `demo/resilience` already showed 100% delivery after destroying the management plane on a UDP-multicast sim mesh. The load-bearing remainder is two kind (or kind plus an SBC) clusters: delete the management cluster, MDR unchanged. This is the claim a 5G NF package cannot make.
+3. **One scripted three-witness capture** (uniqueness) from the repo: intent change, reconcile, SDR peak move, with the airtime model, radio telemetry, and sweep agreeing. The substance ran by hand on 2026-08-09 (peak moved 906.5 to 903.5 MHz, then restored). The gap is a stranger-runnable script with no baked-in lab addresses.
+4. **Controller status updates.** The API and operator now use Kubernetes v0.37.3 and controller-runtime v0.25.3. Server-side apply for status remains open. The operator already detects MQTT password-only rotation and avoids repeat channel writes when stock `--export-config` omits the channel inventory.
 
-1. **Publish the operator image** (installability), signed and digest-pinned, with an SBOM (the Phase 4 release step and a named 1.0 gap). A local image build already works (`hack/build-operator-image.sh`). Until a digest is on a registry, every install is "build it yourself." Land trivy/hadolint/pip-audit, SBOM, signing, and digest-pinned bases with the publish.
-2. **Close the 0.3 Porch gate** (installability) end to end (register, propose, approve, pull, apply). Hardware-free. This is the credibility proof that Nephio-native is real rather than a rendered Kptfile.
-3. **Two-cluster control-plane independence** (uniqueness). `demo/resilience` already showed 100% delivery after destroying the management plane on a UDP-multicast sim mesh. The load-bearing remainder is two kind (or kind plus an SBC) clusters: delete the management cluster, MDR unchanged. This is the claim a 5G NF package cannot make.
-4. **One scripted three-witness capture** (uniqueness) from the repo: intent change, reconcile, SDR peak move, with the airtime model, radio telemetry, and sweep agreeing. The substance ran by hand on 2026-08-09 (peak moved 906.5 to 903.5 MHz, then restored). The gap is a stranger-runnable script with no baked-in lab addresses.
-5. **Controller status updates.** The API and operator now use Kubernetes v0.37.3 and controller-runtime v0.25.3. Server-side apply for status remains open. The operator already detects MQTT password-only rotation and avoids repeat channel writes when stock `--export-config` omits the channel inventory.
-
-Parallel, not next: in-cluster USB device-plugin; Agent Plugins is already a directory wrap (`agent-plugin/`). An enforceable `ChannelBudget` (refuse an oversubscribed fleet) is the distinctive airtime seam; it stays report-only until this list's installability items are closed, then it is the first uniqueness increment that does not need a radio.
+Parallel, not next: in-cluster USB device-plugin; Agent Plugins is already a directory wrap (`agent-plugin/`). An enforceable `ChannelBudget` (refuse an oversubscribed fleet) is the distinctive airtime seam; it stays report-only until the Porch install is verified, then it is the first uniqueness increment that does not need a radio.
 
 Held frozen: `CommunicationIntent` actuation, the autonomy stack, a second radio driver, Phases 6 and 7. When that unfreezes, [`design/road-to-safe-autonomy.md`](design/road-to-safe-autonomy.md) is the order, not a new radio.
 
@@ -100,8 +97,8 @@ semantics before the Phase 6 closed loop rather than after (ADR 0002).
 
 This changes nothing about what comes next (the list above). It sharpens why
 installability and the two uniqueness proofs come first. Channel and PSK support
-on real hardware is done. The remaining core is: a published image, a Porch e2e
-run, two-cluster control-plane independence, a stranger-runnable three-witness
+on real hardware is done. The remaining work includes an end-to-end Porch
+install, two-cluster control-plane independence, a stranger-runnable three-witness
 script, then day-2 rotation and an enforced `ChannelBudget`. Ship that before
 expanding surface area. The honest boundaries are stated plainly in the doctrine:
 physics caps the useful envelope at tens to low hundreds of nodes for contingency
@@ -173,8 +170,7 @@ it can be made correct, and most of this is hardware-free.
    channel and PSK rotation as declared policy (rotate at a scheduled epoch so the
    change is atomic across the fleet), a fleet firmware-upgrade path, and node
    decommission (the Wipe deletionPolicy). Design: [coordinated key rotation and epoch-keyed channels](plans/key-rotation-and-epochs.md).
-4. Publish the operator image to a registry with a pinned digest, so the operator kpt
-   package deploys end to end (a release step Phase 4 already lists).
+4. Completed in 0.2.7. The operator kpt package uses the signed registry digest and installs from the release archive on kind.
 5. A reproducible demo path: a stranger can run the Phase 1 mesh and the operator
    reconcile (sim, and hardware where present) from the repo alone on a clean machine,
    scripted. A 1.0 gate, and the thing that makes the operational win visible rather
@@ -276,13 +272,9 @@ it can be made correct, and most of this is hardware-free.
   mission, commons-protection, control-stability, epistemic, and human-coherence
   measures the doctrine lists, demoting readiness from the definition of success to one
   input among many.
-- Continuous hardening: server-side apply for status, the NetworkPolicy cross-namespace
-  proof, reproducible-build flags and digest-pinned base images, trivy/hadolint/pip-audit,
-  then SBOM and signing at image publish; the deliberate k8s v0.36 and
-  controller-runtime v0.24 upgrade; agent-native packaging as an
-  [Agent Plugins](https://agent-plugins.org/) wrap around the shipped
-  `nephmeshctl` / `nephmesh-mcp` slice (not a Claude-only skill tree); and the
-  regulatory matrix kept as a living reference.
+- Continuous hardening includes server-side apply for status and the NetworkPolicy
+  cross-namespace proof. Kubernetes clients, agent packaging and image supply-chain
+  checks have landed. Keep the regulatory matrix current.
 
 ### Is everything captured?
 
@@ -377,7 +369,7 @@ Goal: true reconciliation instead of one-shot config jobs. The most broadly usef
 - [x] Reconcile modem preset, device role, and owner (long and short name), each field's export path verified to round-trip against `meshtasticd --sim` in the integration test (so it cannot silently never-converge). Region, modem preset, role, MQTT, and owner are now managed
 - [x] Read Secrets through a redacting type behind a namespaced RBAC Role (get only, uncached, never a cluster-wide Secret grant), proven by a no-secret-in-logs assume-breach test that shows a sentinel password reaching the device but never a log line or the stored status. The MQTT broker password is reconciled this way (username and password into the device's MQTT module config)
 - [x] Reconcile channels (channel PSKs through the same Secret path): the flagship's last configuration surface, done in three slices. The operator projects and diffs channels by key hash (so a key never enters the diff, logs, or status), surfaces a `ChannelsInSync` condition, applies drift through a distinct path (per-channel through a bundled helper that keeps keys in a file, not on the command line, because the CLI's `--configure` is unreliable for channels, meshtastic/python #891), gates `Ready` on channel convergence, and bounds the apply so an unconvergeable channel degrades rather than loops. The default-key shorthand (the single `0x01` byte the device stores) is normalized, so a default channel does not read as permanent drift. Validated end to end against `meshtasticd --sim` (export emits the channel set and apply writes it, both over TCP), covered by the CI integration test on every commit (it reconciles a Secret-backed secondary channel to `Ready` through the same helpers the packaged operator uses), and unit-tested through the fake (apply, reboot, re-verify to converged). The destructive physical confirm ran 2026-08-13 on the MeshToad over TCP and on the T-Deck over serial (`docs/plans/meshtoad-gateway-bench.md`).
-- [ ] Publish the operator image to a registry with a digest so the `operator` package deploys end to end (release step); the image already bundles the exporter and channel-apply helpers
+- [x] Publish the signed, digest-pinned operator image and verify the rendered package against simulated firmware on kind (0.2.7).
 
 ## Phase 5: Multi-site fan-out ($0)
 
@@ -408,13 +400,13 @@ Goal: the disaster-resilience story end to end, no cellular hardware. Cellular i
 
 ## Cross-cutting: exceptional engineering (in progress)
 
-The bar is code a critical-infrastructure or mission user could trust; the full standard and honest gaps are in `docs/CODE-QUALITY-STANDARDS.md`. Landed: golangci-lint (v2.14.0) and an 80% meaningful-coverage gate in CI, native fuzzing of the untrusted-input parsers, the race detector and `govulncheck` in CI (which caught real reachable vulnerabilities, fixed by bumping `golang.org/x/text`/`x/net`, with the security floor now Go 1.27.4 (1.27.2 on 2026-10-11, then 1.27.3 on 2026-11-02 for GO-2026-6809, then 1.27.4 on 2026-11-12 for GO-2026-6859) and `x/net v0.60.0`), ShellCheck on the gate scripts, a real sim-device integration test, the fix for the production logger defaulting to dev mode, the envtest controller tier (real API server and etcd) proving hostile-CR rejection at admission and reconciler idempotency, assume-breach control-proving tests (the RBAC least-privilege golden test and a no-secret-in-logs proof of the redacting-secret path), and a supply-chain pass: SHA-pinned GitHub Actions and least-privilege workflow tokens enforced by `hack/check-actions.sh`, a checksum-verified kpt download, and Dependabot keeping dependencies current. Prioritized remaining, highest leverage first:
+The bar is code a critical-infrastructure or mission user could trust; the full standard and honest gaps are in `docs/CODE-QUALITY-STANDARDS.md`. Landed: golangci-lint (v2.14.0) and an 80% meaningful-coverage gate in CI, native fuzzing of the untrusted-input parsers, the race detector and `govulncheck` in CI (which caught real reachable vulnerabilities, fixed by bumping `golang.org/x/text`/`x/net`, with the security floor now Go 1.27.4 (1.27.2 on 2026-10-11, then 1.27.3 on 2026-11-02 for GO-2026-6809, then 1.27.4 on 2026-11-12 for GO-2026-6859) and `x/net v0.63.0`), ShellCheck on the gate scripts, a real sim-device integration test, the fix for the production logger defaulting to dev mode, the envtest controller tier (real API server and etcd) proving hostile-CR rejection at admission and reconciler idempotency, assume-breach control-proving tests (the RBAC least-privilege golden test and a no-secret-in-logs proof of the redacting-secret path), and a supply-chain pass: SHA-pinned GitHub Actions and least-privilege workflow tokens enforced by `hack/check-actions.sh`, a checksum-verified kpt download, and Dependabot keeping dependencies current. Prioritized remaining, highest leverage first:
 
 - [ ] Server-side apply for status (the envtest controller tier and a two-call idempotency test are done)
-- [ ] Remaining assume-breach control-proving tests: no-secret-in-logs, NetworkPolicy blocks cross-namespace (with a positive control), no default credentials in any shipped package (the RBAC least-privilege golden test and hostile-CR rejection at admission are done)
-- [ ] Remaining supply chain: reproducible-build flags and digest-pinned base images, trivy and hadolint and pip-audit in CI, then SBOM and signing when the image is published (SHA-pinned Actions, least-privilege workflow tokens, and the checksum-verified kpt download are done)
+- [ ] Prove that NetworkPolicy blocks cross-namespace traffic, including a positive control. RBAC, hostile-CR admission, secret redaction and default-credential gates are in place.
+- [x] Operator image supply chain (0.2.7). Digest-pinned build and runtime bases, Go path trimming, a hash-locked CLI, Hadolint, Trivy, pip-audit, per-platform SPDX and SLSA attestations, and keyless signatures on the index and release archive.
 - [x] Architecture Decision Records (`docs/adr/`): the record format and index, plus ADR 0001 (intent as an outcome envelope, `MeshtasticNode` as a compiled artifact) and ADR 0002 (signed autonomy and rejoin before the Phase 6 closed loop), both Proposed pending their first implementing slice
-- [ ] A coordinated-disclosure process and signed release tags
+- [ ] Complete the coordinated-disclosure process. Release tags are SSH-signed.
 
 ## Cross-cutting: agent-native from day one (in progress)
 

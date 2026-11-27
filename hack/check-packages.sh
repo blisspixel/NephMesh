@@ -29,12 +29,12 @@ KPT_RUNNER_IMAGE=${KPT_RUNNER_IMAGE:-nephmesh/kpt-runner:v1.0.0-beta.67}
 pkgs=$(find packages -name Kptfile -exec dirname {} \; 2>/dev/null | sort)
 [ -z "$pkgs" ] && { echo "check-packages: no packages yet, OK"; exit 0; }
 
-render_native() {
-    tmp=$(mktemp -d)
-    cp -r "$1" "$tmp/pkg"
+render_native() (
+    tmp=$(mktemp -d) || exit 1
+    trap 'rm -rf "$tmp"' EXIT
+    cp -r "$1" "$tmp/pkg" || exit 1
     kpt fn render "$tmp/pkg" >/dev/null
-    rm -rf "$tmp"
-}
+)
 
 render_container() {
     # Render in place inside the container against a copied /work/pkg, so the

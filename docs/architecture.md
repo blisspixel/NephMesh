@@ -52,7 +52,7 @@ Target shape, not the deployed tree. What exists today is a single-cluster kind 
 |---|---|
 | `mesh-gateway` blueprint | meshtasticd Deployment (official image), config PVC, Service on TCP 4403, placeholder `WorkloadCluster` for injection |
 | `mqtt-bridge` | Mosquitto plus bridge config |
-| `meshtastic-operator` | CRDs, RBAC, Deployment. Image tag is a placeholder until publish |
+| `meshtastic-operator` | CRDs, RBAC, Deployment. Signed operator image pinned by index digest |
 | `spectrum-exporter` | Replay-first Prometheus exporter (no USB). Live SDR stays host-side |
 | `packages/examples/` | `PackageVariant` / `PackageVariantSet` examples |
 
