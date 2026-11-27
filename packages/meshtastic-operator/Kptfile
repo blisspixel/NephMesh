@@ -13,12 +13,15 @@ info:
     per-site MeshtasticNode instances are shipped by the mesh-gateway package
     and specialized by PackageVariant.
 
-    The CRD and ClusterRole are cluster-scoped; set-namespace places only the
-    ServiceAccount and Deployment into the per-clone namespace.
+    set-namespace specializes namespaced resources and RBAC subject references.
+    Both CRDs are cluster-scoped and use a single version.
 pipeline:
   mutators:
     - image: ghcr.io/kptdev/krm-functions-catalog/set-namespace:v0.4.1
       configPath: package-context.yaml
+      # The namespace function otherwise creates a partial conversion webhook.
+      exclude:
+        - kind: CustomResourceDefinition
     - image: ghcr.io/kptdev/krm-functions-catalog/set-labels:v0.2.0
       configMap:
         app.kubernetes.io/part-of: nephmesh

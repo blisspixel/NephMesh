@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # api types module. controller-gen is pinned so generation is reproducible.
-CONTROLLER_GEN_VERSION ?= v0.19.0
+CONTROLLER_GEN_VERSION ?= v0.22.0
 CONTROLLER_GEN ?= go run sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_VERSION)
 # Each API group is a distinct package. controller-gen is given each explicitly
 # because paths=./... fails on this module's root (it holds no Go files).

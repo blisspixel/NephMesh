@@ -5,6 +5,29 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - events.k8s.io
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - intent.nephmesh.io
+  resources:
+  - communicationintents
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - intent.nephmesh.io
+  resources:
+  - communicationintents/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
   - mesh.nephmesh.io
   resources:
   - meshtasticnodes

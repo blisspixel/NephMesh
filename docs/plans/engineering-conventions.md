@@ -69,7 +69,7 @@ Deliberate differences from upstream, and why:
 ## 2. Go conventions
 
 - Go 1.27.4 minimum (2026-11-12 security exception to the upstream Go 1.25.x baseline; see [compatibility posture](../reference/nephio-compatibility.md#security-floor-2026-10-11)).
-- `sigs.k8s.io/controller-runtime v0.22.x`, `k8s.io/* v0.34.x`.
+- `sigs.k8s.io/controller-runtime v0.25.x`, `k8s.io/* v0.37.x`.
 - kpt function SDK: `github.com/kptdev/krm-functions-sdk/go/fn` (kptdev org, not
   GoogleContainerTools). Kptfile types from `github.com/kptdev/kpt/pkg/api/kptfile/v1`.
 - Specializer functions use condkptsdk (For/Owns/Watch, `specializer.nephio.org/*` annotations,

@@ -33,6 +33,9 @@ metadata:
   labels:
     app.kubernetes.io/name: meshtastic-operator
 rules:
+  - apiGroups: [events.k8s.io]
+    resources: [events]
+    verbs: [create, patch]
   - apiGroups: [mesh.nephmesh.io]
     resources: [meshtasticnodes]
     verbs: [get, list, watch, update, patch]
