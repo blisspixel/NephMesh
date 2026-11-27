@@ -13,21 +13,84 @@ keeps carrying traffic if the operator, or the whole cluster, is gone.
 
 ## Install
 
-The operator ships as a kpt package at `packages/meshtastic-operator/` (CRD,
-least-privilege RBAC, ServiceAccount, Deployment, NetworkPolicy). Two honest notes
-before you start:
+From a checkout of the release, copy and render the operator package. It contains both CRDs, the service account and RBAC, an egress policy and the Deployment. The Deployment pins a signed Linux amd64/arm64 image by digest. For the Nephio package lifecycle, see the [Porch registration guide](porch-registration.md).
 
-- The operator image is not published to a public registry yet (that is a pending
-  release step, see the roadmap). Until then you build it from the repo and load
-  it into your cluster: `sh hack/build-operator-image.sh` then
-  `kind load docker-image nephmesh-meshtastic-operator:local`. The `Dockerfile`
-  bundles the pinned Meshtastic CLI and the helper scripts. Signing, SBOM, and
-  a digest-pinned `ghcr.io` tag land with the publish, not this local build.
-  A local build on 2026-08-13 produced `nephmesh-meshtastic-operator:local`,
-  non-root, helpers and CLI present. That is not a release.
-- For the full Nephio/Porch path (register the repo, propose/approve/apply), see
-  the [Porch registration guide](porch-registration.md). For a plain cluster,
-  `kubectl apply` the rendered package.
+```sh
+pkg=$(mktemp -d)
+cp -R packages/meshtastic-operator "$pkg/operator"
+kpt fn render "$pkg/operator"
+ref=$(awk '$1 == "image:" {print $2}' "$pkg/operator/deployment.yaml")
+image=${ref%@*}
+identity=https://github.com/blisspixel/NephMesh/.github/workflows/operator-image.yaml@refs/heads/main
+issuer=https://token.actions.githubusercontent.com
+```
+
+### Pull from GHCR
+
+The index is available for anonymous pulls. Verify the index signature on a connected machine. On a cluster with access to GHCR, the kubelet pulls the pinned image when you apply the Deployment.
+
+```sh
+cosign verify --certificate-identity "$identity" --certificate-oidc-issuer "$issuer" "$ref"
+```
+
+For a fresh kind cluster, run `kind create cluster --name nephmesh-demo` and continue at [Apply and verify](#apply-and-verify).
+
+### Load the release archive on kind
+
+The release archive works on a local kind cluster without a registry account or a local operator build. On a connected machine, download the archive and signature, verify the workflow identity with Cosign, and check the index digest against the package.
+
+```sh
+release=https://github.com/blisspixel/NephMesh/releases/download/v0.2.7
+curl -fL "$release/operator.tar" -o "$pkg/operator.tar"
+curl -fL "$release/operator.sigstore.json" -o "$pkg/operator.sigstore.json"
+cosign verify-blob --certificate-identity "$identity" --certificate-oidc-issuer "$issuer" \
+  --bundle "$pkg/operator.sigstore.json" "$pkg/operator.tar"
+test "$(tar -xOf "$pkg/operator.tar" index.json | jq -er '.manifests | select(length == 1) | .[0].digest')" = "${ref#*@}"
+```
+
+Once both checks succeed, create a disposable cluster with kind's Docker provider. Import the verified archive under the same repository name and digest on every node. For an offline site, transfer the verified archive and rendered package and pre-stage the kind node and simulator images as needed.
+
+```sh
+kind create cluster --name nephmesh-demo
+for node in $(kind get nodes --name nephmesh-demo); do
+  docker exec -i "$node" ctr -n k8s.io images import --local --base-name "$image" --digests - < "$pkg/operator.tar" || exit 1
+  docker exec "$node" crictl inspecti "$ref" > /dev/null || exit 1
+done
+```
+
+For clusters that pull from an internal registry, [mirror the verified archive](operator-image.md) and use the mirror repository name with the same digest.
+
+### Apply and verify
+
+Check that kubectl is targeting the intended cluster. These commands use the package's default namespace.
+
+```sh
+kubectl config current-context
+kubectl create namespace meshtastic-operator --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f "$pkg/operator/crd.yaml" -f "$pkg/operator/crd-communicationintent.yaml"
+kubectl wait --for=condition=Established crd/meshtasticnodes.mesh.nephmesh.io crd/communicationintents.intent.nephmesh.io
+kubectl apply -f "$pkg/operator/rbac.yaml" -f "$pkg/operator/networkpolicy.yaml" -f "$pkg/operator/deployment.yaml"
+kubectl -n meshtastic-operator rollout status deployment/meshtastic-operator --timeout=3m
+```
+
+On the disposable cluster, use the Phase 1 simulator to exercise a real config write, reboot and subsequent read over the TCP API.
+
+```sh
+kubectl apply -f demo/phase1/manifests/namespace.yaml -f demo/phase1/manifests/meshtasticd.yaml
+sed 's/host: 10\.0\.0\.51/host: meshnode-sim.nephmesh.svc.cluster.local/' examples/basic-node.yaml | kubectl -n meshtastic-operator apply -f -
+kubectl -n meshtastic-operator wait --for=condition=Ready meshtasticnode/field-01 --timeout=5m
+kubectl -n meshtastic-operator get meshtasticnode field-01
+```
+
+Captured on 2026-11-27 with the 0.2.7 index pulled anonymously by a clean kind node running Kubernetes 1.37.0:
+
+```console
+$ kubectl -n meshtastic-operator get meshtasticnode field-01 -o 'custom-columns=NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,SYNC:.status.conditions[?(@.type=="ConfigInSync")].status'
+NAME       READY   SYNC
+field-01   True    True
+```
+
+To tear down this disposable installation, run `kind delete cluster --name nephmesh-demo`.
 
 To try the reconcile engine with no cluster and no hardware at all, the scripted
 [operator demo](../../demo/operator/) stands up a simulated radio and converges
@@ -132,9 +195,7 @@ Map the symptom to the signal:
   is Retain: the operator stops managing the device and removes its finalizer, and
   the device keeps running with its last-applied config. A Wipe policy that clears
   the device is a later-phase feature and is not performed yet.
-- **Upgrade the operator.** Redeploy the new operator image; the reconcile loop is
-  idempotent, so a rolling replace does not disturb configured devices. The
-  `MeshtasticNode` API is `v1alpha1` and may still change before 1.0.
+- **Upgrade the operator.** Verify the new release signature and digest, load the new image on each offline node, then render and reapply the CRDs, RBAC and Deployment from that release. Wait for rollout and recheck node readiness. The `MeshtasticNode` API is `v1alpha1` and may change before 1.0.
 
 ## What this operator does not do (yet)
 

@@ -54,7 +54,7 @@ Every threat-model boundary should have a test that proves the control, not assu
 - **Network artifacts verified by checksum** before use (the kpt download is verified, not `curl | tar` with sudo).
 - **Reproducible builds:** `-trimpath` and version stamping; committed `go.sum`; base images digest-pinned; a dependency-update tool keeps the pins fresh.
 - **Image and dependency scanning** (trivy for the image, `govulncheck` for Go, `pip-audit` for the bundled CLI tree), gating on high and critical with a documented exceptions path.
-- **When images are published:** an SBOM (syft) and keyless signing plus provenance (cosign, SLSA), verified in consumers. This lands with image publishing, not before.
+- **When images are published:** an SBOM (syft) and keyless signing plus provenance (cosign, SLSA), verified in consumers. The operator release workflow signs the checked OCI index and archive and verifies both against the workflow identity.
 
 ### Shell and container gates
 
@@ -73,4 +73,4 @@ Honesty about overkill is part of quality. The research explicitly de-scoped, an
 
 ## How this rolls out
 
-These are tracked as prioritized roadmap items under Phase 4 hardening rather than done all at once, so each lands with its own validation. Already in: the race detector and `govulncheck` in CI, ShellCheck, SHA-pinned Actions with a gate and Dependabot, a checksum-verified kpt download, the fuzzers, the RBAC least-privilege golden test, the envtest controller tier (hostile-CR admission rejection plus finalizer and idempotency proofs), the redacting-secret path with the no-secret-in-logs proof and a namespaced Secret Role, and the fix for the production logger mode. The tier order for what remains, highest leverage first: server-side apply for status, reproducible-build flags and digest-pinned bases, then the last assume-breach control-proving test (the NetworkPolicy cross-namespace proof), then SBOM and signing when publishing begins.
+These are tracked as prioritized roadmap items under Phase 4 hardening rather than done all at once, so each lands with its own validation. Already in: the race detector and `govulncheck` in CI, ShellCheck, SHA-pinned Actions with a gate and Dependabot, a checksum-verified kpt download, the fuzzers, the RBAC least-privilege golden test, the envtest controller tier (hostile-CR admission rejection plus finalizer and idempotency proofs), the redacting-secret path with the no-secret-in-logs proof and a namespaced Secret Role, and the fix for the production logger mode. The operator Dockerfile pins both bases by digest. The image workflow scans both platform images and signs the index containing their SPDX inventories and provenance. Server-side apply for status and the NetworkPolicy cross-namespace proof remain open.

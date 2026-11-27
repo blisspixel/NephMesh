@@ -71,6 +71,8 @@ jobs:
           kpt version
       - name: Render all kpt packages
         run: sh hack/check-packages.sh
+      - name: Reject an invalid kpt package
+        run: sh hack/test-check-packages.sh
 
   dco:
     # Dependabot commits carry no Signed-off-by; its PRs are exempt.

@@ -24,7 +24,7 @@ The accurate framing of the value, and the honest limits, is "desired-state mana
 
 ## Status
 
-Pre-alpha. [Source release 0.2.6](https://github.com/blisspixel/NephMesh/releases/tag/v0.2.6) updates the Kubernetes clients, offline tool metadata, and edge advisor default. The operator reconciles region, preset, role, owner, MQTT, and channels on simulated and owned radios. Installation still requires a local image build. A signed operator image and an end-to-end Porch install are the next [roadmap milestones](docs/roadmap.md#what-comes-next). Earlier releases are in the [changelog](CHANGELOG.md).
+Pre-alpha. [Release 0.2.7](https://github.com/blisspixel/NephMesh/releases/tag/v0.2.7) ships a signed Linux amd64/arm64 operator image and a downloadable archive. The [install guide](docs/guides/operations.md#install) includes a hardware-free check that takes a simulated radio to Ready from the released package. The next [roadmap milestone](docs/roadmap.md#what-comes-next) is an end-to-end Porch install.
 
 | You can run today | What it proves |
 |---|---|

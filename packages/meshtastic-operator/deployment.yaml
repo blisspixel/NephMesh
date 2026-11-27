@@ -12,11 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# The operator itself. The image bundles the pinned Meshtastic CLI it execs
-# (see operators/meshtastic-operator/Dockerfile) and runs as a non-root user
-# with escalation disabled and all capabilities dropped. The image tag is a
-# placeholder until a release publishes it; it must be available to the target
-# cluster (a release pushes it to ghcr.io with a digest).
+# The signed release index includes the Go controller and its Meshtastic CLI.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -42,7 +38,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: operator
-          image: ghcr.io/blisspixel/nephmesh-meshtastic-operator:v0.4.0
+          image: ghcr.io/blisspixel/nephmesh-meshtastic-operator@sha256:b76d7c2b624e377c0ff717e1bc4f6675f48b304e666ac09a18c50304cdb25976
           args:
             - --health-probe-bind-address=:8081
             - --metrics-bind-address=:8080
