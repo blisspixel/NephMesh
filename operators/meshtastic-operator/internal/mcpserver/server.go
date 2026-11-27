@@ -211,10 +211,13 @@ func (s *Server) initialize(params json.RawMessage) any {
 }
 
 func (s *Server) toolsList() any {
+	reportOnly := map[string]bool{"readOnlyHint": true, "openWorldHint": false}
 	return map[string]any{
 		"tools": []any{
 			map[string]any{
 				"name":        "plan_intent",
+				"title":       "Plan a communication intent",
+				"annotations": reportOnly,
 				"description": "Dry-run a NephMesh CommunicationIntent. Reports whether it is feasible, the modem preset selected from the approved set, a fleet airtime budget verdict (when expectedTraffic is given), and the proposed per-device MeshtasticNode specs. Report-only: it creates nothing and touches no radio.",
 				"inputSchema": map[string]any{
 					"type": "object",
@@ -229,6 +232,8 @@ func (s *Server) toolsList() any {
 			},
 			map[string]any{
 				"name":        "sense_spectrum",
+				"title":       "Analyze a spectrum sweep",
+				"annotations": reportOnly,
 				"description": "Reduce a receive-only SDR power sweep (rtl_power/hackrf_sweep CSV) to per-band occupancy: occupancy percent against each band's own noise floor, plus noise floor, peak, and mean power, for the 433/868/915 MHz ISM ranges. Analysis only; it reads a capture and touches no radio.",
 				"inputSchema": map[string]any{
 					"type": "object",

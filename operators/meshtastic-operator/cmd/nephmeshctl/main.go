@@ -188,7 +188,7 @@ func runAdvise(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	_ = fs.String("f", "-", "sweep CSV path")
 	bandName := fs.String("band", "ism-915-us", "band to advise on")
 	ollamaURL := fs.String("ollama-url", "http://localhost:11434", "local Ollama server")
-	model := fs.String("model", "llama3.2:3b", "Ollama model")
+	model := fs.String("model", advisor.DefaultModel, "Ollama model")
 	preset := fs.String("preset", "LONG_FAST", "current modem preset")
 	region := fs.String("region", "US", "region")
 	approved := fs.String("approved", "LONG_FAST,MEDIUM_SLOW,LONG_MODERATE", "approved presets")
@@ -201,7 +201,7 @@ func runAdvise(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 				"-f file         sweep CSV (default: stdin)",
 				"-band name      band to advise on (default ism-915-us)",
 				"-ollama-url URL local Ollama server",
-				"-model name     Ollama model (default llama3.2:3b)",
+				"-model name     Ollama model (default " + advisor.DefaultModel + ")",
 				"-preset name    current modem preset",
 				"-region code    regulatory region",
 				"-approved list  comma-separated approved presets",

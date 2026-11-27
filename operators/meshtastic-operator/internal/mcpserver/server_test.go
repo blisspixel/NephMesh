@@ -93,6 +93,20 @@ func TestToolsListAdvertisesPlanIntent(t *testing.T) {
 	assert.Contains(t, props, "intent")
 }
 
+func TestReportOnlyToolMetadata(t *testing.T) {
+	s := New("nephmesh-mcp", "test")
+	m, _ := handle(t, s, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
+	tools := m["result"].(map[string]any)["tools"].([]any)
+	var names []string
+	for _, item := range tools {
+		tool := item.(map[string]any)
+		names = append(names, tool["name"].(string))
+		assert.NotEmpty(t, tool["title"], tool["name"])
+		assert.Equal(t, map[string]any{"readOnlyHint": true, "openWorldHint": false}, tool["annotations"], tool["name"])
+	}
+	assert.ElementsMatch(t, []string{"plan_intent", "sense_spectrum"}, names)
+}
+
 func TestToolsCallPlanIntentString(t *testing.T) {
 	s := New("nephmesh-mcp", "test")
 	// The intent is a JSON string containing YAML.

@@ -28,7 +28,8 @@ therefore cannot propose anything unsafe. The whole sensing path is receive-only
    validated recommendation.
 
 ```sh
-nephmeshctl advise -f sweep.csv -model qwen2.5:14b -ollama-url http://localhost:11434
+ollama pull qwen3.5:2b
+nephmeshctl advise -f sweep.csv
 ```
 
 `-num-gpu 0` forces CPU inference so a capable model runs in system RAM on a
@@ -40,7 +41,7 @@ will not fit the GPU alongside the SDR still fits on the CPU).
 Both are real, on the bench (2026-08-09), reasoning over a live HackRF Pro sweep
 of the 902-928 MHz band (~33% occupancy, a wideband emission detected).
 
-Capable model (qwen2.5:14b on a nearby GPU):
+The bench used the larger optional model (`-model qwen2.5:14b`) on a nearby GPU:
 
 ```
 recommendation: hold (confidence medium)
