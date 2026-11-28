@@ -1,62 +1,134 @@
-# Registering NephMesh packages with Nephio Porch
+# Registering NephMesh packages with Porch
 
-How this repository's kpt packages become deployments through Nephio, and where a human stays in the loop. This is the Phase 3 flow; it targets a management cluster that already runs Porch. NephMesh consumes Nephio as a third party, exactly as OpenAirInterface ships its own packages, so nothing here modifies Nephio itself.
+This guide uses the stock Porch v1.6.2 package on one disposable kind cluster. Use a public read-only NephMesh catalog and a separate writable Git repository for deployment revisions. Run the commands from the release checkout in a POSIX shell (WSL2 on Windows) with Docker, kind v0.33.0, kubectl, kpt v1.0.0-beta.67, Git, curl, shasum and porchctl v1.6.2. The workload uses simulated firmware and a broker inside the cluster.
 
-Status note: the packages and specialization resources are validated by rendering (`make check-packages`) and by the Phase 1 demo they are derived from. A full end-to-end Porch deployment needs a running Porch install; the 0.3 release gate in the [roadmap](../roadmap.md) is that end-to-end run, and it is not claimed here.
+## Install Porch
 
-## The pieces
-
-- This repo is a blueprint catalog: `packages/mesh-gateway` and `packages/mqtt-bridge`.
-- A management cluster runs Porch, which exposes Git repositories as `Repository` and `PackageRevision` resources.
-- A `PackageVariant` (or `PackageVariantSet`) clones a blueprint into a per-site deployment repo and specializes it. Examples: [packages/examples](../../packages/examples).
-- A GitOps agent (Config Sync, Argo CD, or Flux) syncs each site's deployment repo onto that site's cluster.
-
-## Register the catalog
-
-Register this repository as a blueprint source. `--deployment=false` (the default) marks it as blueprints rather than deployment-ready packages:
+Use a dedicated kubeconfig so commands target the disposable cluster. Verify the upstream package against its release checksum before extracting it.
 
 ```sh
-porchctl repo register \
-  --namespace default \
-  --repo-basic-username <user> --repo-basic-password <token> \
-  https://github.com/blisspixel/NephMesh.git
+set -eu
+work=$(mktemp -d)
+export KUBECONFIG="$work/kubeconfig"
+kind create cluster --name nephmesh-porch --kubeconfig "$KUBECONFIG"
+mkdir "$work/porch"
+curl -fsSL https://github.com/kptdev/porch/releases/download/v1.6.2/porch-kpt-package.tar.gz -o "$work/porch.tar.gz"
+(cd "$work" && printf '%s  %s\n' 94925edebef145bb45dca5be361adf4eb219c4dcd22725922072a6ed20bf17cd porch.tar.gz | shasum -a 256 -c -)
+tar -xzf "$work/porch.tar.gz" -C "$work/porch"
+(cd "$work/porch" && kpt live init && kpt live apply)
+kubectl wait --for=condition=Available apiservice/v1alpha1.porch.kpt.dev --timeout=3m
 ```
 
-Confirm it, and that each site's deployment repository is registered too:
+## Register repositories
+
+For the disposable demo, start a cluster-local Git service with a private, initialized repository. The helper requires OpenSSL. It creates the credential in the disposable cluster.
 
 ```sh
-porchctl repo get -A
+sh demo/porch/create-site-repo.sh
+SITE_REPO=http://git.porch-demo.svc.cluster.local:3000/porchdemo/site.git
 ```
 
-## Specialize per site
-
-Apply a `PackageVariant` for a single site, or a `PackageVariantSet` to fan out across every matching `WorkloadCluster`:
+Alternatively, set `SITE_REPO` to your own writable Git repository initialized with a `main` branch. Its URL must be reachable from the Porch server pod. Supply its credentials as a Kubernetes basic-auth Secret named `porch-site-git` in `default`. The public blueprint catalog requires no credentials.
 
 ```sh
-kubectl apply -f packages/examples/packagevariant-site1.yaml
-# or, for fan-out over labelled clusters:
-kubectl apply -f packages/examples/packagevariantset-edges.yaml
+porchctl repo register -n default --name nephmesh-catalog --directory packages https://github.com/blisspixel/NephMesh.git
+kubectl apply -f - <<YAML
+apiVersion: config.porch.kpt.dev/v1alpha1
+kind: Repository
+metadata:
+  name: site1-deployments
+  namespace: default
+spec:
+  type: git
+  deployment: true
+  git:
+    repo: ${SITE_REPO:?set SITE_REPO to the URL of the writable deployment repository}
+    branch: main
+    secretRef:
+      name: porch-site-git
+YAML
+kubectl wait --for=condition=Ready repositories.config.porch.kpt.dev/nephmesh-catalog repositories.config.porch.kpt.dev/site1-deployments --timeout=3m
+porchctl rpkg get -n default
 ```
 
-Porch creates a **draft** `PackageRevision` in each downstream repo. It is not deployed yet.
+All four blueprints appear with workspace `main` and revision `-1` when the catalog contains only repository release tags. Porch rejects a direct clone of the `.main` placeholder revision. Clone the package directory at an immutable Git commit to create a reviewable downstream draft.
 
-## The human-approved step (this matters for radios)
+## Prepare the site and review the draft
 
-Changing a radio's configuration is consequential, so the propose/approve lifecycle is where a person reviews before anything reaches hardware. Inspect the draft, then propose and approve it:
+From the matching NephMesh checkout, build the configure Job image and load it into the disposable cluster. The simulated gateway resolves `mosquitto` in its own namespace, so install the broker in the same namespace as the gateway.
 
 ```sh
-porchctl rpkg get                              # list package revisions
-porchctl rpkg pull <package-revision> ./review # inspect the specialized output
-porchctl rpkg propose <package-revision>       # draft -> proposed
-porchctl rpkg approve <package-revision>       # proposed -> published
+docker build -t nephmesh/meshtastic-cli:2.7.11 demo/phase1/images/meshtastic-cli
+kind load docker-image nephmesh/meshtastic-cli:2.7.11 --name nephmesh-porch
+kubectl create namespace site1-mesh
+cp -R packages/mqtt-bridge "$work/broker"
+sed 's/^  name: mqtt-bridge$/  name: site1-mesh/' packages/mqtt-bridge/package-context.yaml > "$work/broker/package-context.yaml"
+kpt fn render "$work/broker"
+kubectl apply -f "$work/broker/mosquitto.yaml" -f "$work/broker/networkpolicy.yaml"
+kubectl -n site1-mesh rollout status deploy/mosquitto --timeout=3m
+source_commit=$(git rev-parse HEAD)
+porchctl rpkg clone https://github.com/blisspixel/NephMesh.git site1-mesh -n default \
+  --ref "$source_commit" --directory packages/mesh-gateway --repository site1-deployments
+revision=site1-deployments.site1-mesh.v1
+porchctl rpkg pull "$revision" "$work/review" -n default
+porchctl rpkg propose "$revision" -n default
 ```
 
-What should always stay human-approved, not automated: region and modem-preset changes (they affect legality and interoperability), channel and PSK changes (they affect security and who can join), and anything that would enable transmission or raise power. The closed loop in a later phase may propose such changes, but a person approves them here. This is the boundary the [threat model](../security/threat-model.md) calls the transmit interlock, expressed as process.
+Review the upstream commit in the pulled Kptfile, the rendered namespace, simulator arguments, desired region and channel settings, and the configure Job target. A person approves region and modem-preset changes, channel and PSK changes, and changes enabling transmission or increasing power.
 
-## After approval
+## Publish and install the approved revision
 
-The published `PackageRevision` lands in the site's deployment repo. The GitOps agent syncs it onto the site cluster, where the gateway comes up, the config Job converges the node, and the node uplinks to its site broker. Deleting the `PackageVariant` removes the site's package again.
+After human approval, publish the revision, pull it again, and compare the workload files with the reviewed draft. Porch updates package lifecycle metadata when it publishes. Apply the reviewed workload files explicitly so the local package context and WorkloadCluster injection marker stay off the cluster.
 
-## What Nephio specialization adds over plain manifests
+```sh
+porchctl rpkg approve "$revision" -n default
+porchctl rpkg get "$revision" -n default
+porchctl rpkg pull "$revision" "$work/published" -n default
+for file in configure-job.yaml meshtasticd.yaml networkpolicy.yaml node-config.yaml; do
+  cmp "$work/review/$file" "$work/published/$file" || exit 1
+done
+kubectl apply -f "$work/published/meshtasticd.yaml" -f "$work/published/node-config.yaml" \
+  -f "$work/published/configure-job.yaml" -f "$work/published/networkpolicy.yaml"
+kubectl -n site1-mesh wait --for=condition=Complete job/meshnode-configure --timeout=15m
+kubectl -n site1-mesh logs job/meshnode-configure
+```
 
-The same blueprint produces every site with per-site namespaces and, once specializer functions exist (Phase 5), per-site configuration injected from each `WorkloadCluster`. The placeholder `WorkloadCluster` in `mesh-gateway` marks where that injection happens. Until then, the value is the reviewable, versioned, one-blueprint-many-sites flow itself.
+Read the settings back from the running simulator in a separate, read-only client session.
+
+```sh
+kubectl -n site1-mesh run porch-readback --image=nephmesh/meshtastic-cli:2.7.11 --restart=Never \
+  --overrides='{"spec":{"automountServiceAccountToken":false,"securityContext":{"runAsNonRoot":true,"runAsUser":65532,"seccompProfile":{"type":"RuntimeDefault"}}}}' \
+  --command -- python -c "$(cat demo/porch/verify-site.py)"
+kubectl -n site1-mesh wait --for=jsonpath='{.status.phase}'=Succeeded pod/porch-readback --timeout=90s
+kubectl -n site1-mesh logs porch-readback
+```
+
+### Captured result
+
+On 2026-11-27, stock Porch v1.6.2 installed on Kubernetes 1.37.0 and discovered four catalog packages. The gateway blueprint came from commit `ed6239e`. The downstream Git tag `site1-mesh/v1` and its deployment branch pointed to the same commit. All eight published workload resources matched the reviewed draft.
+
+```console
+$ kubectl -n site1-mesh logs job/meshnode-configure
+applying configuration
+enabling MQTT uplink on the primary channel
+rebooting device to activate module config
+configuration verified after apply
+$ kubectl -n site1-mesh logs porch-readback
+region=US mqtt_enabled=True site_broker=True primary_uplink=True
+```
+
+Teardown for the disposable demo is `kind delete cluster --name nephmesh-porch`. The local Git service and its credential are removed with the cluster. A separately hosted site repository retains its approved package history.
+
+## Specialization examples
+
+The examples select a published package by `upstream.workspaceName: v1`. Set the upstream repository, package and workspace to one listed by `porchctl rpkg get`. In the disposable demo, `site1-deployments / site1-mesh / v1` is available after approval. Porch v1.6.2 can select the non-clonable `main` placeholder if only a numeric revision is supplied. The downstream package name determines the namespace through the Kptfile pipeline. Porch reserves the `name` key in package context. The set example also requires the WorkloadCluster API and matching labelled objects. CI submits both examples to the released Porch CRDs with strict server-side validation. To repeat that check on this cluster, run the following command.
+
+```sh
+kubectl apply --dry-run=server --validate=strict -f packages/examples/
+```
+
+With a published input, the single-site example produced a rendered draft in namespace `site1-mesh-gateway`. In a separate controller check, one labelled WorkloadCluster generated a site-specific draft and supplied its cluster name to an optional local injection point. These drafts still require human review before deployment.
+
+For cross-cluster GitOps, configure a sync agent on the site cluster to consume the approved package from its deployment repository. The single-cluster demonstration uses an explicit pull and apply.
+
+[Upstream Porch v1.6.2 release and CLI downloads](https://github.com/kptdev/porch/releases/tag/v1.6.2)

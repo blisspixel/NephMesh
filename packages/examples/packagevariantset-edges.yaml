@@ -27,7 +27,7 @@ spec:
   upstream:
     repo: nephmesh-catalog
     package: mesh-gateway
-    revision: v1
+    workspaceName: v1
   targets:
     - objectSelector:
         apiVersion: infra.nephio.org/v1alpha1
@@ -36,13 +36,10 @@ spec:
           nephmesh.io/site-type: mesh-edge
       template:
         downstream:
-          packageExpr: "'mesh-gateway'"
+          packageExpr: "target.name + '-mesh-gateway'"
           repoExpr: "target.name + '-deployments'"
-        packageContext:
-          data:
-            - key: name
-              valueExpr: "target.name + '-mesh-gateway'"
         injectors:
-          - apiVersion: infra.nephio.org/v1alpha1
+          - group: infra.nephio.org
+            version: v1alpha1
             kind: WorkloadCluster
             nameExpr: target.name

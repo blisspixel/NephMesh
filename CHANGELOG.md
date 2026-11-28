@@ -4,6 +4,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-27
+
+### Added
+
+- A [stock Porch installation and gateway deployment guide](docs/guides/porch-registration.md) with a disposable private Git repository on kind. All eight workload resources in the published revision matched the reviewed draft. An independent device read after reboot confirmed the US region, MQTT enabled, the correct site broker, and primary-channel uplink enabled.
+- CI checks both specialization examples against the released Porch v1.6.2 CRDs using strict Kubernetes admission. The signed multi-platform operator archive and signature bundle from 0.2.7 are also available in this release.
+
+### Fixed
+
+- The specialization examples select the published workspace and derive the namespace from the downstream package name. The variant set uses the served injector fields, and the gateway's local WorkloadCluster is marked as an optional injection point.
+
 ## [0.2.7] - 2026-11-27
 
 ### Added

@@ -73,6 +73,20 @@ jobs:
         run: sh hack/check-packages.sh
       - name: Reject an invalid kpt package
         run: sh hack/test-check-packages.sh
+      - name: Validate specialization examples against the released Porch CRDs
+        run: |
+          work=$(mktemp -d)
+          curl -fsSL --retry 3 -o "$work/kind" https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64
+          curl -fsSL --retry 3 -o "$work/porch.tar.gz" https://github.com/kptdev/porch/releases/download/v1.6.2/porch-kpt-package.tar.gz
+          echo "aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d  $work/kind" | sha256sum -c -
+          echo "94925edebef145bb45dca5be361adf4eb219c4dcd22725922072a6ed20bf17cd  $work/porch.tar.gz" | sha256sum -c -
+          chmod +x "$work/kind"
+          tar -xzf "$work/porch.tar.gz" -C "$work" 0-packagevariants.yaml 0-packagevariantsets.yaml
+          export KUBECONFIG="$work/kubeconfig"
+          "$work/kind" create cluster --name porch-schema --wait 2m
+          kubectl apply -f "$work/0-packagevariants.yaml" -f "$work/0-packagevariantsets.yaml"
+          kubectl wait --for=condition=Established crd/packagevariants.config.porch.kpt.dev crd/packagevariantsets.config.porch.kpt.dev
+          kubectl apply --dry-run=server --validate=strict -f packages/examples/
 
   dco:
     # Dependabot commits carry no Signed-off-by; its PRs are exempt.

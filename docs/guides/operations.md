@@ -40,7 +40,7 @@ For a fresh kind cluster, run `kind create cluster --name nephmesh-demo` and con
 The release archive works on a local kind cluster without a registry account or a local operator build. On a connected machine, download the archive and signature, verify the workflow identity with Cosign, and check the index digest against the package.
 
 ```sh
-release=https://github.com/blisspixel/NephMesh/releases/download/v0.2.7
+release=https://github.com/blisspixel/NephMesh/releases/download/v0.3.0
 curl -fL "$release/operator.tar" -o "$pkg/operator.tar"
 curl -fL "$release/operator.sigstore.json" -o "$pkg/operator.sigstore.json"
 cosign verify-blob --certificate-identity "$identity" --certificate-oidc-issuer "$issuer" \
