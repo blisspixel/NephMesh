@@ -24,7 +24,12 @@ The accurate framing of the value, and the honest limits, is "desired-state mana
 
 ## Status
 
-Pre-alpha. [Release 0.2.7](https://github.com/blisspixel/NephMesh/releases/tag/v0.2.7) ships a signed Linux amd64/arm64 operator image and a downloadable archive. The [install guide](docs/guides/operations.md#install) includes a hardware-free check that takes a simulated radio to Ready from the released package. The next [roadmap milestone](docs/roadmap.md#what-comes-next) is an end-to-end Porch install.
+Pre-alpha. In [release 0.3.0](https://github.com/blisspixel/NephMesh/releases/tag/v0.3.0), stock Porch published an approved gateway package on kind. The simulator rebooted, and a separate client read back its region and cluster-local MQTT settings. [Reproduce the Porch install](docs/guides/porch-registration.md) or [install the signed operator image](docs/guides/operations.md#install).
+
+```console
+$ kubectl -n site1-mesh logs porch-readback
+region=US mqtt_enabled=True site_broker=True primary_uplink=True
+```
 
 | You can run today | What it proves |
 |---|---|

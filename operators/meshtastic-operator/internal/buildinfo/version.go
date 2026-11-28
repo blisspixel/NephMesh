@@ -23,4 +23,4 @@ limitations under the License.
 package buildinfo
 
 // Version is the NephMesh release this source tree reports.
-const Version = "0.2.7"
+const Version = "0.3.0"

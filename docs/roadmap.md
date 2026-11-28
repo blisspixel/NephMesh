@@ -35,7 +35,7 @@ Each working milestone earns a 0.x release, by demonstrated capability rather th
 |---|---|
 | 0.1 | Phase 1 demo: a virtual mesh node deployed, configured, and torn down declaratively (shipped 2026-08-04) |
 | 0.2 | The `MeshtasticNode` operator (Phase 4 software): reconciles region, modem preset, role, MQTT (with a broker password read from a Secret), and owner against a live `meshtasticd --sim` in CI; shipped as a kpt package; hardened with an envtest controller tier and assume-breach tests (shipped 2026-08-05) |
-| 0.3 | Phase 3 demo: packages consumable by a stock Porch install (this repo registered as a catalog). Packaging and specialization resources done and render-validated; the end-to-end Porch run is the remaining gate |
+| 0.3 | Stock Porch discovered the catalog, published a reviewed gateway revision, and supplied the workload for a verified single-cluster simulator install (0.3.0). [Runbook and capture](guides/porch-registration.md#captured-result) |
 | 0.4 | Real radios (Phases 2 and 4 on hardware): intent drives physical Meshtastic boards, the operator reconciles drift on a real device, and the mesh is visible in sensed spectrum |
 | 0.5 | Phase 5 demo: two sites managed from one Git repo with per-site specialization |
 | 0.6 | Phase 6 demo: closed loop from sensed occupancy to reconciled channel change (a hand-driven bench proof-of-concept ran 2026-08-09, see `demo/closed-loop/`; the 0.6 gate is the safe, autonomous form behind ADR 0002) |
@@ -56,20 +56,19 @@ Phases 6 and 7 are not 1.0 gates: the closed loop and the cellular leg are resea
 
 ## What comes next
 
-Reviewed 2026-11-27 for release 0.2.7.
+Reviewed 2026-11-27 for release 0.3.0.
 
 This list is the source of "what do I do tomorrow." The longer Order of operations below is the lifetime spine. When the two disagree, this list wins. Stages already done (channels on hardware) stay checked there; they are not next.
 
 The flagship config surface is proven on sim and on owned hardware (TCP gateway radio and USB handheld: region, role, channels, two-way LoRa text). The engineering is still ahead of installability. The next work is to make what exists reproducible for a stranger, not to add radios or autonomy. Lab hostnames, addresses, and device ids stay out of the repo; scripts take environment variables.
 
-Release 0.2.7 completed the operator image step. The package pins the signed index, and the release includes an archive for offline import. The [install guide](guides/operations.md#install) covers the verified kind path. The remaining steps are listed in dependency order.
+Release 0.2.7 delivered the signed operator image. Release 0.3.0 verified the single-cluster Porch lifecycle and read back the configured simulator after reboot. See the [Porch capture](guides/porch-registration.md#captured-result).
 
-1. **Close the 0.3 Porch gate** (installability) end to end (register, propose, approve, pull, apply). Hardware-free. This is the credibility proof that Nephio-native is real rather than a rendered Kptfile.
-2. **Two-cluster control-plane independence** (uniqueness). `demo/resilience` already showed 100% delivery after destroying the management plane on a UDP-multicast sim mesh. The load-bearing remainder is two kind (or kind plus an SBC) clusters: delete the management cluster, MDR unchanged. This is the claim a 5G NF package cannot make.
-3. **One scripted three-witness capture** (uniqueness) from the repo: intent change, reconcile, SDR peak move, with the airtime model, radio telemetry, and sweep agreeing. The substance ran by hand on 2026-08-09 (peak moved 906.5 to 903.5 MHz, then restored). The gap is a stranger-runnable script with no baked-in lab addresses.
-4. **Controller status updates.** The API and operator now use Kubernetes v0.37.3 and controller-runtime v0.25.3. Server-side apply for status remains open. The operator already detects MQTT password-only rotation and avoids repeat channel writes when stock `--export-config` omits the channel inventory.
+1. **Two-cluster control-plane independence** (uniqueness). `demo/resilience` already showed 100% delivery after destroying the management plane on a UDP-multicast sim mesh. The load-bearing remainder is two kind (or kind plus an SBC) clusters: delete the management cluster, MDR unchanged. This is the claim a 5G NF package cannot make.
+2. **One scripted three-witness capture** (uniqueness) from the repo: intent change, reconcile, SDR peak move, with the airtime model, radio telemetry, and sweep agreeing. The substance ran by hand on 2026-08-09 (peak moved 906.5 to 903.5 MHz, then restored). The gap is a stranger-runnable script with no baked-in lab addresses.
+3. **Controller status updates.** The API and operator now use Kubernetes v0.37.3 and controller-runtime v0.25.3. Server-side apply for status remains open. The operator already detects MQTT password-only rotation and avoids repeat channel writes when stock `--export-config` omits the channel inventory.
 
-Parallel, not next: in-cluster USB device-plugin; Agent Plugins is already a directory wrap (`agent-plugin/`). An enforceable `ChannelBudget` (refuse an oversubscribed fleet) is the distinctive airtime seam; it stays report-only until the Porch install is verified, then it is the first uniqueness increment that does not need a radio.
+Parallel, not next: in-cluster USB device-plugin; Agent Plugins is already a directory wrap (`agent-plugin/`). An enforceable `ChannelBudget` (refuse an oversubscribed fleet) is the distinctive airtime seam; the shipped model is report-only. An admission policy remains future work.
 
 Held frozen: `CommunicationIntent` actuation, the autonomy stack, a second radio driver, Phases 6 and 7. When that unfreezes, [`design/road-to-safe-autonomy.md`](design/road-to-safe-autonomy.md) is the order, not a new radio.
 
@@ -97,8 +96,8 @@ semantics before the Phase 6 closed loop rather than after (ADR 0002).
 
 This changes nothing about what comes next (the list above). It sharpens why
 installability and the two uniqueness proofs come first. Channel and PSK support
-on real hardware is done. The remaining work includes an end-to-end Porch
-install, two-cluster control-plane independence, a stranger-runnable three-witness
+on real hardware is done. The remaining work includes two-cluster
+control-plane independence, a stranger-runnable three-witness
 script, then day-2 rotation and an enforced `ChannelBudget`. Ship that before
 expanding surface area. The honest boundaries are stated plainly in the doctrine:
 physics caps the useful envelope at tens to low hundreds of nodes for contingency
@@ -263,8 +262,7 @@ it can be made correct, and most of this is hardware-free.
 
 ### Parallel tracks (no dependency on the spine)
 
-- Nephio packaging gate (Phase 3, the 0.3 milestone): register the repo with Porch and
-  run propose/approve/pull/apply. Hardware-free; needs WSL2. Independent of the spine.
+- Phase 3 packaging shipped in 0.3.0 with the hardware-free Porch lifecycle on kind.
 - Hardware enablement (Phase 2, and the RF-real half of 0.4): the USB device plugin on
   k3s, the HackRF receive-only sweep exporter, and the real-RF demo. Gated only on
   plugging boards and the SDR in, not on the software spine.
@@ -345,14 +343,14 @@ Goal: the same pipeline drives physical RF, and the mesh is visible in the sense
 - [x] Exporter: parse sweep CSV into per-band aggregate Prometheus gauges (occupancy percent, peak/noise dB, not per-bin series). Research found no existing exporter for sweep data; this is novel glue. Built and validated on real hardware (2026-08-09): `cmd/spectrum-exporter` runs `hackrf_sweep` on a loop, reduces via `internal/spectrum`, and serves `nephmesh_spectrum_*` gauges (occupancy, peak dB, peak freq, noise floor) on `/metrics`; cross-compiled for arm64 and run on the Linux USB host against the HackRF Pro, `curl /metrics` returned live per-band values with uncovered bands correctly absent. In-cluster wiring landed (2026-08-10): `packages/spectrum-exporter` is a hardened, receive-only kpt package with a Deployment, a `ServiceMonitor` so the Prometheus Operator scrapes it, and a report-only `PrometheusRule` (no-sensor, stale-sweep, sweep-error, band-congested). It is simulation-first, like the mesh-gateway node: the Deployment runs with a new exporter `-replay` flag over a bundled sample sweep, so it publishes the same `nephmesh_spectrum_*` series with no radio, proves the Prometheus integration hardware-free in `kind`, and passes the manifest security gate. Remaining: the live in-cluster capture still needs a device-plugin USB host (a live sweep needs the SDR mounted, which the gate forbids in a shipped manifest), so on-host capture-and-scrape stays the real-sensor path for now
 - [ ] Demo: a Git intent change (for example modem preset LongFast to MediumSlow) propagates to the physical radios; a message crosses real RF (handheld serial to `meshtasticd` gateway, no IP mesh); the mesh's own transmissions appear in the occupancy metrics. A message crossing real RF is done (2026-08-13): two-way application text tagged `TRANSPORT_LORA`, hopsAway 0 (`docs/plans/meshtoad-gateway-bench.md`). The spectrum-visibility half is validated (2026-08-09): with a Meshtastic T-Deck transmitting on its US LongFast channel and a HackRF Pro sensing 902-928 MHz, the mesh appeared as a 24 dB peak (idle -40.9 dB to -17.1 dB) at 906.5 MHz, exactly the LongFast channel frequency, with 1367 strong (>-30 dB) hits there during the burst versus 0 idle. Two findings: per-band peak power, not aggregate occupancy, is the sensitive detection signal (occupancy barely moved, since one transmitter lights up one channel), and the peak landing at the correct frequency confirms the post-firmware-update mapping is honest. The actuation-and-sensing link is now demonstrated end to end (2026-08-09): the operator's reconcile loop changed the T-Deck's preset from LONG_FAST to LONG_MODERATE, and the HackRF Pro saw the transmission frequency move from ~906.5 to ~902.5 MHz (the 250 to 125 kHz bandwidth change shifts the channel slot), while the airtime rose in three independent measurements that agree, the operator's model (~559 to ~1642 ms per frame), the radio's own channelUtilization telemetry (0.0 to 3.2 percent), and the sensed spectrum (more strong hits per bin). Intent change caused an observable, correctly-attributed RF change. The last piece of the demo is wrapping the RF text and the spectrum half into a Git-driven, scripted run rather than a hand-driven one
 
-## Phase 3: Nephio-native packaging ($0) (in progress; packaging done, Porch gate open; depends only on Phase 1)
+## Phase 3: Nephio-native packaging ($0) (complete in 0.3.0)
 
 Goal: the Phase 1 workload becomes a proper Nephio-consumable catalog (the Phase 2 sensor blueprint joins later, when that hardware phase lands).
 
 - [x] Convert to kpt packages: `mesh-gateway` and `mqtt-bridge` blueprints with Kptfile pipeline (set-namespace from package-context, set-labels), `package-context.yaml`, and a placeholder `WorkloadCluster` on the gateway (pkg-example-bp pattern). Both render clean against kpt v1.0.0-beta.67; a render gate (`make check-packages`) is wired into CI. The `spectrum-sensor` blueprint is deferred with Phase 2 (hardware)
 - [x] `PackageVariant` and `PackageVariantSet` examples specializing the gateway per site, plus a Porch registration and propose/approve guide (`docs/guides/porch-registration.md`, `packages/examples/`)
-- [ ] Slim management path on the PC (research complete, 2026-08-05): Porch installs standalone on a single kind cluster via its released kpt package (`porch-kpt-package.tar.gz`, v1.6.2), about 1 vCPU and under 1 GB with the default CR cache, no full 16 vCPU / 32 GB Nephio sandbox and no Config Sync needed for the gate. Windows note: there is no `porchctl` Windows binary, so run it from WSL2; a local gitea gives a fully offline loop. Details in the Phase 3 research notes
-- [ ] The 0.3 gate: register this repo with Porch (`porchctl repo register`), clone/propose/approve a PackageRevision, then `rpkg pull` plus `kubectl apply` to actuate a configured mesh gateway (Config Sync and a second cluster are only needed for cross-cluster GitOps, out of scope for the gate). Write `PackageVariant` as `config.porch.kpt.dev/v1alpha1` and `PackageVariantSet` as `v1alpha2` (the current served version). Packages are render-validated and derived from the passing Phase 1 demo; the end-to-end Porch run is the remaining work
+- [x] Installed the checksum-verified stock Porch v1.6.2 package on one kind cluster running Kubernetes 1.37.0. All 33 upstream resources reconciled successfully. The demo can host its writable Git repository inside the cluster.
+- [x] Registered the public catalog, cloned the gateway at an immutable Git commit, reviewed and published the downstream revision, pulled it, and applied its eight workload resources. A separate client verified the simulated device configuration after reboot. Cross-cluster GitOps and multi-site delivery remain later milestones.
 
 ## Phase 4: The Meshtastic operator ($0)
 

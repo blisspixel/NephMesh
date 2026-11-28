@@ -25,12 +25,8 @@ spec:
   upstream:
     repo: nephmesh-catalog
     package: mesh-gateway
-    revision: v1
+    workspaceName: v1
   downstream:
+    # Porch sets package-context.data.name from the downstream package name.
     repo: site1-deployments
-    package: mesh-gateway
-  # Rename the downstream package context so set-namespace places this site's
-  # gateway into its own namespace.
-  packageContext:
-    data:
-      name: site1-mesh-gateway
+    package: site1-mesh-gateway

@@ -25,6 +25,7 @@ metadata:
   name: example
   annotations:
     config.kubernetes.io/local-config: "true"
+    kpt.dev/config-injection: optional
 spec:
   clusterName: example
   cnis:
